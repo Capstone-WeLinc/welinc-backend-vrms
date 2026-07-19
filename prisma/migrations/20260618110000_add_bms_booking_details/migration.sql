@@ -1,0 +1,18 @@
+ALTER TABLE "bookings" ADD COLUMN "service_type" VARCHAR(120);
+ALTER TABLE "bookings" ADD COLUMN "delivery_category" VARCHAR(40);
+ALTER TABLE "bookings" ADD COLUMN "address" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "total_amount" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "payment_status" TEXT DEFAULT 'Pending';
+ALTER TABLE "bookings" ADD COLUMN "payment_method" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "full_name" VARCHAR(200);
+ALTER TABLE "bookings" ADD COLUMN "contact" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "email" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "delivery_location" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "estimated_items" INTEGER;
+ALTER TABLE "bookings" ADD COLUMN "item_details" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "special_instructions" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "notes" TEXT;
+ALTER TABLE "bookings" ADD COLUMN "services_availed" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "bookings" ADD COLUMN "protective_materials" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE "bookings" ADD COLUMN "additional_services_availed" JSONB;
+ALTER TABLE "bookings" ADD COLUMN "has_insurance" BOOLEAN NOT NULL DEFAULT false;
