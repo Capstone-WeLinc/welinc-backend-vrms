@@ -13,6 +13,7 @@ import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
 import { UnlockTicketDto } from './dto/unlock-ticket.dto';
 
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type JwtUser = {
@@ -164,7 +165,29 @@ export class RepairsService {
     });
 
     this.logger.log(`Repair ticket created — ${repairNumber} by ${user.email}`);
+    // Auto-embed new issues into pgvector for AI Knowledge Base (fire-and-forget)
+    this.autoEmbedIssues(ticket).catch(() => {});
     return this.formatTicket(ticket, false);
+  }
+
+  private async autoEmbedIssues(ticket: any): Promise<void> {
+    const AI_SERVICE = process.env.AI_SERVICE_URL || 'http://vrms-analytics-ai:8020';
+    for (const issue of ticket.issues ?? []) {
+      try {
+        await fetch(`${AI_SERVICE}/ai/embed-issue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            issue_id: issue.id,
+            ticket_id: ticket.id,
+            description: issue.description,
+          }),
+          signal: AbortSignal.timeout(5000),
+        } as any);
+      } catch (e) {
+        this.logger.warn(`Auto-embed failed for issue ${issue.id}: ${e}`);
+      }
+    }
   }
 
   // ── List repair tickets ──────────────────────────────────────────────────
