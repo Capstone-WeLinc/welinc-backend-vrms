@@ -206,6 +206,8 @@ export class RepairsService {
 
     if (status) {
       where.repairStatus = status;
+    } else {
+      where.repairStatus = { in: [RepairStatus.PENDING, RepairStatus.IN_PROGRESS, RepairStatus.FOR_VERIFICATION] };
     }
 
     if (search) {
