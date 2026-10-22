@@ -6,9 +6,20 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { RepairStatus, UserRole, VehicleStatus } from '@prisma/client';
+import { Prisma, RepairStatus, UserRole, VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
+import {
+  ActorUser,
+  AuditEvent,
+  decodeCursor,
+  emailKey,
+  encodeCursor,
+  olderThan,
+  toAuditEvent,
+} from './audit-events';
+import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
+import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
 import { UnlockTicketDto } from './dto/unlock-ticket.dto';
@@ -35,7 +46,20 @@ const TERMINAL_STATUSES: RepairStatus[] = [
   RepairStatus.CANCELLED,
 ];
 
+const DETAIL_AUDIT_ACTIONS = ['STATUS_CHANGE', 'COST_UPDATE', 'UNLOCK'];
+
+const AUDIT_PAGE_SIZE = 50;
+
 // ── Helper ────────────────────────────────────────────────────────────────────
+
+/** Validated `from` (inclusive) and `to` (exclusive) instants; `from >= to` is a 400. */
+function parseRange(from: string | undefined, to: string | undefined) {
+  const range = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+  if (range.from && range.to && range.from >= range.to) {
+    throw new BadRequestException('"from" must be before "to"');
+  }
+  return range;
+}
 
 function generateRepairNumber(): string {
   const now = new Date();
@@ -160,6 +184,10 @@ export class RepairsService {
         mechanics: {
           connect: mechanicIds.map((id) => ({ id })),
         },
+        // Nested so the ticket and its CREATED row are saved together or not at all
+        auditLogs: {
+          create: { userId: user.sub, email: user.email, action: 'CREATED' },
+        },
       },
       include: this.ticketInclude(),
     });
@@ -246,18 +274,20 @@ export class RepairsService {
 
   // ── Repair history (completed + cancelled) ───────────────────────────────
 
-  async findHistory(
-    search: string | undefined,
-    status: RepairStatus | undefined,
-    page: number | undefined,
-    limit: number | undefined,
-    user: JwtUser,
-  ) {
+  async findHistory(query: HistoryQueryDto, user: JwtUser) {
+    const { search, status, garageId, page, limit } = query;
+    const { from, to } = parseRange(query.from, query.to);
     const isMechanic = this.isMechanic(user);
     const mechanicRecord = isMechanic ? await this.getMechanicForUser(user) : null;
 
-    const where: Record<string, any> = {
-      repairStatus: status && TERMINAL_STATUSES.includes(status) ? status : { in: TERMINAL_STATUSES },
+    // Fail closed: a mechanic login with no mechanic record sees nothing
+    if (isMechanic && !mechanicRecord) {
+      return { data: [], total: 0, summary: { closed: 0, completed: 0, cancelled: 0, spend: null } };
+    }
+
+    // One where for rows, count and summary, so a tile never disagrees with the list
+    const where: Prisma.RepairTicketWhereInput = {
+      repairStatus: status ?? { in: TERMINAL_STATUSES },
     };
 
     if (search) {
@@ -268,27 +298,72 @@ export class RepairsService {
       ];
     }
 
-    if (isMechanic && mechanicRecord) {
-      where.mechanics = { some: { id: mechanicRecord.id } };
-    }
+    if (garageId) where.garageId = garageId;
+    if (from || to) where.completedAt = { ...(from && { gte: from }), ...(to && { lt: to }) };
+    if (mechanicRecord) where.mechanics = { some: { id: mechanicRecord.id } };
 
-    const total = await this.prisma.repairTicket.count({ where });
+    const [tickets, groups] = await Promise.all([
+      this.prisma.repairTicket.findMany({
+        where,
+        select: {
+          id: true,
+          repairNumber: true,
+          repairStatus: true,
+          createdAt: true,
+          updatedAt: true,
+          completedAt: true,
+          cancellationReason: true,
+          isUnlocked: true,
+          totalCost: true,
+          vehicle: { select: { plateNumber: true, model: true } },
+          driver: { select: { name: true } },
+          garage: { select: { name: true } },
+        },
+        orderBy: [{ completedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
+        ...(page !== undefined && limit !== undefined && { skip: (page - 1) * limit, take: limit }),
+      }),
+      this.prisma.repairTicket.groupBy({
+        by: ['repairStatus'],
+        where,
+        _count: { _all: true },
+        _sum: { totalCost: true },
+      }),
+    ]);
 
-    const queryOptions: any = {
-      where,
-      include: this.ticketInclude(),
-      orderBy: { completedAt: 'desc' },
+    const completedGroup = groups.find((g) => g.repairStatus === RepairStatus.COMPLETED);
+    const completed = completedGroup?._count._all ?? 0;
+    const cancelled = groups.find((g) => g.repairStatus === RepairStatus.CANCELLED)?._count._all ?? 0;
+
+    const data = tickets.map((t) => {
+      const closedAt = t.completedAt?.toISOString() ?? null;
+      const row = {
+        id: t.id,
+        repairNumber: t.repairNumber,
+        status: t.repairStatus,
+        vehiclePlate: t.vehicle.plateNumber,
+        vehicleModel: t.vehicle.model,
+        driverName: t.driver.name,
+        garageLocation: t.garage.name,
+        createdAt: t.createdAt.toISOString(),
+        updatedAt: t.updatedAt.toISOString(),
+        completedAt: closedAt,
+        closedAt,
+        cancellationReason: t.cancellationReason,
+        isUnlocked: t.isUnlocked,
+      };
+      return isMechanic ? row : { ...row, totalCost: t.totalCost ? Number(t.totalCost) : null };
+    });
+
+    return {
+      data,
+      total: completed + cancelled,
+      summary: {
+        closed: completed + cancelled,
+        completed,
+        cancelled,
+        spend: isMechanic ? null : Number(completedGroup?._sum.totalCost ?? 0),
+      },
     };
-
-    if (page !== undefined && limit !== undefined) {
-      queryOptions.skip = (page - 1) * limit;
-      queryOptions.take = limit;
-    }
-
-    const tickets = await this.prisma.repairTicket.findMany(queryOptions);
-
-    const formattedData = tickets.map((t) => this.formatTicket(t, isMechanic));
-    return { data: formattedData, total };
   }
 
   // ── Single repair ticket ─────────────────────────────────────────────────
@@ -426,12 +501,19 @@ export class RepairsService {
       }
     }
 
+    const statusChanged = nextStatus !== currentStatus;
+
+    // completedAt is the close time: set only on a real change into a closed status,
+    // so saving an unlocked closed ticket never re-dates it
+    if (statusChanged && TERMINAL_STATUSES.includes(nextStatus)) {
+      updateData.completedAt = new Date();
+    }
+
     // When completing or cancelling, revert vehicle status
     if (
       dto.status === RepairStatus.COMPLETED ||
       dto.status === RepairStatus.CANCELLED
     ) {
-      updateData.completedAt = new Date();
       await this.prisma.vehicle.update({
         where: { id: ticket.vehicleId },
         data: { status: VehicleStatus.AVAILABLE },
@@ -456,24 +538,28 @@ export class RepairsService {
       }
     }
 
-    // Write audit log entry for status change
-    const auditEntry = {
-      repairTicketId: id,
-      userId: user.sub,
-      email: user.email,
-      action: 'STATUS_CHANGE',
-      fieldName: 'repairStatus',
-      previousValue: currentStatus,
-      newValue: nextStatus,
-    };
-
+    // Write a status audit row only when the status actually changed
     const [updated] = await this.prisma.$transaction([
       this.prisma.repairTicket.update({
         where: { id },
         data: updateData,
         include: this.ticketInclude(),
       }),
-      this.prisma.auditLog.create({ data: auditEntry }),
+      ...(statusChanged
+        ? [
+            this.prisma.auditLog.create({
+              data: {
+                repairTicketId: id,
+                userId: user.sub,
+                email: user.email,
+                action: 'STATUS_CHANGE',
+                fieldName: 'repairStatus',
+                previousValue: currentStatus,
+                newValue: nextStatus,
+              },
+            }),
+          ]
+        : []),
     ]);
 
     this.logger.log(
@@ -659,6 +745,78 @@ export class RepairsService {
     return this.formatTicket(updated, false);
   }
 
+  // ── Audit timeline (keyset paged, newest first) ──────────────────────────
+
+  async findAuditEvents(query: AuditEventsQueryDto): Promise<{ data: AuditEvent[]; nextCursor: string | null }> {
+    const limit = query.limit ?? AUDIT_PAGE_SIZE;
+    const { from, to } = parseRange(query.from, query.to);
+    const repairNumber = query.repairNumber?.trim();
+
+    const filters: Prisma.AuditLogWhereInput[] = [];
+    if (query.type) filters.push({ action: query.type });
+    if (query.actorId) {
+      // The Person filter carries a VRMS user id; audit rows are matched by that user's email
+      const actor = await this.prisma.user.findUnique({ where: { id: query.actorId }, select: { email: true } });
+      if (!actor) return { data: [], nextCursor: null };
+      filters.push({ email: { equals: actor.email, mode: 'insensitive' } });
+    }
+    if (from || to) filters.push({ createdAt: { ...(from && { gte: from }), ...(to && { lt: to }) } });
+    if (repairNumber && repairNumber.length >= 2) {
+      filters.push({ repairTicket: { repairNumber: { contains: repairNumber, mode: 'insensitive' } } });
+    }
+    if (query.cursor) filters.push(olderThan(decodeCursor(query.cursor)));
+
+    // One extra row tells us whether anything older remains
+    const rows = await this.prisma.auditLog.findMany({
+      where: { AND: filters },
+      select: {
+        id: true,
+        action: true,
+        userId: true,
+        email: true,
+        previousValue: true,
+        newValue: true,
+        createdAt: true,
+        repairTicket: { select: { id: true, repairNumber: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+
+    const page = rows.slice(0, limit);
+    const usersByEmail = await this.findUsersByEmail(page.map((r) => r.email));
+
+    return {
+      data: page.map((row) => toAuditEvent(row, usersByEmail)),
+      nextCursor: rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
+    };
+  }
+
+  async findAuditActors() {
+    const rows = await this.prisma.auditLog.findMany({
+      where: { email: { not: null } },
+      distinct: ['email'],
+      select: { email: true },
+    });
+    const usersByEmail = await this.findUsersByEmail(rows.map((r) => r.email));
+    return [...usersByEmail.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
+   * One batched lookup of VRMS users by email, case insensitive, keyed by lowercased email.
+   * audit_logs has no relation to users, and its user_id is the auth service's id, so email is the link.
+   * Soft deleted and inactive users are included: their changes are real.
+   */
+  private async findUsersByEmail(emails: (string | null)[]): Promise<Map<string, ActorUser>> {
+    const keys = [...new Set(emails.map(emailKey).filter((k): k is string => !!k))];
+    if (keys.length === 0) return new Map();
+    const users = await this.prisma.user.findMany({
+      where: { OR: keys.map((key) => ({ email: { equals: key, mode: 'insensitive' as const } })) },
+      select: { id: true, name: true, email: true },
+    });
+    return new Map(users.map((u) => [u.email.toLowerCase(), u]));
+  }
+
   // ── Find all audit logs across all tickets ───────────────────────────────
 
   async findAllAuditLogs() {
@@ -725,7 +883,11 @@ export class RepairsService {
       mechanics: { select: { id: true, name: true, isOutsourced: true, shopName: true } },
       repairParts: { orderBy: { createdAt: 'asc' as const } },
       shopChangeLogs: { orderBy: { changedAt: 'desc' as const } },
-      auditLogs: { orderBy: { createdAt: 'desc' as const } },
+      // The detail panel predates CREATED and SHOP_CHANGE rows; it shows only these three
+      auditLogs: {
+        where: { action: { in: DETAIL_AUDIT_ACTIONS } },
+        orderBy: { createdAt: 'desc' as const },
+      },
     };
   }
 
@@ -787,7 +949,7 @@ export class RepairsService {
         })),
         auditLog: ticket.auditLogs.map((a: any) => ({
           id: a.id,
-          email: a.email,
+          email: a.email ?? 'Unknown',
           action: a.action,
           fieldName: a.fieldName,
           previousValue: a.previousValue,
