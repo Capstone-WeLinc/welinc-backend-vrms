@@ -1,4 +1,11 @@
-import { IsEnum, IsOptional, IsString, IsNumber, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsNumber,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { RepairStatus } from '@prisma/client';
 
 export class UpdateRepairStatusDto {
@@ -7,6 +14,7 @@ export class UpdateRepairStatusDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   cancellationReason?: string;
 
   @IsOptional()
@@ -25,6 +33,7 @@ export class UpdateRepairStatusDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   remarks?: string;
 
   @IsOptional()

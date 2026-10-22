@@ -19,6 +19,7 @@ import {
 } from './audit-events';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
+import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
 import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
@@ -41,6 +42,12 @@ const MECHANIC_ALLOWED_TRANSITIONS: RepairStatus[] = [
   RepairStatus.FOR_VERIFICATION,
 ];
 
+const OPEN_STATUSES: RepairStatus[] = [
+  RepairStatus.PENDING,
+  RepairStatus.IN_PROGRESS,
+  RepairStatus.FOR_VERIFICATION,
+];
+
 const TERMINAL_STATUSES: RepairStatus[] = [
   RepairStatus.COMPLETED,
   RepairStatus.CANCELLED,
@@ -49,6 +56,8 @@ const TERMINAL_STATUSES: RepairStatus[] = [
 const DETAIL_AUDIT_ACTIONS = ['STATUS_CHANGE', 'COST_UPDATE', 'UNLOCK'];
 
 const AUDIT_PAGE_SIZE = 50;
+
+const LIST_PAGE_SIZE = 20;
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -220,23 +229,17 @@ export class RepairsService {
 
   // ── List repair tickets ──────────────────────────────────────────────────
 
-  async findAll(
-    search: string | undefined,
-    status: RepairStatus | undefined,
-    page: number | undefined,
-    limit: number | undefined,
-    user: JwtUser,
-  ) {
+  async findAll(query: FindRepairsQueryDto, user: JwtUser) {
+    const { search, status, garageId, overdue } = query;
     const isMechanic = this.isMechanic(user);
     const mechanicRecord = isMechanic ? await this.getMechanicForUser(user) : null;
 
-    const where: Record<string, any> = {};
+    // Fail closed: a mechanic login with no mechanic record sees nothing
+    if (isMechanic && !mechanicRecord) return { data: [], total: 0 };
 
-    if (status) {
-      where.repairStatus = status;
-    } else {
-      where.repairStatus = { in: [RepairStatus.PENDING, RepairStatus.IN_PROGRESS, RepairStatus.FOR_VERIFICATION] };
-    }
+    const where: Prisma.RepairTicketWhereInput = {
+      repairStatus: status ?? { in: OPEN_STATUSES },
+    };
 
     if (search) {
       where.OR = [
@@ -246,30 +249,41 @@ export class RepairsService {
       ];
     }
 
-    if (isMechanic && mechanicRecord) {
-      where.mechanics = { some: { id: mechanicRecord.id } };
+    if (garageId) where.garageId = garageId;
+
+    // A mechanic is always scoped to their own tickets; mechanicId is an admin filter
+    const mechanicId = mechanicRecord?.id ?? query.mechanicId;
+    if (mechanicId) where.mechanics = { some: { id: mechanicId } };
+
+    // Overdue only ever matches open tickets, whatever status was asked for
+    if (overdue) {
+      where.AND = [
+        { repairStatus: { in: OPEN_STATUSES } },
+        { targetDueDate: { lt: new Date() } },
+      ];
     }
 
-    const total = await this.prisma.repairTicket.count({ where });
+    // Neither page nor limit: every row, as the dashboard expects. One of them: the other defaults
+    const paged = query.page !== undefined || query.limit !== undefined;
+    const page = query.page ?? 1;
+    const limit = query.limit ?? LIST_PAGE_SIZE;
 
-    const queryOptions: any = {
-      where,
-      include: this.ticketInclude(),
-      orderBy: [
-        { completedAt: { sort: 'asc', nulls: 'first' } },
-        { createdAt: 'desc' },
-      ],
-    };
+    const [total, tickets] = await Promise.all([
+      this.prisma.repairTicket.count({ where }),
+      this.prisma.repairTicket.findMany({
+        where,
+        include: this.ticketInclude(),
+        // Most urgent first; id last so pages never repeat or skip a row
+        orderBy: [
+          { targetDueDate: { sort: 'asc', nulls: 'last' } },
+          { createdAt: 'desc' },
+          { id: 'desc' },
+        ],
+        ...(paged && { skip: (page - 1) * limit, take: limit }),
+      }),
+    ]);
 
-    if (page !== undefined && limit !== undefined) {
-      queryOptions.skip = (page - 1) * limit;
-      queryOptions.take = limit;
-    }
-
-    const tickets = await this.prisma.repairTicket.findMany(queryOptions);
-
-    const formattedData = tickets.map((t) => this.formatTicket(t, isMechanic));
-    return { data: formattedData, total };
+    return { data: tickets.map((t) => this.formatTicket(t, isMechanic)), total };
   }
 
   // ── Repair history (completed + cancelled) ───────────────────────────────
@@ -764,6 +778,7 @@ export class RepairsService {
     if (repairNumber && repairNumber.length >= 2) {
       filters.push({ repairTicket: { repairNumber: { contains: repairNumber, mode: 'insensitive' } } });
     }
+    if (query.ticketId) filters.push({ repairTicketId: query.ticketId });
     if (query.cursor) filters.push(olderThan(decodeCursor(query.cursor)));
 
     // One extra row tells us whether anything older remains
@@ -885,9 +900,10 @@ export class RepairsService {
     if (!isMechanic) {
       return {
         ...base,
-        partsCost: ticket.partsCost ? Number(ticket.partsCost) : null,
-        laborCost: ticket.laborCost ? Number(ticket.laborCost) : null,
-        totalCost: ticket.totalCost ? Number(ticket.totalCost) : null,
+        // != null so a stored 0 is sent as 0 (recorded), not as missing
+        partsCost: ticket.partsCost != null ? Number(ticket.partsCost) : null,
+        laborCost: ticket.laborCost != null ? Number(ticket.laborCost) : null,
+        totalCost: ticket.totalCost != null ? Number(ticket.totalCost) : null,
         isLumpSum: ticket.isLumpSum,
         isUnlocked: ticket.isUnlocked,
         unlockReason: ticket.unlockReason,

@@ -46,4 +46,9 @@ export class AuditEventsQueryDto {
   @IsString()
   @MaxLength(50)
   repairNumber?: string;
+
+  // One ticket's events, for the detail page's Activity section
+  @IsOptional()
+  @IsUUID()
+  ticketId?: string;
 }
