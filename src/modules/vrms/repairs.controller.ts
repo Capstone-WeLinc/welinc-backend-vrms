@@ -10,13 +10,14 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { UserRole, RepairStatus } from '@prisma/client';
+import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RepairsService } from './repairs.service';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
+import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
 import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
@@ -39,16 +40,8 @@ export class RepairsController {
   // ADMIN + MECHANIC — list active repairs (mechanic sees only assigned)
   @Roles(UserRole.ADMIN, UserRole.MECHANIC)
   @Get()
-  findAll(
-    @Query('search') search?: string,
-    @Query('status') status?: RepairStatus,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Req() req?: AuthRequest,
-  ) {
-    const p = page ? parseInt(page, 10) : undefined;
-    const l = limit ? parseInt(limit, 10) : undefined;
-    return this.repairsService.findAll(search, status, p, l, req!.user);
+  findAll(@Query() query: FindRepairsQueryDto, @Req() req: AuthRequest) {
+    return this.repairsService.findAll(query, req.user);
   }
 
   // ADMIN + MECHANIC — repair history (completed + cancelled)
