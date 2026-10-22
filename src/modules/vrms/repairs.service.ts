@@ -53,8 +53,6 @@ const TERMINAL_STATUSES: RepairStatus[] = [
   RepairStatus.CANCELLED,
 ];
 
-const DETAIL_AUDIT_ACTIONS = ['STATUS_CHANGE', 'COST_UPDATE', 'UNLOCK'];
-
 const AUDIT_PAGE_SIZE = 50;
 
 const LIST_PAGE_SIZE = 20;
@@ -855,12 +853,6 @@ export class RepairsService {
       issues: true,
       mechanics: { select: { id: true, name: true, isOutsourced: true, shopName: true } },
       repairParts: { orderBy: { createdAt: 'asc' as const } },
-      shopChangeLogs: { orderBy: { changedAt: 'desc' as const } },
-      // The detail panel predates CREATED and SHOP_CHANGE rows; it shows only these three
-      auditLogs: {
-        where: { action: { in: DETAIL_AUDIT_ACTIONS } },
-        orderBy: { createdAt: 'desc' as const },
-      },
     };
   }
 
@@ -896,7 +888,7 @@ export class RepairsService {
       })),
     };
 
-    // Cost, audit, and admin-only fields
+    // Cost and admin-only fields. A ticket's history is read from GET /vrms/repairs/audit-logs?ticketId=
     if (!isMechanic) {
       return {
         ...base,
@@ -914,21 +906,6 @@ export class RepairsService {
           unitCost: Number(p.unitCost),
           quantity: p.quantity,
           subtotal: Number(p.subtotal),
-        })),
-        shopChangeLog: ticket.shopChangeLogs.map((s: any) => ({
-          changedBy: s.changedByName,
-          previousValue: s.previousValue,
-          newValue: s.newValue,
-          changedAt: s.changedAt.toISOString(),
-        })),
-        auditLog: ticket.auditLogs.map((a: any) => ({
-          id: a.id,
-          email: a.email ?? 'Unknown',
-          action: a.action,
-          fieldName: a.fieldName,
-          previousValue: a.previousValue,
-          newValue: a.newValue,
-          createdAt: a.createdAt.toISOString(),
         })),
       };
     }
