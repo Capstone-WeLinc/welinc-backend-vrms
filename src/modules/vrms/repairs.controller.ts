@@ -15,7 +15,9 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
 import { RepairsService } from './repairs.service';
+import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
+import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
 import { UnlockTicketDto } from './dto/unlock-ticket.dto';
@@ -52,16 +54,8 @@ export class RepairsController {
   // ADMIN + MECHANIC — repair history (completed + cancelled)
   @Roles(UserRole.ADMIN, UserRole.MECHANIC)
   @Get('history')
-  findHistory(
-    @Query('search') search?: string,
-    @Query('status') status?: RepairStatus,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Req() req?: AuthRequest
-  ) {
-    const p = page ? parseInt(page, 10) : undefined;
-    const l = limit ? parseInt(limit, 10) : undefined;
-    return this.repairsService.findHistory(search, status, p, l, req!.user);
+  findHistory(@Query() query: HistoryQueryDto, @Req() req: AuthRequest) {
+    return this.repairsService.findHistory(query, req.user);
   }
 
   // ADMIN only — list in-house mechanics not currently on any active ticket
@@ -71,11 +65,18 @@ export class RepairsController {
     return this.repairsService.listAvailableMechanics();
   }
 
-  // ADMIN only — get all system audit logs
+  // ADMIN only — audit timeline, keyset paged (declared before :id)
   @Roles(UserRole.ADMIN)
-  @Get('audit-logs/all')
-  findAllAuditLogs() {
-    return this.repairsService.findAllAuditLogs();
+  @Get('audit-logs')
+  findAuditEvents(@Query() query: AuditEventsQueryDto) {
+    return this.repairsService.findAuditEvents(query);
+  }
+
+  // ADMIN only — everyone who appears in the audit log, for the Person filter
+  @Roles(UserRole.ADMIN)
+  @Get('audit-logs/actors')
+  findAuditActors() {
+    return this.repairsService.findAuditActors();
   }
 
   // ADMIN + MECHANIC — single repair detail

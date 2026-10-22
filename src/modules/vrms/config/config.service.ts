@@ -62,4 +62,14 @@ export class ConfigService {
       isAvailable: mechanic.repairTickets.length === 0,
     }));
   }
+
+  // ─── Drivers (for autocomplete) ─────────────────────────────────────────────
+
+  async listDrivers() {
+    return this.prisma.driver.findMany({
+      select: { id: true, name: true, licenseNumber: true },
+      orderBy: { name: 'asc' },
+      take: 200,
+    });
+  }
 }

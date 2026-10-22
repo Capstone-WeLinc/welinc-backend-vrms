@@ -304,17 +304,20 @@ model ShopChangeLog {
 model AuditLog {
   id             String      @id @default(uuid()) @db.Uuid
   repairTicketId String      @map("repair_ticket_id") @db.Uuid
-  userId         String      @map("user_id") @db.Uuid
-  email          String      @db.VarChar(100)
-  action         String      @db.VarChar(100) // e.g. "STATUS_CHANGE", "COST_UPDATE", "UNLOCK"
+  userId         String?     @map("user_id") @db.Uuid // null on backfilled CREATED rows
+  email          String?     @db.VarChar(100)
+  action         String      @db.VarChar(100) // CREATED, STATUS_CHANGE, COST_UPDATE, UNLOCK, SHOP_CHANGE
   fieldName      String?     @map("field_name") @db.VarChar(50)
   previousValue  String?     @map("previous_value") @db.Text
   newValue       String?     @map("new_value") @db.Text
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3) // ms precision so keyset cursors match exactly
 
   repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
 
   @@index([repairTicketId, createdAt])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@index([email])
+  @@index([action])
   @@map("audit_logs")
 }
 

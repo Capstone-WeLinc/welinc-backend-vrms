@@ -30,4 +30,11 @@ export class ConfigController {
   listAvailableMechanics() {
     return this.configService.listAvailableMechanics();
   }
+
+  // GET /vrms/config/drivers — Admin + Mechanic (autocomplete suggestions)
+  @Roles(UserRole.ADMIN, UserRole.MECHANIC)
+  @Get('config/drivers')
+  listDrivers() {
+    return this.configService.listDrivers();
+  }
 }
