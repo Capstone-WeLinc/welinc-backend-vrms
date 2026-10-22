@@ -11,8 +11,10 @@ export default defineConfig({
     path: "prisma/migrations",
     seed: "ts-node -r tsconfig-paths/register prisma/seed.ts",
   },
+  // No fallback: credentials never live in the repo. Set DATABASE_URL (see .env.example).
+  // `prisma generate` works without it; migrate and db commands fail with a clear error.
   datasource: {
-    url: process.env["DATABASE_URL"] || "postgresql://welinc_vrms_user:welinc_vrms_pass@localhost:5432/welinc_vrms_db?schema=public",
+    url: process.env["DATABASE_URL"],
   },
 });
 
