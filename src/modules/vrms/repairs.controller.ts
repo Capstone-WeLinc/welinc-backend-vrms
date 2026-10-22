@@ -79,13 +79,6 @@ export class RepairsController {
     return this.repairsService.findAuditActors();
   }
 
-  // ADMIN only — get all system audit logs
-  @Roles(UserRole.ADMIN)
-  @Get('audit-logs/all')
-  findAllAuditLogs() {
-    return this.repairsService.findAllAuditLogs();
-  }
-
   // ADMIN + MECHANIC — single repair detail
   @Roles(UserRole.ADMIN, UserRole.MECHANIC)
   @Get(':id')

@@ -817,48 +817,6 @@ export class RepairsService {
     return new Map(users.map((u) => [u.email.toLowerCase(), u]));
   }
 
-  // ── Find all audit logs across all tickets ───────────────────────────────
-
-  async findAllAuditLogs() {
-    const logs = await this.prisma.auditLog.findMany({
-      include: {
-        repairTicket: {
-          select: {
-            id: true,
-            repairNumber: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
-
-    return logs.map((log) => ({
-      id: log.id,
-      user: log.email,
-      action: this.formatAuditAction(log),
-      timestamp: log.createdAt.toISOString(),
-      ticketId: log.repairTicket?.id || null,
-    }));
-  }
-
-  private formatAuditAction(log: any): string {
-    const ticketNum = log.repairTicket?.repairNumber ?? 'Unknown ticket';
-    if (log.action === 'STATUS_CHANGE') {
-      return `Changed status of ${ticketNum} from ${log.previousValue || 'PENDING'} to ${log.newValue}`;
-    }
-    if (log.action === 'COST_UPDATE') {
-      return `Updated costs for ${ticketNum}`;
-    }
-    if (log.action === 'UNLOCK') {
-      return `Unlocked ${ticketNum} (Reason: ${log.newValue})`;
-    }
-    if (log.action === 'SHOP_CHANGE') {
-      return `Changed shop for ${ticketNum} from "${log.previousValue}" to "${log.newValue}"`;
-    }
-    return `${log.action} on ${ticketNum}`;
-  }
-
   // ── Private helpers ──────────────────────────────────────────────────────
 
   private isMechanic(user: JwtUser): boolean {
