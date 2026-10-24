@@ -46,6 +46,8 @@ export class ConfigService {
       select: {
         id: true,
         name: true,
+        // The linked login's email, so the Users page can match a mechanic to an account (spec 0006).
+        user: { select: { email: true } },
         repairTickets: {
           where: {
             repairStatus: { in: ACTIVE_STATUSES },
@@ -60,6 +62,7 @@ export class ConfigService {
       id: mechanic.id,
       name: mechanic.name,
       isAvailable: mechanic.repairTickets.length === 0,
+      email: mechanic.user?.email ?? null,
     }));
   }
 
