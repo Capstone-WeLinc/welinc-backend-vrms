@@ -37,15 +37,15 @@ export class RepairsController {
     return this.repairsService.create(dto, req.user);
   }
 
-  // ADMIN + MECHANIC — list active repairs (mechanic sees only assigned)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC)
+  // ADMIN + MECHANIC + CHIEF_MECHANIC — list active repairs (mechanic sees only assigned)
+  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
   @Get()
   findAll(@Query() query: FindRepairsQueryDto, @Req() req: AuthRequest) {
     return this.repairsService.findAll(query, req.user);
   }
 
-  // ADMIN + MECHANIC — repair history (completed + cancelled)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC)
+  // ADMIN + MECHANIC + CHIEF_MECHANIC — repair history (completed + cancelled)
+  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
   @Get('history')
   findHistory(@Query() query: HistoryQueryDto, @Req() req: AuthRequest) {
     return this.repairsService.findHistory(query, req.user);
@@ -72,15 +72,15 @@ export class RepairsController {
     return this.repairsService.findAuditActors();
   }
 
-  // ADMIN + MECHANIC — single repair detail
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC)
+  // ADMIN + MECHANIC + CHIEF_MECHANIC — single repair detail
+  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthRequest) {
     return this.repairsService.findOne(id, req.user);
   }
 
-  // ADMIN + MECHANIC — update status (mechanic restricted at service layer)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC)
+  // ADMIN + MECHANIC + CHIEF_MECHANIC — update status (mechanic restricted at service layer)
+  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,

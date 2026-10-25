@@ -832,9 +832,12 @@ export class RepairsService {
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
+  // A chief mechanic follows the mechanic rules on tickets until feature 17 widens it (spec 0007, AC-2).
   private isMechanic(user: JwtUser): boolean {
     return user.roles.some(
-      (r) => r.role === UserRole.MECHANIC && r.system === user.system,
+      (r) =>
+        (r.role === UserRole.MECHANIC || r.role === UserRole.CHIEF_MECHANIC) &&
+        r.system === user.system,
     );
   }
 
