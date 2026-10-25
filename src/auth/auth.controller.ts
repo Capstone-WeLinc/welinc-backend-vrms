@@ -67,7 +67,6 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-
   me(@Req() req: { user: { sub: string } }) {
     return this.authService.getCurrentUser(req.user.sub);
   }
@@ -166,7 +165,13 @@ export class AuthController {
   )
   uploadProfilePicture(
     @Req() req: { user: { sub: string } },
-    @UploadedFile() file: { originalname: string; buffer: Buffer; size: number; mimetype: string },
+    @UploadedFile()
+    file: {
+      originalname: string;
+      buffer: Buffer;
+      size: number;
+      mimetype: string;
+    },
   ) {
     return this.authService.uploadProfilePicture(req.user.sub, file);
   }
@@ -176,5 +181,4 @@ export class AuthController {
   getProfileSummary(@Req() req: { user: { sub: string } }) {
     return this.authService.getProfileSummary(req.user.sub);
   }
-
 }

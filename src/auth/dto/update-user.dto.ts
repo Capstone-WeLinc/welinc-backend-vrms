@@ -23,7 +23,6 @@ export class UpdateUserDto {
   @IsEmail()
   email?: string;
 
-
   @IsOptional()
   @IsString()
   @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/, {

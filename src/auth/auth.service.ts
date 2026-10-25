@@ -41,7 +41,11 @@ export async function validateEmailDomain(email: string): Promise<void> {
       if (err || !addresses || addresses.length === 0) {
         dns.resolve(domain, (err2, ips) => {
           if (err2 || !ips || ips.length === 0) {
-            reject(new BadRequestException('Email domain does not exist or cannot receive mail'));
+            reject(
+              new BadRequestException(
+                'Email domain does not exist or cannot receive mail',
+              ),
+            );
           } else {
             resolve();
           }
@@ -136,13 +140,13 @@ export class AuthService {
 
     // User not found — generic message to prevent user enumeration
     if (!user) {
-      throw new UnauthorizedException("Invalid credentials");
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     // Locked account check — must happen before password validation
     if (user.lockedAt !== null) {
       throw new ForbiddenException({
-        message: "Account is locked. Contact your Admin to unlock.",
+        message: 'Account is locked. Contact your Admin to unlock.',
         remainingAttempts: 0,
         isLocked: true,
       });
@@ -150,10 +154,13 @@ export class AuthService {
 
     // Deactivated account
     if (!user.isActive) {
-      throw new UnauthorizedException("Invalid credentials");
+      throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isPasswordValid = await argon2.verify(user.passwordHash, dto.password);
+    const isPasswordValid = await argon2.verify(
+      user.passwordHash,
+      dto.password,
+    );
 
     if (!isPasswordValid) {
       const newAttempts = user.failedLoginAttempts + 1;
@@ -169,14 +176,14 @@ export class AuthService {
 
       if (shouldLock) {
         throw new ForbiddenException({
-          message: "Account is locked. Contact your Admin to unlock.",
+          message: 'Account is locked. Contact your Admin to unlock.',
           remainingAttempts: 0,
           isLocked: true,
         });
       }
 
       throw new UnauthorizedException({
-        message: "Invalid credentials",
+        message: 'Invalid credentials',
         remainingAttempts: MAX_FAILED_ATTEMPTS - newAttempts,
         isLocked: false,
       });
@@ -272,7 +279,7 @@ export class AuthService {
         },
       },
       orderBy: {
-        createdAt: "desc",
+        createdAt: 'desc',
       },
     });
 
@@ -388,10 +395,13 @@ This code will expire in 1 hour.`;
     });
 
     if (!existingUser || existingUser.deletedAt) {
-      throw new NotFoundException("User not found");
+      throw new NotFoundException('User not found');
     }
 
-    const isEmailChanging = !!(dto.email && dto.email.trim().toLowerCase() !== existingUser.email.toLowerCase());
+    const isEmailChanging = !!(
+      dto.email &&
+      dto.email.trim().toLowerCase() !== existingUser.email.toLowerCase()
+    );
     if (isEmailChanging && dto.email) {
       await validateEmailDomain(dto.email);
     }
@@ -408,11 +418,13 @@ This code will expire in 1 hour.`;
         where: { id: userId },
         data: {
           ...(dto.name ? { name: dto.name.trim() } : {}),
-          ...(isEmailChanging && dto.email ? { email: dto.email.trim().toLowerCase() } : {}),
+          ...(isEmailChanging && dto.email
+            ? { email: dto.email.trim().toLowerCase() }
+            : {}),
           ...(dto.password
             ? { passwordHash: await argon2.hash(dto.password) }
             : {}),
-          ...(typeof dto.isActive === "boolean"
+          ...(typeof dto.isActive === 'boolean'
             ? { isActive: dto.isActive }
             : {}),
           ...(roleAssignments
@@ -689,7 +701,7 @@ This code will expire in 10 minutes.`;
     });
 
     if (!user) {
-      throw new NotFoundException("User not found");
+      throw new NotFoundException('User not found');
     }
 
     return this.mapManagedUser(user);
@@ -748,7 +760,7 @@ This code will expire in 10 minutes.`;
   ): Promise<ManagedUserResponse> {
     if (dto.newPassword !== dto.confirmPassword) {
       throw new BadRequestException(
-        "New password and confirm password do not match",
+        'New password and confirm password do not match',
       );
     }
 
@@ -761,7 +773,7 @@ This code will expire in 10 minutes.`;
     });
 
     if (!user) {
-      throw new NotFoundException("User not found");
+      throw new NotFoundException('User not found');
     }
 
     const isCurrentPasswordValid = await argon2.verify(
@@ -770,7 +782,7 @@ This code will expire in 10 minutes.`;
     );
 
     if (!isCurrentPasswordValid) {
-      throw new BadRequestException("Current password is incorrect");
+      throw new BadRequestException('Current password is incorrect');
     }
 
     const updated = await this.prisma.user.update({
@@ -803,7 +815,12 @@ This code will expire in 10 minutes.`;
 
   async uploadProfilePicture(
     userId: string,
-    file: { originalname: string; buffer: Buffer; size: number; mimetype: string },
+    file: {
+      originalname: string;
+      buffer: Buffer;
+      size: number;
+      mimetype: string;
+    },
   ): Promise<ManagedUserResponse> {
     await this.ensureUserExists(userId);
 
@@ -883,7 +900,7 @@ This code will expire in 10 minutes.`;
     roleAssignments: RoleAssignmentDto[],
   ): RoleAssignment[] {
     if (roleAssignments.length === 0) {
-      throw new BadRequestException("At least one role assignment is required");
+      throw new BadRequestException('At least one role assignment is required');
     }
 
     const seen = new Set<string>();
@@ -892,12 +909,11 @@ This code will expire in 10 minutes.`;
       system: assignment.system,
     }));
 
-
     for (const assignment of normalized) {
       const key = `${assignment.role}:${assignment.system}`;
       if (seen.has(key)) {
         throw new BadRequestException(
-          "Duplicate role assignments are not allowed",
+          'Duplicate role assignments are not allowed',
         );
       }
       seen.add(key);
@@ -946,12 +962,12 @@ This code will expire in 10 minutes.`;
     });
 
     if (!user) {
-      throw new NotFoundException("User not found");
+      throw new NotFoundException('User not found');
     }
   }
 
   private handlePrismaError(error: unknown): never {
-    if (typeof error === "object" && error !== null && "code" in error) {
+    if (typeof error === 'object' && error !== null && 'code' in error) {
       const code = (error as { code?: string }).code;
       if (code === 'P2002') {
         throw new ConflictException('Email already exists');

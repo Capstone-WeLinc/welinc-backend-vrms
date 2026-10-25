@@ -27,7 +27,14 @@ import {
   LinkIssueKnowledgeDto,
 } from './dto/link-issue-knowledge.dto';
 
-type AuthRequest = { user: { sub: string; email: string; roles: { role: UserRole; system: string }[]; system: string } };
+type AuthRequest = {
+  user: {
+    sub: string;
+    email: string;
+    roles: { role: UserRole; system: string }[];
+    system: string;
+  };
+};
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('vrms/repairs')
