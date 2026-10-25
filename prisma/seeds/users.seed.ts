@@ -205,6 +205,45 @@ export async function seedUsers(prisma: PrismaClient) {
     mechanicsList.push(mech);
   }
 
+  // 5b. Chief mechanic (VRMS only), with an in house Mechanic row so tickets can be assigned
+  console.log('Creating chief mechanic...');
+  const chiefUser = await prisma.user.upsert({
+    where: { email: 'vrms.chief@welinc.com' },
+    update: { emailVerified: true },
+    create: {
+      name: 'Ramon Villanueva',
+      email: 'vrms.chief@welinc.com',
+      emailVerified: true,
+      passwordHash: mechanicPassword,
+    },
+  });
+
+  await prisma.userRoleAssignment.upsert({
+    where: {
+      userId_role_system: {
+        userId: chiefUser.id,
+        role: UserRole.CHIEF_MECHANIC,
+        system: SystemType.VRMS,
+      },
+    },
+    update: {},
+    create: {
+      userId: chiefUser.id,
+      role: UserRole.CHIEF_MECHANIC,
+      system: SystemType.VRMS,
+    },
+  });
+
+  await prisma.mechanic.upsert({
+    where: { userId: chiefUser.id },
+    update: {},
+    create: {
+      userId: chiefUser.id,
+      name: chiefUser.name,
+      isOutsourced: false,
+    },
+  });
+
   // 6. Bulk seeding for pagination (60 users)
   console.log('Generating 60 additional mechanics/users with realistic names...');
   const firstNames = [

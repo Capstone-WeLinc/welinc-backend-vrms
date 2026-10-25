@@ -15,6 +15,8 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline |
 | `src/modules/vrms/config/` | VRMS configuration endpoints (dropdown lists and settings) |
 | `src/modules/vrms/dto/` | Request DTOs validated with `class-validator` |
+| `src/modules/knowledge/` | Knowledge base API at `/vrms/knowledge` (spec 0007): categories, entries, stats, suggestions and grouping; tunables in `knowledge.settings.ts` |
+| `src/modules/vrms/ticket-knowledge.ts` | What a ticket's issues carry from the knowledge base, and the "What fixed it" rules on the move to For verification |
 | `src/shared/` | `PrismaService`, `MailService`, `SharedModule` |
 | `prisma/schema.prisma`, `prisma/migrations/` | Data model and migration history |
 | `prisma/seed.ts`, `prisma/seeds/` | Seed data (`npm run seed`) |
@@ -35,20 +37,21 @@ npx prisma migrate dev   # asks first, see root rules
 
 ## Conventions
 
-- Routes are protected with `JwtAuthGuard` and `RolesGuard`. Role names match the web app: `ADMIN` and `MECHANIC`.
+- Routes are protected with `JwtAuthGuard` and `RolesGuard`. Role names match the web app: `ADMIN`, `CHIEF_MECHANIC` and `MECHANIC`. A chief mechanic follows the mechanic rules on tickets (`RepairsService.isMechanic`) and is an editor in the knowledge base, so every ticket route that lists `MECHANIC` also lists `CHIEF_MECHANIC`.
 - Every request body is a DTO class with `class-validator` decorators. The global `ValidationPipe` rejects anything else.
 - Database access goes through `PrismaService`, never a new `PrismaClient`.
 - Repair updates use optimistic locking. The client sends `lastUpdatedAt` and a stale write is rejected. Keep that check on any new update path (see `update-costs.dto.ts` and `update-repair-status.dto.ts`).
 - Ticket changes write audit events through `audit-events.ts`, so a new state change should add one.
+- Knowledge entry and category writes log one `KnowledgeEntryChange` row per changed field in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
 - Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp.
 - New variables go in `.env.example` only (today: `PORT`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRY`, `JWT_REFRESH_EXPIRY`, `SEMAPHORE_*`).
 
 ## Gotchas
 
 - In the local Docker stack, the `welinc_vrms_backend` container does not see edits made from Windows. Run `docker restart welinc_vrms_backend` and wait for "Nest application successfully started" before testing the API.
-- `.nvmrc` says Node 24, `package.json` allows `>=20`, and the Dockerfiles use 20 or 22. Treat 24 as the target.
 - `JWT_SECRET` must match the one `welinc-auth` signs with, or every request returns 401.
 - `npm run lint` fixes files in place, so check `git diff` afterwards.
+- The knowledge base migration needs the `pg_trgm` extension and seeds the issue categories itself (Brakes to Transmission, plus General), so `npm run seed` must not create or delete them.
 
 ## Agent skills
 

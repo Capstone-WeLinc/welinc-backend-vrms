@@ -6,7 +6,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RepairStatus, UserRole, VehicleStatus } from '@prisma/client';
+import {
+  KnowledgeEntryStatus,
+  Prisma,
+  RepairStatus,
+  UserRole,
+  VehicleStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import {
   ActorUser,
@@ -24,6 +30,19 @@ import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
 import { UnlockTicketDto } from './dto/unlock-ticket.dto';
+import {
+  CheckIssueStepDto,
+  LinkIssueKnowledgeDto,
+} from './dto/link-issue-knowledge.dto';
+import { loadStats } from '../knowledge/knowledge-stats';
+import {
+  checkResolutions,
+  formatIssue,
+  issueInclude,
+  LINKABLE_STATUSES,
+  resolutionData,
+  STALE_TICKET,
+} from './ticket-knowledge';
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -116,6 +135,10 @@ export class RepairsService {
       throw new BadRequestException(`Garage location "${dto.garageLocation}" not found`);
     }
 
+    // Spec 0007, AC-26: each issue's category must be active, and a picked entry Active.
+    // Checked before any write, so a 400 leaves nothing half done.
+    const { categories, entries } = await this.issueSources(dto);
+
     // Lookup/Create: Drivers
     const licenseKey = dto.driverName.toLowerCase().replace(/\s+/g, '-').substring(0, 50);
     const existingDriver = await this.prisma.driver.findUnique({
@@ -183,10 +206,28 @@ export class RepairsService {
         garageId: garage.id,
         odometer: dto.odometerReading,
         repairStatus: RepairStatus.PENDING,
+        // Linked issues get a copy of the entry's steps (the CREATED row covers the link, no KNOWLEDGE_LINK)
         issues: {
-          create: dto.issues.map((issue) => ({
-            description: `[${issue.vehicleSystem}] ${issue.rootCause}: ${issue.description}`,
-          })),
+          create: dto.issues.map((issue) => {
+            const entry = issue.knowledgeEntryId
+              ? entries.get(issue.knowledgeEntryId)
+              : undefined;
+            return {
+              description: `[${categories.get(issue.categoryId)!.name}] ${issue.rootCause}: ${issue.description}`,
+              categoryId: issue.categoryId,
+              knowledgeEntryId: entry?.id ?? null,
+              ...(entry
+                ? {
+                    steps: {
+                      create: entry.steps.map((step) => ({
+                        position: step.position,
+                        text: step.text,
+                      })),
+                    },
+                  }
+                : {}),
+            };
+          }),
         },
         mechanics: {
           connect: mechanicIds.map((id) => ({ id })),
@@ -202,7 +243,42 @@ export class RepairsService {
     this.logger.log(`Repair ticket created — ${repairNumber} by ${user.email}`);
     // Auto-embed new issues into pgvector for AI Knowledge Base (fire-and-forget)
     this.autoEmbedIssues(ticket).catch(() => {});
-    return this.formatTicket(ticket, false);
+    return this.present(ticket, false);
+  }
+
+  /** The categories and entries the new issues point at; 400 when one is missing or not active. */
+  private async issueSources(dto: CreateRepairDto) {
+    const categoryIds = [...new Set(dto.issues.map((i) => i.categoryId))];
+    const entryIds = [
+      ...new Set(
+        dto.issues.flatMap((i) =>
+          i.knowledgeEntryId ? [i.knowledgeEntryId] : [],
+        ),
+      ),
+    ];
+    const [categoryRows, entryRows] = await Promise.all([
+      this.prisma.issueCategory.findMany({
+        where: { id: { in: categoryIds }, isActive: true },
+      }),
+      this.prisma.knowledgeEntry.findMany({
+        where: { id: { in: entryIds }, status: KnowledgeEntryStatus.ACTIVE },
+        include: { steps: { orderBy: { position: 'asc' } } },
+      }),
+    ]);
+    if (categoryRows.length !== categoryIds.length) {
+      throw new BadRequestException(
+        'A chosen system is no longer available. Pick another one.',
+      );
+    }
+    if (entryRows.length !== entryIds.length) {
+      throw new BadRequestException(
+        'A chosen common issue is no longer available. Pick another one, or choose Other.',
+      );
+    }
+    return {
+      categories: new Map(categoryRows.map((c) => [c.id, c])),
+      entries: new Map(entryRows.map((e) => [e.id, e])),
+    };
   }
 
   private async autoEmbedIssues(ticket: any): Promise<void> {
@@ -400,7 +476,7 @@ export class RepairsService {
       }
     }
 
-    return this.formatTicket(ticket, isMechanic);
+    return this.present(ticket, isMechanic);
   }
 
   // ── Update repair status ─────────────────────────────────────────────────
@@ -409,7 +485,7 @@ export class RepairsService {
     const isMechanic = this.isMechanic(user);
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: { mechanics: true, vehicle: true },
+      include: { mechanics: true, vehicle: true, issues: true },
     });
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
@@ -483,6 +559,16 @@ export class RepairsService {
       throw new BadRequestException('A cancellation reason is required');
     }
 
+    // Spec 0007, AC-31: "What fixed it" for every issue on the way to For verification.
+    // Other moves ignore resolutions.
+    const sendsForVerification =
+      currentStatus === RepairStatus.IN_PROGRESS &&
+      nextStatus === RepairStatus.FOR_VERIFICATION;
+    const resolutions = sendsForVerification
+      ? checkResolutions(ticket.issues, dto.resolutions)
+      : null;
+    const resolvedAt = new Date();
+
     // Build update data
     const updateData: Record<string, any> = {
       repairStatus: dto.status,
@@ -554,7 +640,24 @@ export class RepairsService {
     const [updated] = await this.prisma.$transaction([
       this.prisma.repairTicket.update({
         where: { id },
-        data: updateData,
+        data: {
+          ...updateData,
+          // Nested, so the issues are saved before this update reads them back (AC-31)
+          ...(resolutions
+            ? {
+                issues: {
+                  update: ticket.issues.map((issue) => ({
+                    where: { id: issue.id },
+                    data: resolutionData(
+                      resolutions.get(issue.id)!,
+                      !!issue.knowledgeEntryId,
+                      resolvedAt,
+                    ),
+                  })),
+                },
+              }
+            : {}),
+        },
         include: this.ticketInclude(),
       }),
       ...(statusChanged
@@ -578,7 +681,161 @@ export class RepairsService {
       `Repair ticket ${ticket.repairNumber} status updated to ${dto.status} by ${user.email}`,
     );
 
-    return this.formatTicket(updated, isMechanic);
+    return this.present(updated, isMechanic);
+  }
+
+  // ── Known fix on an issue (spec 0007, AC-27 to AC-29) ───────────────────
+
+  /**
+   * Link, relink or unlink one issue's knowledge entry. The checklist is replaced by a copy of the
+   * new entry's steps, with a KNOWLEDGE_LINK audit row and the ticket's updatedAt touched, in one
+   * transaction.
+   */
+  async linkKnowledge(
+    id: string,
+    issueId: string,
+    dto: LinkIssueKnowledgeDto,
+    user: JwtUser,
+  ) {
+    const isMechanic = this.isMechanic(user);
+    const ticket = await this.prisma.repairTicket.findUnique({
+      where: { id },
+      include: {
+        mechanics: true,
+        issues: { include: { knowledgeEntry: { select: { name: true } } } },
+      },
+    });
+    if (!ticket) throw new NotFoundException('Repair ticket not found');
+    await this.assertCanWork(ticket, user);
+    const issue = ticket.issues.find((i) => i.id === issueId);
+    if (!issue) throw new NotFoundException('Issue not found on this ticket');
+    if (!LINKABLE_STATUSES.includes(ticket.repairStatus)) {
+      throw new BadRequestException(
+        'A known fix can only be changed while the ticket is Pending or In progress.',
+      );
+    }
+    if (ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
+      throw new ConflictException(STALE_TICKET);
+    }
+
+    const entry = dto.knowledgeEntryId
+      ? await this.prisma.knowledgeEntry.findFirst({
+          where: {
+            id: dto.knowledgeEntryId,
+            status: KnowledgeEntryStatus.ACTIVE,
+          },
+          include: { steps: { orderBy: { position: 'asc' } } },
+        })
+      : null;
+    if (dto.knowledgeEntryId && !entry) {
+      throw new BadRequestException(
+        'This known fix is no longer available. Pick another one.',
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // The stale check again inside the transaction: only the loaded updatedAt may move on
+      const { count } = await tx.repairTicket.updateMany({
+        where: { id, updatedAt: ticket.updatedAt },
+        data: { updatedAt: new Date() },
+      });
+      if (count === 0) throw new ConflictException(STALE_TICKET);
+
+      await tx.repairIssueStep.deleteMany({
+        where: { repairIssueId: issueId },
+      });
+      await tx.repairIssue.update({
+        where: { id: issueId },
+        data: {
+          knowledgeEntryId: entry?.id ?? null,
+          ...(entry && !issue.categoryId
+            ? { categoryId: entry.categoryId }
+            : {}),
+          steps: entry
+            ? {
+                create: entry.steps.map((s) => ({
+                  position: s.position,
+                  text: s.text,
+                })),
+              }
+            : undefined,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          repairTicketId: id,
+          userId: user.sub,
+          email: user.email,
+          action: 'KNOWLEDGE_LINK',
+          fieldName: issueId,
+          previousValue: issue.knowledgeEntry?.name ?? null,
+          newValue: entry?.name ?? null,
+        },
+      });
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: this.ticketInclude(),
+      });
+    });
+
+    this.logger.log(
+      `Known fix on ${ticket.repairNumber} issue ${issueId} set to ${entry?.name ?? 'none'} by ${user.email}`,
+    );
+    return this.present(updated, isMechanic);
+  }
+
+  /** Tick or untick one copied step while In progress. Never touches the ticket's updatedAt (AC-28). */
+  async checkStep(
+    id: string,
+    issueId: string,
+    stepId: string,
+    dto: CheckIssueStepDto,
+    user: JwtUser,
+  ) {
+    const ticket = await this.prisma.repairTicket.findUnique({
+      where: { id },
+      include: { mechanics: true },
+    });
+    if (!ticket) throw new NotFoundException('Repair ticket not found');
+    await this.assertCanWork(ticket, user);
+    if (ticket.repairStatus !== RepairStatus.IN_PROGRESS) {
+      throw new BadRequestException(
+        'Steps can only be ticked while the ticket is In progress.',
+      );
+    }
+    const step = await this.prisma.repairIssueStep.findFirst({
+      where: { id: stepId, repairIssue: { id: issueId, repairTicketId: id } },
+    });
+    if (!step) throw new NotFoundException('Step not found on this ticket');
+
+    const updated = await this.prisma.repairIssueStep.update({
+      where: { id: stepId },
+      data: dto.checked
+        ? { checkedAt: new Date(), checkedByEmail: user.email }
+        : { checkedAt: null, checkedByEmail: null },
+    });
+    return {
+      id: updated.id,
+      position: updated.position,
+      text: updated.text,
+      checkedAt: updated.checkedAt,
+      checkedByEmail: updated.checkedByEmail,
+    };
+  }
+
+  /** Admins may work any ticket; a mechanic or chief only one assigned to them. */
+  private async assertCanWork(
+    ticket: { mechanics: { id: string }[] },
+    user: JwtUser,
+  ) {
+    if (!this.isMechanic(user)) return;
+    const mechanicRecord = await this.getMechanicForUser(user);
+    const isAssigned = mechanicRecord
+      ? ticket.mechanics.some((m) => m.id === mechanicRecord.id)
+      : false;
+    if (!isAssigned) {
+      throw new ForbiddenException('You are not assigned to this repair ticket');
+    }
   }
 
   // ── Update costs (dedicated endpoint) ────────────────────────────────────
@@ -687,7 +944,7 @@ export class RepairsService {
     });
 
     this.logger.log(`Costs updated on ticket ${ticket.repairNumber} by ${user.email}`);
-    return this.formatTicket(updated!, false);
+    return this.present(updated!, false);
   }
 
   // ── List available (unoccupied) in-house mechanics ────────────────────────
@@ -754,7 +1011,7 @@ export class RepairsService {
     ]);
 
     this.logger.log(`Ticket ${ticket.repairNumber} unlocked by ${user.email}: ${dto.unlockReason}`);
-    return this.formatTicket(updated, false);
+    return this.present(updated, false);
   }
 
   // ── Audit timeline (keyset paged, newest first) ──────────────────────────
@@ -785,6 +1042,7 @@ export class RepairsService {
       select: {
         id: true,
         action: true,
+        fieldName: true,
         userId: true,
         email: true,
         previousValue: true,
@@ -832,9 +1090,12 @@ export class RepairsService {
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
+  // A chief mechanic follows the mechanic rules on tickets until feature 17 widens it (spec 0007, AC-2).
   private isMechanic(user: JwtUser): boolean {
     return user.roles.some(
-      (r) => r.role === UserRole.MECHANIC && r.system === user.system,
+      (r) =>
+        (r.role === UserRole.MECHANIC || r.role === UserRole.CHIEF_MECHANIC) &&
+        r.system === user.system,
     );
   }
 
@@ -850,13 +1111,34 @@ export class RepairsService {
       vehicle: { select: { plateNumber: true, model: true, status: true } },
       driver: { select: { name: true, licenseNumber: true, isVerified: true } },
       garage: { select: { name: true } },
-      issues: true,
+      issues: issueInclude,
       mechanics: { select: { id: true, name: true, isOutsourced: true, shopName: true } },
       repairParts: { orderBy: { createdAt: 'asc' as const } },
     };
   }
 
-  private formatTicket(ticket: any, isMechanic: boolean) {
+  /** formatTicket plus each linked entry's typical hours, for one ticket (spec 0007, AC-27). */
+  private async present(ticket: any, isMechanic: boolean) {
+    const issues =
+      (ticket as { issues?: { knowledgeEntryId: string | null }[] }).issues ??
+      [];
+    const entryIds = [
+      ...new Set(
+        issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
+      ),
+    ];
+    const stats = await loadStats(this.prisma, entryIds);
+    const hours = new Map(
+      entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
+    );
+    return this.formatTicket(ticket, isMechanic, hours);
+  }
+
+  private formatTicket(
+    ticket: any,
+    isMechanic: boolean,
+    typicalHours: Map<string, number | null> = new Map(),
+  ) {
     const base = {
       id: ticket.id,
       repairNumber: ticket.repairNumber,
@@ -876,10 +1158,7 @@ export class RepairsService {
       cancellationReason: ticket.cancellationReason,
       failedVerificationReason: ticket.failedVerificationReason,
       remarks: ticket.remarks,
-      issues: ticket.issues.map((i: any) => ({
-        id: i.id,
-        description: i.description,
-      })),
+      issues: ticket.issues.map((i: any) => formatIssue(i, typicalHours)),
       mechanics: ticket.mechanics.map((m: any) => ({
         id: m.id,
         name: m.name,
