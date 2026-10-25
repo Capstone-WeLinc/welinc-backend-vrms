@@ -5,6 +5,7 @@ import { AppService } from './app.service';
 import SharedModule from './shared/shared.module';
 import AuthModule from './auth/auth.module';
 import { VrmsModule } from './modules/vrms/vrms.module';
+import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { VrmsModule } from './modules/vrms/vrms.module';
     SharedModule,
     AuthModule,
     VrmsModule,
+    KnowledgeModule,
   ],
   controllers: [AppController],
   providers: [AppService],
