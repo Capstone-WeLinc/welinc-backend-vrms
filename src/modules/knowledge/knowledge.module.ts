@@ -4,6 +4,7 @@ import { KnowledgeCategoriesService } from './knowledge-categories.service';
 import { KnowledgeController } from './knowledge.controller';
 import { KnowledgeEntriesService } from './knowledge-entries.service';
 import { KnowledgeEntryEditorService } from './knowledge-entry-editor.service';
+import { KnowledgeSuggestionsService } from './knowledge-suggestions.service';
 
 @Module({
   imports: [SharedModule],
@@ -12,6 +13,7 @@ import { KnowledgeEntryEditorService } from './knowledge-entry-editor.service';
     KnowledgeCategoriesService,
     KnowledgeEntriesService,
     KnowledgeEntryEditorService,
+    KnowledgeSuggestionsService,
   ],
   exports: [KnowledgeEntriesService],
 })

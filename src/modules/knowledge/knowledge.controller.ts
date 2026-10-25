@@ -20,6 +20,11 @@ import { FindEntriesQueryDto } from './dto/find-entries-query.dto';
 import { ListCategoriesQueryDto } from './dto/list-categories-query.dto';
 import { UpdateEntryStatusDto } from './dto/update-entry-status.dto';
 import {
+  CreateSuggestionDto,
+  DismissGroupDto,
+  ResolveSuggestionDto,
+} from './dto/suggestion.dto';
+import {
   JwtUser,
   KNOWLEDGE_EDITORS,
   KNOWLEDGE_READERS,
@@ -27,6 +32,7 @@ import {
 import { KnowledgeCategoriesService } from './knowledge-categories.service';
 import { KnowledgeEntriesService } from './knowledge-entries.service';
 import { KnowledgeEntryEditorService } from './knowledge-entry-editor.service';
+import { KnowledgeSuggestionsService } from './knowledge-suggestions.service';
 
 type AuthRequest = { user: JwtUser };
 
@@ -38,6 +44,7 @@ export class KnowledgeController {
     private readonly categories: KnowledgeCategoriesService,
     private readonly entries: KnowledgeEntriesService,
     private readonly editor: KnowledgeEntryEditorService,
+    private readonly suggestions: KnowledgeSuggestionsService,
   ) {}
 
   // ── Categories ──────────────────────────────────────────────────────────
@@ -118,5 +125,42 @@ export class KnowledgeController {
   @Get('entries/:id/changes')
   entryChanges(@Param('id', ParseUUIDPipe) id: string) {
     return this.editor.changes(id);
+  }
+
+  // ── Suggestions (AC-32 to AC-36) ────────────────────────────────────────
+
+  @Roles(...KNOWLEDGE_EDITORS)
+  @Get('suggestions')
+  listSuggestions() {
+    return this.suggestions.list();
+  }
+
+  // Before suggestions/:id
+  @Roles(...KNOWLEDGE_EDITORS)
+  @Get('suggestions/count')
+  suggestionCount() {
+    return this.suggestions.count();
+  }
+
+  @Roles(...KNOWLEDGE_EDITORS)
+  @Post('suggestions/dismiss-group')
+  dismissGroup(@Body() dto: DismissGroupDto) {
+    return this.suggestions.dismissGroup(dto);
+  }
+
+  @Roles(...KNOWLEDGE_READERS)
+  @Post('suggestions')
+  createSuggestion(@Body() dto: CreateSuggestionDto, @Req() req: AuthRequest) {
+    return this.suggestions.create(dto, req.user);
+  }
+
+  @Roles(...KNOWLEDGE_EDITORS)
+  @Patch('suggestions/:id')
+  resolveSuggestion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveSuggestionDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.suggestions.resolve(id, dto, req.user);
   }
 }

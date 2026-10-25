@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { KnowledgeEntryStatus } from '@prisma/client';
+import {
+  KnowledgeEntryStatus,
+  Prisma,
+  RepairStatus,
+  SuggestionStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { EntryFieldsDto, UpdateEntryDto } from './dto/entry-fields.dto';
@@ -77,6 +82,8 @@ export class KnowledgeEntryEditorService {
     await this.assertNameFree(dto.name);
 
     let id: string;
+    let linked = 0;
+    let skipped = 0;
     try {
       id = await this.prisma.$transaction(async (tx) => {
         const entry = await tx.knowledgeEntry.create({
@@ -93,6 +100,17 @@ export class KnowledgeEntryEditorService {
             { fieldName: 'status', previousValue: null, newValue: dto.status },
           ]),
         });
+        ({ linked, skipped } = await this.linkGroup(tx, entry, dto, user));
+        if (dto.suggestionId) {
+          await tx.knowledgeSuggestion.updateMany({
+            where: { id: dto.suggestionId, status: SuggestionStatus.OPEN },
+            data: {
+              status: SuggestionStatus.ACCEPTED,
+              resolvedByEmail: user.email,
+              resolvedAt: new Date(),
+            },
+          });
+        }
         return entry.id;
       });
     } catch (err) {
@@ -102,9 +120,63 @@ export class KnowledgeEntryEditorService {
 
     return {
       entry: await this.entries.findOne(id, user),
-      linked: 0,
-      skipped: 0,
+      linked,
+      skipped,
     };
+  }
+
+  /**
+   * AC-33: links every still eligible issue of a suggestion group to the new entry. An issue already
+   * linked, dismissed or on a cancelled ticket is skipped. Steps are copied only to Pending or In
+   * progress tickets, and no ticket's updatedAt moves. Linking here records history, so it happens
+   * for a draft too; only the picker and the ticket link are limited to Active entries.
+   */
+  private async linkGroup(
+    tx: Prisma.TransactionClient,
+    entry: { id: string; name: string; categoryId: string },
+    dto: CreateEntryDto,
+    user: JwtUser,
+  ) {
+    const ids = [...new Set(dto.linkIssueIds ?? [])];
+    if (ids.length === 0) return { linked: 0, skipped: 0 };
+    const issues = await tx.repairIssue.findMany({
+      where: { id: { in: ids } },
+      include: { repairTicket: { select: { repairStatus: true } } },
+    });
+    const eligible = issues.filter(
+      (i) =>
+        !i.knowledgeEntryId &&
+        !i.suggestionDismissedAt &&
+        i.repairTicket.repairStatus !== RepairStatus.CANCELLED,
+    );
+    const open: RepairStatus[] = [
+      RepairStatus.PENDING,
+      RepairStatus.IN_PROGRESS,
+    ];
+    for (const issue of eligible) {
+      await tx.repairIssue.update({
+        where: { id: issue.id },
+        data: {
+          knowledgeEntryId: entry.id,
+          categoryId: issue.categoryId ?? entry.categoryId,
+          ...(open.includes(issue.repairTicket.repairStatus)
+            ? { steps: { create: positioned(dto.steps, 'text') } }
+            : {}),
+        },
+      });
+    }
+    await tx.auditLog.createMany({
+      data: eligible.map((issue) => ({
+        repairTicketId: issue.repairTicketId,
+        userId: user.sub,
+        email: user.email,
+        action: 'KNOWLEDGE_LINK',
+        fieldName: issue.id,
+        previousValue: null,
+        newValue: entry.name,
+      })),
+    });
+    return { linked: eligible.length, skipped: ids.length - eligible.length };
   }
 
   /** PATCH /vrms/knowledge/entries/:id: every field, steps and parts replaced as a set (AC-20). */
