@@ -301,7 +301,7 @@ export async function seedUsers(prisma: PrismaClient) {
       create: {
         userId: user.id,
         name: user.name,
-        isOutsourced: i % 5 === 0,
+        isOutsourced: false,
       },
     });
   }

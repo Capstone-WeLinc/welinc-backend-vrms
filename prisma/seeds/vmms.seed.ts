@@ -4,15 +4,23 @@ import {
   AccountType,
   MaintenanceTriggerType,
   MaintenanceIntervalType,
+  VehicleStatus,
 } from '@prisma/client';
+import { VEHICLES } from './catalog';
 
-export async function seedVmms(prisma: PrismaClient) {
+// VMMS stores the mechanic by name; these are the in house mechanics with a login at each garage
+const MAINTENANCE_CREW: Record<string, string[]> = {
+  'Sta. Rosa': ['Juan dela Cruz', 'Pedro Santos'],
+  Marikina: ['Rommel Cruz'],
+  Pulilan: ['Isabel Reyes', 'Carl Santos'],
+};
+
+export async function seedVmms(prisma: PrismaClient, now: number) {
   console.log('Creating checklist templates for VMMS...');
 
   // Fetch relations from DB
   const garages = await prisma.garage.findMany();
-  const vehicles = await prisma.vehicle.findMany();
-  const mechanics = await prisma.mechanic.findMany();
+  const vehicles = await prisma.vehicle.findMany({ orderBy: { plateNumber: 'asc' } });
 
   const checklistTemplatesData = [
     {
@@ -105,97 +113,58 @@ export async function seedVmms(prisma: PrismaClient) {
   // Clean old schedules first
   await prisma.maintenanceSchedule.deleteMany();
 
-  const oilChangeTemplate = seededTemplates.find(t => t.type === 'Oil Change');
-  const brakeInspectionTemplate = seededTemplates.find(t => t.type === 'Brake Inspection');
-  const generalInspectionTemplate = seededTemplates.find(t => t.type === 'General Inspection');
+  const template = (type: string) => seededTemplates.find((t) => t.type === type)!;
+  const garageId = new Map(garages.map((g) => [g.name, g.id]));
+  const day = 24 * 3_600_000;
+  const daysAgo = (n: number) => new Date(now - n * day);
+  // Round down to the last full thousand, the way service intervals are booked
+  const thousand = (km: number) => Math.floor(km / 1000) * 1000;
 
-  const staRosaGarage = garages.find(g => g.name === 'Sta. Rosa');
-  const marikinaGarage = garages.find(g => g.name === 'Marikina');
+  // Only trucks that are on the road (not retired, not in for a repair) get a schedule
+  const free = vehicles.filter((v) => v.isActive && v.status === VehicleStatus.AVAILABLE);
+  const truck = (i: number) => free[i % free.length];
+  const garageOf = (plate: string) => VEHICLES.find((v) => v.plateNumber === plate)!.garage;
+  const mechanicAt = (plate: string, i = 0) => {
+    const names = MAINTENANCE_CREW[garageOf(plate)];
+    return names[i % names.length];
+  };
 
-  const maintenanceSchedulesData = [
-    {
-      vehicleId: vehicles[0].plateNumber, // ABC-1234
-      title: oilChangeTemplate?.type ?? 'Oil Change',
-      status: MaintenanceStatus.PENDING,
-      createdAt: new Date('2026-06-22T00:00:00.000Z'),
-      assignedMechanic: mechanics[0].name, // Juan dela Cruz
+  const maintenanceSchedulesData = [0, 1, 2, 3, 4, 5].map((i) => {
+    const v = truck(i * 3);
+    const base = {
+      vehicleId: v.plateNumber,
+      assignedMechanic: mechanicAt(v.plateNumber, i),
       accountType: AccountType.IN_HOUSE,
-      checklistTemplateId: oilChangeTemplate?.id,
-      garageId: staRosaGarage?.id,
-      odometerReading: 45000,
-      triggerType: MaintenanceTriggerType.ODOMETER,
-      intervalKm: 10000,
-      bufferDistanceKm: 500,
-      startingReferenceReadingKm: 40000,
-    },
-    {
-      vehicleId: vehicles[1].plateNumber, // XYZ-5678
-      title: brakeInspectionTemplate?.type ?? 'Brake Inspection',
-      status: MaintenanceStatus.IN_PROGRESS,
-      createdAt: new Date('2026-06-19T00:00:00.000Z'),
-      assignedMechanic: mechanics[1].name, // Pedro Santos
-      accountType: AccountType.IN_HOUSE,
-      checklistTemplateId: brakeInspectionTemplate?.id,
-      garageId: marikinaGarage?.id,
-      odometerReading: 72500,
-      triggerType: MaintenanceTriggerType.ODOMETER,
-      intervalKm: 15000,
-      startingReferenceReadingKm: 60000,
-    },
-    {
-      vehicleId: vehicles[2].plateNumber, // DEF-9012
-      title: generalInspectionTemplate?.type ?? 'General Inspection',
-      status: MaintenanceStatus.COMPLETED,
-      createdAt: new Date('2026-06-14T00:00:00.000Z'),
-      assignedMechanic: mechanics[1].name, // Pedro Santos
-      accountType: AccountType.OUTSOURCED,
-      checklistTemplateId: generalInspectionTemplate?.id,
-      garageId: staRosaGarage?.id,
-      odometerReading: 32000,
-      triggerType: MaintenanceTriggerType.MANUAL,
-    },
-    {
-      vehicleId: vehicles[3].plateNumber, // GHI-3456
-      title: generalInspectionTemplate?.type ?? 'General Inspection',
-      status: MaintenanceStatus.COMPLETED,
-      createdAt: new Date('2026-06-15T00:00:00.000Z'),
-      assignedMechanic: mechanics[3].name, // Isabel Reyes
-      accountType: AccountType.IN_HOUSE,
-      checklistTemplateId: generalInspectionTemplate?.id,
-      garageId: staRosaGarage?.id,
-      odometerReading: 18500,
-      triggerType: MaintenanceTriggerType.TIME,
-      intervalType: MaintenanceIntervalType.MONTHLY,
-      startReferenceDate: new Date('2026-06-01T00:00:00.000Z'),
-    },
-    {
-      vehicleId: vehicles[4].plateNumber, // JKL-7890
-      title: seededTemplates.find(t => t.type === 'Engine Tune-up')?.type ?? 'Engine Tune-up',
-      status: MaintenanceStatus.OVERDUE,
-      createdAt: new Date('2026-06-10T00:00:00.000Z'),
-      assignedMechanic: mechanics[0].name, // Juan dela Cruz
-      accountType: AccountType.IN_HOUSE,
-      checklistTemplateId: seededTemplates.find(t => t.type === 'Engine Tune-up')?.id,
-      garageId: marikinaGarage?.id,
-      odometerReading: 92200,
-      triggerType: MaintenanceTriggerType.ODOMETER,
-      intervalKm: 20000,
-      bufferDistanceKm: 1000,
-      startingReferenceReadingKm: 70000,
-    },
-    {
-      vehicleId: vehicles[5].plateNumber, // MNO-1122
-      title: generalInspectionTemplate?.type ?? 'General Inspection',
-      status: MaintenanceStatus.PENDING,
-      createdAt: new Date('2026-06-28T00:00:00.000Z'),
-      assignedMechanic: mechanics[4].name, // Carl Santos
-      accountType: AccountType.IN_HOUSE,
-      checklistTemplateId: generalInspectionTemplate?.id,
-      garageId: garages[2].id, // Pulilan
-      odometerReading: 145100,
-      triggerType: MaintenanceTriggerType.MANUAL,
-    },
-  ];
+      garageId: garageId.get(garageOf(v.plateNumber)),
+    };
+    switch (i) {
+      case 0: // next oil change coming up by odometer
+        return { ...base, title: 'Oil Change', checklistTemplateId: template('Oil Change').id, status: MaintenanceStatus.PENDING,
+          createdAt: daysAgo(3), odometerReading: v.odometer, triggerType: MaintenanceTriggerType.ODOMETER,
+          intervalKm: 10000, bufferDistanceKm: 500, startingReferenceReadingKm: thousand(v.odometer - 6000) };
+      case 1: // on the lift right now
+        return { ...base, title: 'Brake Inspection', checklistTemplateId: template('Brake Inspection').id, status: MaintenanceStatus.IN_PROGRESS,
+          createdAt: daysAgo(1), odometerReading: v.odometer, triggerType: MaintenanceTriggerType.ODOMETER,
+          intervalKm: 15000, startingReferenceReadingKm: thousand(v.odometer - 15000) };
+      case 2:
+        return { ...base, title: 'General Inspection', checklistTemplateId: template('General Inspection').id, status: MaintenanceStatus.COMPLETED,
+          createdAt: daysAgo(14), odometerReading: v.odometer - 1800, triggerType: MaintenanceTriggerType.MANUAL, accountType: AccountType.OUTSOURCED };
+      case 3: // monthly, so completing it books the next one
+        return { ...base, title: 'General Inspection', checklistTemplateId: template('General Inspection').id, status: MaintenanceStatus.COMPLETED,
+          createdAt: daysAgo(20), odometerReading: v.odometer - 2600, triggerType: MaintenanceTriggerType.TIME,
+          intervalType: MaintenanceIntervalType.MONTHLY, startReferenceDate: daysAgo(25) };
+      case 4: // passed its interval without service
+        return { ...base, title: 'Engine Tune-up', checklistTemplateId: template('Engine Tune-up').id, status: MaintenanceStatus.OVERDUE,
+          createdAt: daysAgo(18), odometerReading: v.odometer, triggerType: MaintenanceTriggerType.ODOMETER,
+          intervalKm: 20000, bufferDistanceKm: 1000, startingReferenceReadingKm: thousand(v.odometer - 22000) };
+      default:
+        return { ...base, title: 'Tire Rotation', checklistTemplateId: template('Tire Rotation').id, status: MaintenanceStatus.PENDING,
+          createdAt: daysAgo(2), odometerReading: v.odometer, triggerType: MaintenanceTriggerType.MANUAL };
+    }
+  });
+
+  // The truck on the lift is under maintenance
+  await prisma.vehicle.update({ where: { plateNumber: truck(3).plateNumber }, data: { status: VehicleStatus.UNDER_MAINTENANCE } });
 
   const getNextMaintenanceDate = (date: Date, intervalType?: MaintenanceIntervalType | null) => {
     const next = new Date(date);
