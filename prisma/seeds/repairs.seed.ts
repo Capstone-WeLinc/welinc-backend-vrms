@@ -1,129 +1,889 @@
-import { PrismaClient, RepairStatus } from '@prisma/client';
+import {
+  Driver,
+  Prisma,
+  PrismaClient,
+  RepairPriority,
+  RepairStatus,
+  Vehicle,
+  VehicleStatus,
+} from '@prisma/client';
+import {
+  CANCEL_REASONS,
+  CHANGE_SUGGESTIONS,
+  DRIVERS,
+  NEW_ENTRY_SUGGESTIONS,
+  PROBLEMS,
+  Problem,
+  REMARKS,
+  SHOPS,
+  UNLOCK_REASONS,
+  VEHICLES,
+} from './catalog';
+import { SeededEntry } from './knowledge.seed';
+import {
+  DAY,
+  HOUR,
+  addWorkHours,
+  around,
+  between,
+  chance,
+  duringShopHours,
+  int,
+  manilaDateKey,
+  peso,
+  pick,
+  quarter,
+  random,
+  shuffle,
+  uuid,
+  weighted,
+} from './random';
 
-// Simple seeded random function for reproducible organic variation
-function randomBetween(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+// Plays out each truck's repair history in order, so tickets never overlap on one truck, odometers
+// only go up, and a ticket's status is wherever its own timeline has reached today. Every change
+// writes the audit row the API would write. Audit userId stays null: it holds the auth service's
+// id, which this database doesn't know, and actors are matched by email anyway.
 
-function getRandomStatus(): RepairStatus {
-  const rand = Math.random() * 100;
-  if (rand < 79) return RepairStatus.COMPLETED;          // 79% Completed
-  if (rand < 87) return RepairStatus.IN_PROGRESS;        // 8% In Progress
-  if (rand < 93) return RepairStatus.PENDING;            // 6% Pending
-  if (rand < 97) return RepairStatus.FOR_VERIFICATION;   // 4% For Verification
-  return RepairStatus.CANCELLED;                          // 3% Cancelled
-}
+const HISTORY_MONTHS = 22;
+const ADMIN = 'vrms.admin@welinc.com';
+const TARGET_HOURS: Record<RepairPriority, number> = {
+  CRITICAL: 24,
+  HIGH: 48,
+  MEDIUM: 72,
+  LOW: 120,
+};
+const PRIORITY_RANK: Record<RepairPriority, number> = {
+  LOW: 0,
+  MEDIUM: 1,
+  HIGH: 2,
+  CRITICAL: 3,
+};
 
-export async function seedRepairs(prisma: PrismaClient) {
-  console.log('Generating 5,419 realistic randomized historical repair tickets...');
+// Home garage of the mechanics who have a demo login; the rest are spread round robin
+const HOME_GARAGE: Record<string, string> = {
+  'mech.juan@welinc.com': 'Sta. Rosa',
+  'mech.pedro@welinc.com': 'Sta. Rosa',
+  'vrms.chief@welinc.com': 'Sta. Rosa',
+  'mech.rommel@welinc.com': 'Marikina',
+  'mech.isabel@welinc.com': 'Pulilan',
+  'mech.carl@welinc.com': 'Pulilan',
+};
 
-  const garages = await prisma.garage.findMany();
-  const vehicles = await prisma.vehicle.findMany();
-  const drivers = await prisma.driver.findMany();
-  
-  const vrmsAdminUser = await prisma.user.findFirstOrThrow({
-    where: { email: 'vrms.admin@welinc.com' }
+type Crew = {
+  id: string;
+  name: string;
+  email: string | null;
+  garage: string;
+  demo: boolean;
+  busyUntil: number;
+  hasOpen: boolean;
+};
+
+type Rows = {
+  tickets: Prisma.RepairTicketCreateManyInput[];
+  issues: Prisma.RepairIssueCreateManyInput[];
+  steps: Prisma.RepairIssueStepCreateManyInput[];
+  parts: Prisma.RepairPartCreateManyInput[];
+  audits: Prisma.AuditLogCreateManyInput[];
+  shopChanges: Prisma.ShopChangeLogCreateManyInput[];
+  crewLinks: { mechanicId: string; ticketId: string }[];
+};
+
+type IssueMeta = {
+  id: string;
+  ticketId: string;
+  problem: Problem;
+  entryId: string | null;
+  createdAt: number;
+  closed: boolean;
+  cancelled: boolean;
+};
+
+export async function seedRepairs(
+  prisma: PrismaClient,
+  ctx: {
+    now: number;
+    vehicles: Vehicle[];
+    drivers: Driver[];
+    entries: Map<string, SeededEntry>;
+    categoryId: Map<string, string>;
+  },
+) {
+  const { now, entries, categoryId } = ctx;
+  console.log(`Simulating ${HISTORY_MONTHS} months of repair history...`);
+
+  const garages = new Map(
+    (await prisma.garage.findMany()).map((g) => [g.name, g]),
+  );
+  const admin = await prisma.user.findUniqueOrThrow({
+    where: { email: ADMIN },
   });
-  
-  const mechanics = await prisma.mechanic.findMany({
-    where: {
-      user: {
-        roles: {
-          some: {
-            role: 'MECHANIC',
-            system: 'VRMS'
-          }
-        }
-      }
-    }
+
+  // ── Crews ────────────────────────────────────────────────────────────────
+  const inHouse = await prisma.mechanic.findMany({
+    where: { isOutsourced: false },
+    include: { user: { select: { email: true } } },
+    orderBy: { name: 'asc' },
+  });
+  const garageNames = [...garages.keys()];
+  let roundRobin = 0;
+  const crews: Crew[] = inHouse.map((m) => {
+    const email = m.user?.email ?? null;
+    const home = email ? HOME_GARAGE[email] : undefined;
+    return {
+      id: m.id,
+      name: m.name,
+      email,
+      garage: home ?? garageNames[roundRobin++ % garageNames.length],
+      demo: !!home,
+      busyUntil: 0,
+      hasOpen: false,
+    };
   });
 
-  const templates = [
-    { cat: 'Brakes', desc: '[Brakes] Metal grinding and squeal sound under braking', part: 'Brake Pad Set (Front & Rear)', baseCost: 3450 },
-    { cat: 'Brakes', desc: '[Brakes] Brake pedal feels spongy and soft during stops', part: 'Brake Fluid Flush & DOT4 Supply', baseCost: 480 },
-    { cat: 'Brakes', desc: '[Brakes] Rotor surface warping causing wheel vibration', part: 'Brake Rotor Pair High-Carbon', baseCost: 6850 },
-    { cat: 'Engine', desc: '[Engine] High coolant temperature engine warning indicator', part: 'Radiator Hose & Heavy Duty Coolant', baseCost: 1950 },
-    { cat: 'Engine', desc: '[Engine] Low oil pressure warning light triggered on highway', part: 'Fully Synthetic Engine Oil 5L + Filter', baseCost: 2850 },
-    { cat: 'Engine', desc: '[Engine] Air intake clogged, engine misfiring under load', part: 'Heavy Duty Air Filter Element', baseCost: 1350 },
-    { cat: 'Engine', desc: '[Engine] Fuel injector clogged causing rough idling', part: 'Fuel Injector Cleaner & Nozzle Servicing', baseCost: 4200 },
-    { cat: 'Electrical', desc: '[Electrical] 12V Battery failing cold crank test', part: '12V Maintenance Free Commercial Battery', baseCost: 5800 },
-    { cat: 'Electrical', desc: '[Electrical] Alternator failing to charge battery system', part: 'OEM Heavy Duty Alternator Assembly', baseCost: 8900 },
-    { cat: 'Electrical', desc: '[Electrical] Left headlight bulb assembly burned out', part: 'Halogen Headlight Bulb Pair', baseCost: 850 },
-    { cat: 'Electrical', desc: '[Electrical] Starter motor clicking but not engaging', part: 'Starter Motor Solenoid Repair Kit', baseCost: 3600 },
-    { cat: 'Transmission', desc: '[Transmission] Transmission slipping when shifting gear 2 to 3', part: 'ATF Synthetic Transmission Fluid 4L', baseCost: 3950 },
-    { cat: 'Transmission', desc: '[Transmission] Clutch pedal sticking near floorboard', part: 'Clutch Master Cylinder Assembly', baseCost: 4400 },
-    { cat: 'Transmission', desc: '[Transmission] Gear shifting stiff during heavy cargo haul', part: 'Gearbox Fluid Replacement 80W-90', baseCost: 2300 },
-    { cat: 'Suspension', desc: '[Suspension] Front leaf spring squeaking over bumps', part: 'Polyurethane Leaf Spring Bushing Kit', baseCost: 1650 },
-    { cat: 'Suspension', desc: '[Suspension] Rear shock absorber leaking hydraulic fluid', part: 'Heavy Duty Gas Shock Absorber Pair', baseCost: 4200 },
-    { cat: 'Suspension', desc: '[Suspension] Wheel alignment drifting pulling to the right', part: 'Front End Suspension Alignment Service', baseCost: 1800 },
-    { cat: 'Cooling', desc: '[Cooling] Water pump bearing noise and minor leakage', part: 'Water Pump Assembly & Gasket', baseCost: 5100 },
-    { cat: 'Steering', desc: '[Steering] Power steering fluid reservoir level drop', part: 'Power Steering Pressure Hose & Fluid', baseCost: 1750 },
-  ];
+  // Outside shops, one Mechanic row per shop contact, the way create() makes them
+  const shops = SHOPS.map((s) => ({ ...s, id: uuid() }));
+  await prisma.mechanic.createMany({
+    data: shops.map((s) => ({
+      id: s.id,
+      name: s.contact,
+      isOutsourced: true,
+      shopName: s.shopName,
+    })),
+  });
 
-  const TOTAL_TARGET = 527; // Realistic organic number (~500 repairs)
-  const BATCH_SIZE = 500;
+  // Each truck has a regular driver from its garage
+  const driverByName = new Map(ctx.drivers.map((d) => [d.name, d]));
+  const driversAt = (garage: string, at: number) =>
+    DRIVERS.filter(
+      (d) =>
+        d.garage === garage &&
+        (!d.leftMonthsAgo || at < now - d.leftMonthsAgo * 30 * DAY),
+    ).map((d) => driverByName.get(d.name)!);
 
-  let createdCount = 0;
-  const startDate = new Date('2025-01-05T08:00:00.000Z');
-  const endDate = new Date('2026-08-06T17:00:00.000Z');
-  const timeSpan = endDate.getTime() - startDate.getTime();
+  const rows: Rows = {
+    tickets: [],
+    issues: [],
+    steps: [],
+    parts: [],
+    audits: [],
+    shopChanges: [],
+    crewLinks: [],
+  };
+  const issueMeta: IssueMeta[] = [];
+  const repairNumbers = new Set<string>();
+  const vehicleUpdates: {
+    id: string;
+    odometer: number;
+    status: VehicleStatus;
+    retiredAt: number | null;
+  }[] = [];
+  const counts: Record<RepairStatus, number> = {
+    PENDING: 0,
+    IN_PROGRESS: 0,
+    FOR_VERIFICATION: 0,
+    COMPLETED: 0,
+    CANCELLED: 0,
+  };
 
-  for (let batchStart = 0; batchStart < TOTAL_TARGET; batchStart += BATCH_SIZE) {
-    const batchData: any[] = [];
-    const batchLimit = Math.min(batchStart + BATCH_SIZE, TOTAL_TARGET);
-
-    for (let i = batchStart; i < batchLimit; i++) {
-      const template = templates[randomBetween(0, templates.length - 1)];
-      const vehicle = vehicles[randomBetween(0, vehicles.length - 1)];
-      const driver = drivers[randomBetween(0, drivers.length - 1)];
-      const garage = garages[randomBetween(0, garages.length - 1)];
-      const status = getRandomStatus();
-
-      // Random timestamp between Jan 2025 and Aug 2026
-      const randomProgress = (i + Math.random()) / TOTAL_TARGET;
-      const createdTime = new Date(startDate.getTime() + randomProgress * timeSpan);
-      
-      const yyyymmdd = createdTime.toISOString().slice(0, 10).replace(/-/g, '');
-      const seqStr = String(i + 1).padStart(5, '0');
-      const repairNumber = `REP-${yyyymmdd}-${seqStr}`;
-
-      const isClosed = status === RepairStatus.COMPLETED;
-      const hoursToComplete = randomBetween(1, 48);
-      const completedTime = isClosed ? new Date(createdTime.getTime() + hoursToComplete * 3600 * 1000) : null;
-
-      // Realistic cost variation (+/- 20% random scatter)
-      const costMultiplier = 0.85 + Math.random() * 0.35;
-      const partsCost = isClosed ? Math.round(template.baseCost * costMultiplier) : 0;
-      const laborCost = isClosed ? Math.round(partsCost * (0.35 + Math.random() * 0.25)) : 0;
-      const totalCost = partsCost + laborCost;
-
-      batchData.push({
-        repairNumber,
-        repairStatus: status,
-        vehicleId: vehicle.id,
-        driverId: driver.id,
-        garageId: garage.id,
-        odometer: vehicle.odometer + randomBetween(50, 18000),
-        remarks: `Driver ${driver.name} reported: ${template.desc}`,
-        targetDueDate: new Date(createdTime.getTime() + randomBetween(24, 72) * 3600 * 1000),
-        partsCost,
-        laborCost,
-        totalCost,
-        createdAt: createdTime,
-        updatedAt: isClosed ? completedTime! : new Date(createdTime.getTime() + randomBetween(1, 24) * 3600 * 1000),
-        completedAt: completedTime,
-      });
-    }
-
-    // Execute bulk create
-    await prisma.repairTicket.createMany({
-      data: batchData,
-      skipDuplicates: true,
+  const audit = (
+    ticketId: string,
+    at: number,
+    email: string,
+    action: string,
+    fields: Partial<Prisma.AuditLogCreateManyInput> = {},
+  ) =>
+    rows.audits.push({
+      id: uuid(),
+      repairTicketId: ticketId,
+      userId: null,
+      email,
+      action,
+      createdAt: new Date(at),
+      ...fields,
     });
 
-    createdCount += batchData.length;
-    console.log(`  Seeded ${createdCount} / ${TOTAL_TARGET} randomized repair tickets...`);
+  const historyStart = now - HISTORY_MONTHS * 30 * DAY;
+
+  for (const vehicle of ctx.vehicles) {
+    const spec = VEHICLES.find((v) => v.plateNumber === vehicle.plateNumber)!;
+    const retiredAt = spec.retiredMonthsAgo
+      ? now - spec.retiredMonthsAgo * 30 * DAY
+      : null;
+    const end = retiredAt ? retiredAt - 20 * DAY : now;
+    // Older, high mileage trucks come in more often
+    const wear = spec.startKm > 90_000 ? 0.75 : spec.startKm < 30_000 ? 1.3 : 1;
+    const regular = pick(driversAt(spec.garage, historyStart));
+
+    let t = historyStart + between(0, 25) * DAY;
+    let km = spec.startKm;
+    let lastClosedKm = spec.startKm;
+    let open = false;
+    let freeSince = t; // when the truck last left the shop
+
+    for (;;) {
+      const gapDays = around(8, 55) * wear;
+      t += gapDays * DAY;
+      if (t >= end) break;
+      km += Math.round(spec.kmPerDay * gapDays * (6 / 7) * between(0.85, 1.15));
+
+      const result = buildTicket({
+        vehicle,
+        spec,
+        createdAt: duringShopHours(t),
+        km,
+        regular,
+      });
+      if (!result) continue;
+      if (result.status === RepairStatus.COMPLETED) lastClosedKm = km;
+      if (!result.closedAt) {
+        open = true;
+        break;
+      }
+      t = result.closedAt;
+      freeSince = t;
+    }
+
+    // About a third of the working fleet is in the shop today, so the open queue looks like a real day
+    if (!open && !retiredAt && chance(0.35)) {
+      const createdAt = duringShopHours(
+        Math.max(freeSince + DAY, now - between(0.05, 2) * DAY),
+      );
+      if (createdAt > freeSince && createdAt < now - HOUR) {
+        km += Math.max(
+          0,
+          Math.round(
+            spec.kmPerDay * ((createdAt - freeSince) / DAY) * (6 / 7) -
+              (km - lastClosedKm),
+          ),
+        );
+        const result = buildTicket({ vehicle, spec, createdAt, km, regular });
+        if (result?.status === RepairStatus.COMPLETED) lastClosedKm = km;
+        open = !!result && !result.closedAt;
+      }
+    }
+
+    vehicleUpdates.push({
+      id: vehicle.id,
+      odometer: lastClosedKm,
+      status: open ? VehicleStatus.UNDER_REPAIR : VehicleStatus.AVAILABLE,
+      retiredAt,
+    });
   }
 
-  console.log(`\n  ✅ Successfully seeded ${TOTAL_TARGET} realistic randomized tickets into welinc_vrms_db!\n`);
+  function buildTicket(args: {
+    vehicle: Vehicle;
+    spec: (typeof VEHICLES)[number];
+    createdAt: number;
+    km: number;
+    regular: Driver;
+  }) {
+    const { vehicle, spec, createdAt, km } = args;
+    const daysAgo = (now - createdAt) / DAY;
+
+    // ── What is wrong ──
+    const possible = PROBLEMS.filter(
+      (p) =>
+        p.weight > 0 &&
+        (!p.recentDays || daysAgo <= p.recentDays) &&
+        (!p.beforeDaysAgo || daysAgo >= p.beforeDaysAgo),
+    );
+    const issueCount = weighted([1, 2, 3], (n) =>
+      n === 1 ? 78 : n === 2 ? 18 : 4,
+    );
+    const problems: Problem[] = [];
+    while (problems.length < issueCount) {
+      const p = weighted(possible, (x) => x.weight);
+      if (!problems.includes(p)) problems.push(p);
+    }
+    const priority = problems.reduce<RepairPriority>(
+      (top, p) =>
+        PRIORITY_RANK[p.priority] > PRIORITY_RANK[top] ? p.priority : top,
+      'LOW',
+    );
+
+    // ── Where and who ──
+    const garageName = chance(0.9)
+      ? spec.garage
+      : pick(garageNames.filter((g) => g !== spec.garage));
+    const garage = garages.get(garageName)!;
+    const pool = driversAt(spec.garage, createdAt);
+    const driver =
+      pool.includes(args.regular) && chance(0.75) ? args.regular : pick(pool);
+    const outsourced = chance(Math.max(...problems.map((p) => p.outsourced)));
+
+    // ── Timeline (computed first, so the status is wherever it has reached today) ──
+    const issueHours = problems.map((p) =>
+      quarter(around(p.laborHours[0], p.laborHours[1])),
+    );
+    const crewSize =
+      !outsourced && issueHours.reduce((a, b) => a + b, 0) > 4 && chance(0.45)
+        ? 2
+        : 1;
+    const workHours =
+      issueHours.reduce((a, b) => a + b, 0) / (crewSize === 2 ? 1.6 : 1);
+    // Waits in working hours: for a free bay and mechanic, for parts, for the admin to encode and verify
+    const QUEUE: Record<RepairPriority, [number, number]> = {
+      CRITICAL: [0.25, 2],
+      HIGH: [1, 10],
+      MEDIUM: [3, 20],
+      LOW: [6, 36],
+    };
+    const startAt = addWorkHours(
+      createdAt,
+      between(...QUEUE[priority]) + (outsourced ? between(2, 9) : 0),
+    );
+    const partsWait = chance(outsourced ? 0.5 : 0.3) ? between(1, 5) * DAY : 0;
+    const fvAt = addWorkHours(startAt + partsWait, workHours);
+    const costAt = addWorkHours(fvAt, between(0.5, 8));
+    const completeAt = addWorkHours(costAt, between(0.5, 12));
+
+    const cancels = chance(0.05);
+    const cancelFromProgress = cancels && chance(0.3);
+    const cancelAt = cancels
+      ? addWorkHours(cancelFromProgress ? startAt : createdAt, between(0.5, 12))
+      : Infinity;
+
+    let status: RepairStatus;
+    if (cancels && cancelAt <= now) status = RepairStatus.CANCELLED;
+    else if (cancels)
+      status =
+        cancelFromProgress && now >= startAt
+          ? RepairStatus.IN_PROGRESS
+          : RepairStatus.PENDING;
+    else if (now < startAt) status = RepairStatus.PENDING;
+    else if (now < fvAt) status = RepairStatus.IN_PROGRESS;
+    else if (now < completeAt) status = RepairStatus.FOR_VERIFICATION;
+    else status = RepairStatus.COMPLETED;
+
+    const isOpen =
+      status !== RepairStatus.COMPLETED && status !== RepairStatus.CANCELLED;
+    const closedAt =
+      status === RepairStatus.COMPLETED
+        ? completeAt
+        : status === RepairStatus.CANCELLED
+          ? cancelAt
+          : null;
+    const reachedProgress =
+      status === RepairStatus.CANCELLED
+        ? cancelFromProgress
+        : status !== RepairStatus.PENDING;
+    const reachedVerification =
+      status === RepairStatus.FOR_VERIFICATION ||
+      status === RepairStatus.COMPLETED;
+    const costsIn =
+      status === RepairStatus.COMPLETED ||
+      (status === RepairStatus.FOR_VERIFICATION && costAt <= now);
+
+    // ── Crew ──
+    let crew: Crew[] = [];
+    let shop: (typeof shops)[number] | null = null;
+    if (outsourced) {
+      const local = shops.filter((s) => s.garage === garageName);
+      const fitting = local.filter((s) =>
+        problems.some((p) => s.trades.includes(p.category)),
+      );
+      shop = pick(fitting.length ? fitting : local);
+    } else {
+      const free = crews.filter(
+        (c) => c.garage === garageName && c.busyUntil <= createdAt,
+      );
+      const candidates =
+        free.length >= crewSize
+          ? free
+          : crews.filter((c) => c.garage === garageName);
+      // An open ticket goes to a demo login that has none yet, so every demo account has live work
+      const demoWanting = isOpen
+        ? candidates.filter(
+            (c) => c.demo && !c.hasOpen && c.busyUntil <= createdAt,
+          )
+        : [];
+      const lead = demoWanting.length
+        ? pick(demoWanting)
+        : weighted(candidates, (c) => (c.demo ? 5 : 1));
+      crew = [lead];
+      if (crewSize === 2) {
+        const second = candidates.filter((c) => c !== lead);
+        if (second.length) crew.push(weighted(second, (c) => (c.demo ? 3 : 1)));
+      }
+      for (const c of crew) {
+        c.busyUntil = closedAt ?? Infinity;
+        if (isOpen) c.hasOpen = true;
+      }
+    }
+    const worker = crew[0]?.email ?? ADMIN; // outside shop work is recorded by the admin
+
+    // ── Ticket ──
+    const ticketId = uuid();
+    let repairNumber: string;
+    do {
+      repairNumber = `REP-${manilaDateKey(createdAt)}-${Math.floor(
+        random() * 36 ** 4,
+      )
+        .toString(36)
+        .toUpperCase()
+        .padStart(4, '0')}`;
+    } while (repairNumbers.has(repairNumber));
+    repairNumbers.add(repairNumber);
+
+    audit(ticketId, createdAt, ADMIN, 'CREATED');
+    let lastChange = createdAt;
+
+    // Logged at the wrong garage now and then, moved within the hour
+    if (chance(0.02)) {
+      const from = pick(garageNames.filter((g) => g !== garageName));
+      const at = createdAt + between(10, 50) * 60_000;
+      rows.shopChanges.push({
+        id: uuid(),
+        repairTicketId: ticketId,
+        changedByUserId: admin.id,
+        changedByName: admin.name,
+        previousValue: from,
+        newValue: garageName,
+        changedAt: new Date(at),
+      });
+      audit(ticketId, at, ADMIN, 'SHOP_CHANGE', {
+        fieldName: 'garage',
+        previousValue: from,
+        newValue: garageName,
+      });
+      lastChange = at;
+    }
+
+    if (reachedProgress) {
+      audit(ticketId, startAt, worker, 'STATUS_CHANGE', {
+        fieldName: 'repairStatus',
+        previousValue: 'PENDING',
+        newValue: 'IN_PROGRESS',
+      });
+      lastChange = startAt;
+    }
+
+    // ── Issues ──
+    problems.forEach((problem, index) => {
+      const issueId = uuid();
+      const entry = entries.get(problem.key);
+      const pickable = (at: number) =>
+        !!entry &&
+        entry.activeFrom != null &&
+        entry.activeFrom <= at &&
+        (entry.inactiveFrom == null || at < entry.inactiveFrom);
+
+      // Linked at create (picked in the form), later by the mechanic, or by an editor's backfill
+      let linkAt: number | null = null;
+      let linkBy: string | null = null;
+      if (entry && pickable(createdAt) && chance(0.94)) {
+        linkAt = createdAt;
+      } else if (entry && reachedProgress && pickable(startAt) && chance(0.4)) {
+        linkAt = startAt + between(5, 40) * 60_000;
+        linkBy = worker;
+      } else if (
+        entry &&
+        entry.activeFrom != null &&
+        createdAt < entry.activeFrom &&
+        status !== RepairStatus.CANCELLED &&
+        chance(0.85)
+      ) {
+        linkAt = entry.activeFrom + index * 1000;
+        linkBy = entry.createdByEmail;
+      }
+      const linked = linkAt != null && linkAt <= now;
+      if (linked && linkBy) {
+        audit(ticketId, linkAt!, linkBy, 'KNOWLEDGE_LINK', {
+          fieldName: issueId,
+          previousValue: null,
+          newValue: entry!.name,
+        });
+        // A mechanic's link touches the ticket; an editor's backfill never does (AC-33)
+        if (linkBy === worker) lastChange = Math.max(lastChange, linkAt!);
+      }
+      // Steps are copied only while the ticket is still open when it gets linked
+      const linkedWhileOpen =
+        linked &&
+        (closedAt == null || linkAt! < closedAt) &&
+        linkAt! < (reachedVerification ? fvAt : Infinity);
+      const linkedBeforeVerification = linked && linkAt! < fvAt;
+
+      const rootCause = pick(problem.rootCauses);
+      const report = pick(problem.reports);
+      const hours = issueHours[index];
+
+      if (linkedWhileOpen) {
+        const total = entry!.steps.length;
+        const followed = chance(0.9);
+        const doneCount = reachedVerification
+          ? followed
+            ? total
+            : Math.max(0, total - int(1, 2))
+          : status === RepairStatus.IN_PROGRESS
+            ? Math.floor(
+                total *
+                  Math.min(
+                    1,
+                    Math.max(
+                      0,
+                      (now - startAt) / Math.max(HOUR, fvAt - startAt),
+                    ),
+                  ),
+              )
+            : 0;
+        const from = Math.max(startAt, linkAt!);
+        const to = reachedVerification ? fvAt : Math.min(now, fvAt);
+        entry!.steps.forEach((text, i) => {
+          const checked = i < doneCount;
+          rows.steps.push({
+            id: uuid(),
+            repairIssueId: issueId,
+            position: i + 1,
+            text,
+            checkedAt: checked
+              ? new Date(
+                  from + ((i + 1) / (total + 1)) * Math.max(0, to - from),
+                )
+              : null,
+            checkedByEmail: checked ? worker : null,
+          });
+        });
+      }
+
+      // "What fixed it", written on the move to For verification
+      let resolution: Partial<Prisma.RepairIssueCreateManyInput> = {};
+      if (reachedVerification) {
+        const note = linkedBeforeVerification
+          ? chance(0.4)
+            ? pick(problem.fixes)
+            : null
+          : pick(problem.fixes);
+        resolution = {
+          resolutionNote: note,
+          hoursSpent: chance(0.88) ? hours : null,
+          followedKnownFix: linkedBeforeVerification ? chance(0.9) : null,
+          resolvedAt: new Date(fvAt),
+        };
+      }
+
+      // When an editor wrote the entry from a group, the issues it skipped were dismissed with it
+      const straggler =
+        !linked &&
+        entry &&
+        entry.activeFrom != null &&
+        createdAt < entry.activeFrom &&
+        entry.activeFrom <= now;
+
+      rows.issues.push({
+        id: issueId,
+        repairTicketId: ticketId,
+        description: `[${problem.category}] ${rootCause}: ${report}`,
+        categoryId: categoryId.get(problem.category)!,
+        knowledgeEntryId: linked ? entry!.id : null,
+        ...resolution,
+        suggestionDismissedAt: straggler ? new Date(entry.activeFrom!) : null,
+        createdAt: new Date(createdAt + index),
+        updatedAt: new Date(
+          Math.max(
+            createdAt,
+            reachedVerification ? fvAt : createdAt,
+            linked ? linkAt! : createdAt,
+          ),
+        ),
+      });
+      issueMeta.push({
+        id: issueId,
+        ticketId,
+        problem,
+        entryId: linked ? entry!.id : null,
+        createdAt,
+        closed: !isOpen,
+        cancelled: status === RepairStatus.CANCELLED,
+      });
+    });
+
+    if (reachedVerification) {
+      audit(ticketId, fvAt, worker, 'STATUS_CHANGE', {
+        fieldName: 'repairStatus',
+        previousValue: 'IN_PROGRESS',
+        newValue: 'FOR_VERIFICATION',
+      });
+      lastChange = fvAt;
+    }
+
+    // ── Costs ──
+    let partsCost: number | null = null;
+    let laborCost: number | null = null;
+    let isLumpSum = false;
+    let ticketParts: Prisma.RepairPartCreateManyInput[] = [];
+    if (costsIn) {
+      const lines = problems.flatMap((p) =>
+        p.parts
+          .filter((part) => chance(part.p ?? 1))
+          .map((part) => {
+            const quantity = part.qty ? int(part.qty[0], part.qty[1]) : 1;
+            const unitCost = peso(between(part.price[0], part.price[1]));
+            return {
+              description: part.name,
+              unitCost,
+              quantity,
+              subtotal: unitCost * quantity,
+            };
+          }),
+      );
+      if (lines.length === 0) {
+        const part = problems[0].parts[0];
+        const unitCost = peso(between(part.price[0], part.price[1]));
+        lines.push({
+          description: part.name,
+          unitCost,
+          quantity: 1,
+          subtotal: unitCost,
+        });
+      }
+      const labourHours = issueHours.reduce((a, b) => a + b, 0);
+      isLumpSum = outsourced && chance(0.7);
+      partsCost = isLumpSum
+        ? peso(
+            lines.reduce((s, l) => s + l.subtotal, 0) * between(1.05, 1.2),
+            50,
+          )
+        : lines.reduce((s, l) => s + l.subtotal, 0);
+      laborCost = peso(
+        labourHours * (outsourced ? between(750, 1100) : between(380, 460)),
+        50,
+      );
+      ticketParts = isLumpSum
+        ? []
+        : lines.map((l, i) => ({
+            id: uuid(),
+            repairTicketId: ticketId,
+            ...l,
+            createdAt: new Date(costAt + i),
+          }));
+      audit(ticketId, costAt, ADMIN, 'COST_UPDATE', {
+        fieldName: 'costs',
+        previousValue: JSON.stringify({ partsCost: null, laborCost: null }),
+        newValue: JSON.stringify({
+          partsCost,
+          laborCost,
+          totalCost: partsCost + laborCost,
+          isLumpSum,
+        }),
+      });
+      lastChange = costAt;
+    }
+
+    if (status === RepairStatus.COMPLETED) {
+      audit(ticketId, completeAt, ADMIN, 'STATUS_CHANGE', {
+        fieldName: 'repairStatus',
+        previousValue: 'FOR_VERIFICATION',
+        newValue: 'COMPLETED',
+      });
+      lastChange = completeAt;
+    }
+    if (status === RepairStatus.CANCELLED) {
+      audit(ticketId, cancelAt, ADMIN, 'STATUS_CHANGE', {
+        fieldName: 'repairStatus',
+        previousValue: cancelFromProgress ? 'IN_PROGRESS' : 'PENDING',
+        newValue: 'CANCELLED',
+      });
+      lastChange = cancelAt;
+    }
+
+    // A late invoice: unlocked, costs corrected, locked again by the save
+    let unlockReason: string | null = null;
+    const unlockAt = completeAt + between(1, 5) * DAY;
+    if (
+      status === RepairStatus.COMPLETED &&
+      partsCost != null &&
+      laborCost != null &&
+      unlockAt < now &&
+      chance(0.03)
+    ) {
+      unlockReason = pick(UNLOCK_REASONS);
+      const before = { partsCost, laborCost };
+      if (unlockReason.startsWith('Labor cost was encoded twice'))
+        laborCost = peso(laborCost / 2, 50);
+      else if (unlockReason.startsWith('Outside shop'))
+        laborCost += peso(between(300, 800), 50);
+      else if (ticketParts.length) {
+        const first = ticketParts[0];
+        first.unitCost = peso(Number(first.unitCost) * between(1.08, 1.25));
+        first.subtotal = Number(first.unitCost) * first.quantity!;
+        partsCost = ticketParts.reduce((s, p) => s + Number(p.subtotal), 0);
+      } else partsCost = peso(partsCost * between(1.08, 1.2), 50);
+      audit(ticketId, unlockAt, ADMIN, 'UNLOCK', { newValue: unlockReason });
+      audit(
+        ticketId,
+        unlockAt + between(5, 30) * 60_000,
+        ADMIN,
+        'COST_UPDATE',
+        {
+          fieldName: 'costs',
+          previousValue: JSON.stringify(before),
+          newValue: JSON.stringify({
+            partsCost,
+            laborCost,
+            totalCost: partsCost + laborCost,
+            isLumpSum,
+          }),
+        },
+      );
+      lastChange = unlockAt + 30 * 60_000;
+    }
+    rows.parts.push(...ticketParts);
+
+    rows.tickets.push({
+      id: ticketId,
+      repairNumber,
+      repairStatus: status,
+      vehicleId: vehicle.id,
+      driverId: driver.id,
+      garageId: garage.id,
+      odometer: km,
+      targetDueDate: new Date(createdAt + TARGET_HOURS[priority] * HOUR),
+      partsCost,
+      laborCost,
+      totalCost:
+        partsCost != null && laborCost != null ? partsCost + laborCost : null,
+      isLumpSum,
+      cancellationReason:
+        status === RepairStatus.CANCELLED ? pick(CANCEL_REASONS) : null,
+      remarks: reachedVerification && chance(0.3) ? pick(REMARKS) : null,
+      unlockReason,
+      createdAt: new Date(createdAt),
+      updatedAt: new Date(lastChange),
+      completedAt: closedAt ? new Date(closedAt) : null,
+    });
+    for (const c of crew) rows.crewLinks.push({ mechanicId: c.id, ticketId });
+    if (shop) rows.crewLinks.push({ mechanicId: shop.id, ticketId });
+    counts[status]++;
+
+    return { status, closedAt };
+  }
+
+  // One completed ticket from the last few days is unlocked right now, waiting for its fix
+  const recent = shuffle(
+    rows.tickets.filter(
+      (t) => t.repairStatus === 'COMPLETED' && now - +t.completedAt! < 4 * DAY,
+    ),
+  )[0];
+  if (recent) {
+    const at = Math.min(
+      now - HOUR,
+      +recent.completedAt! + between(2, 20) * HOUR,
+    );
+    recent.isUnlocked = true;
+    recent.unlockReason = UNLOCK_REASONS[0];
+    recent.updatedAt = new Date(at);
+    audit(recent.id!, at, ADMIN, 'UNLOCK', { newValue: UNLOCK_REASONS[0] });
+  }
+
+  // ── Mechanic suggestions still waiting for an editor ──
+  const recentIssue = (match: (m: IssueMeta) => boolean) =>
+    shuffle(
+      issueMeta.filter((m) => match(m) && now - m.createdAt < 60 * DAY),
+    )[0];
+  const demoEmails = crews
+    .filter((c) => c.demo && c.email)
+    .map((c) => c.email!);
+  const entryByName = new Map([...entries.values()].map((e) => [e.name, e]));
+  const suggestions: Prisma.KnowledgeSuggestionCreateManyInput[] = [];
+  for (const s of CHANGE_SUGGESTIONS.slice(0, 3)) {
+    const entry = entryByName.get(s.entry)!;
+    suggestions.push({
+      id: uuid(),
+      kind: 'CHANGE',
+      entryId: entry.id,
+      repairIssueId: recentIssue((m) => m.entryId === entry.id)?.id ?? null,
+      body: s.body,
+      createdByEmail: pick(demoEmails),
+      createdAt: new Date(duringShopHours(now - between(1, 20) * DAY)),
+    });
+  }
+  NEW_ENTRY_SUGGESTIONS.forEach((body, i) => {
+    const key = i === 0 ? 'cargo-door' : 'aircon';
+    suggestions.push({
+      id: uuid(),
+      kind: 'NEW_ENTRY',
+      repairIssueId:
+        recentIssue((m) => m.problem.key === key && !m.entryId)?.id ?? null,
+      body,
+      createdByEmail: pick(demoEmails),
+      createdAt: new Date(duringShopHours(now - between(1, 12) * DAY)),
+    });
+  });
+
+  // The chief already dismissed the horn group; aircon and cargo doors stay as live suggestions
+  const dismissedAt = new Date(duringShopHours(now - 3 * DAY));
+  const hornIds = new Set(
+    issueMeta
+      .filter(
+        (m) =>
+          m.problem.key === 'horn' &&
+          !m.entryId &&
+          !m.cancelled &&
+          +m.createdAt < +dismissedAt,
+      )
+      .map((m) => m.id),
+  );
+  for (const issue of rows.issues)
+    if (hornIds.has(issue.id!)) issue.suggestionDismissedAt = dismissedAt;
+
+  // ── Write ──
+  const chunked = async <T>(
+    items: T[],
+    size: number,
+    write: (part: T[]) => Promise<unknown>,
+  ) => {
+    for (let i = 0; i < items.length; i += size)
+      await write(items.slice(i, i + size));
+  };
+  await chunked(rows.tickets, 500, (data) =>
+    prisma.repairTicket.createMany({ data }),
+  );
+  // Implicit many to many: "A" is the Mechanic id, "B" the RepairTicket id (models in name order)
+  await chunked(
+    rows.crewLinks,
+    1000,
+    (part) =>
+      prisma.$executeRaw`INSERT INTO "_RepairTicketMechanics" ("A", "B")
+      SELECT * FROM unnest(${part.map((l) => l.mechanicId)}::uuid[], ${part.map((l) => l.ticketId)}::uuid[])
+      ON CONFLICT DO NOTHING`,
+  );
+  await chunked(rows.issues, 500, (data) =>
+    prisma.repairIssue.createMany({ data }),
+  );
+  await chunked(rows.steps, 1000, (data) =>
+    prisma.repairIssueStep.createMany({ data }),
+  );
+  await chunked(rows.parts, 1000, (data) =>
+    prisma.repairPart.createMany({ data }),
+  );
+  await chunked(rows.shopChanges, 500, (data) =>
+    prisma.shopChangeLog.createMany({ data }),
+  );
+  await chunked(rows.audits, 1000, (data) =>
+    prisma.auditLog.createMany({ data }),
+  );
+  await prisma.knowledgeSuggestion.createMany({ data: suggestions });
+
+  for (const v of vehicleUpdates) {
+    await prisma.vehicle.update({
+      where: { id: v.id },
+      data: {
+        odometer: v.odometer,
+        status: v.retiredAt ? VehicleStatus.AVAILABLE : v.status,
+        isActive: !v.retiredAt,
+        deletedAt: v.retiredAt ? new Date(v.retiredAt) : null,
+      },
+    });
+  }
+
+  const linked = rows.issues.filter((i) => i.knowledgeEntryId).length;
+  console.log(
+    `  ${rows.tickets.length} tickets: ${counts.COMPLETED} completed, ${counts.CANCELLED} cancelled, ` +
+      `${counts.PENDING} pending, ${counts.IN_PROGRESS} in progress, ${counts.FOR_VERIFICATION} for verification`,
+  );
+  console.log(
+    `  ${rows.issues.length} issues (${linked} linked to a known fix), ${rows.steps.length} checklist steps, ` +
+      `${rows.parts.length} parts lines, ${rows.audits.length} audit rows, ${suggestions.length} open suggestions\n`,
+  );
 }

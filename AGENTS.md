@@ -19,7 +19,7 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/modules/vrms/ticket-knowledge.ts` | What a ticket's issues carry from the knowledge base, and the "What fixed it" rules on the move to For verification |
 | `src/shared/` | `PrismaService`, `MailService`, `SharedModule` |
 | `prisma/schema.prisma`, `prisma/migrations/` | Data model and migration history |
-| `prisma/seed.ts`, `prisma/seeds/` | Seed data (`npm run seed`) |
+| `prisma/seed.ts`, `prisma/seeds/` | Seed data (`npm run seed`): `catalog.ts` holds the fleet, problems, parts and prices; `repairs.seed.ts` plays out each truck's history in order |
 
 ## Commands
 
@@ -29,7 +29,7 @@ npm run lint         # runs eslint with --fix, so it edits files
 npm run build
 npm run test         # Jest unit tests
 npm run test:e2e
-npm run seed
+npm run seed         # wipes and rebuilds the data; SEED=<n> npm run seed repeats a run
 npm run studio       # Prisma Studio on 5555
 npx prisma generate
 npx prisma migrate dev   # asks first, see root rules

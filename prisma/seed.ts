@@ -10,6 +10,8 @@ import { seedDrivers } from './seeds/drivers.seed';
 import { seedBookings } from './seeds/bookings.seed';
 import { seedRepairs } from './seeds/repairs.seed';
 import { seedVmms } from './seeds/vmms.seed';
+import { seedKnowledge } from './seeds/knowledge.seed';
+import { SEED } from './seeds/random';
 
 const pool = new pg.Pool({
   connectionString: process.env['DATABASE_URL'],
@@ -19,11 +21,15 @@ const prisma = new PrismaClient({ adapter });
 
 async function cleanDatabase(prisma: PrismaClient) {
   console.log('Cleaning database...');
+  await prisma.knowledgeSuggestion.deleteMany({});
+  await prisma.knowledgeEntryChange.deleteMany({});
   await prisma.auditLog.deleteMany({});
   await prisma.shopChangeLog.deleteMany({});
   await prisma.repairPart.deleteMany({});
   await prisma.repairIssue.deleteMany({});
   await prisma.repairTicket.deleteMany({});
+  // Steps and parts go with their entry; the issue categories belong to the migration and stay
+  await prisma.knowledgeEntry.deleteMany({});
   
   // Clean self-referencing maintenance schedules
   await prisma.maintenanceSchedule.updateMany({
@@ -48,31 +54,19 @@ async function cleanDatabase(prisma: PrismaClient) {
 }
 
 async function main() {
-  console.log('Seeding database in modular mode...\n');
+  console.log(`Seeding database with SEED=${SEED} (the same SEED rebuilds the same data, dated from today)...\n`);
+  // One clock for every module, so "today" is the same instant everywhere
+  const now = Date.now();
 
-  // 0. Clean database first
   await cleanDatabase(prisma);
-
-  // 1. Garages (Independent)
   await seedGarages(prisma);
-
-  // 2. Users & Mechanics (Independent)
   await seedUsers(prisma);
-
-  // 3. Vehicles (Independent)
-  await seedVehicles(prisma);
-
-  // 4. Drivers (Independent)
-  await seedDrivers(prisma);
-
-  // 5. Bookings (Independent)
+  const vehicles = await seedVehicles(prisma);
+  const drivers = await seedDrivers(prisma, now);
   await seedBookings(prisma);
-
-  // 6. Repairs (Depends on garages, vehicles, drivers, mechanics, users)
-  await seedRepairs(prisma);
-
-  // 7. VMMS (Depends on garages, vehicles, mechanics)
-  await seedVmms(prisma);
+  const { entries, categoryId } = await seedKnowledge(prisma, now);
+  await seedRepairs(prisma, { now, vehicles, drivers, entries, categoryId });
+  await seedVmms(prisma, now);
 
   console.log('Database seeded successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
