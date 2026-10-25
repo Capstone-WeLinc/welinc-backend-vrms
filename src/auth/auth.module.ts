@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
+import { JwtModule, type JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -15,13 +15,13 @@ import SharedModule from '../shared/shared.module';
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const expiresIn: string | number =
-          config.get<string>('JWT_ACCESS_EXPIRY') ?? '15m';
+        const expiresIn = (config.get<string>('JWT_ACCESS_EXPIRY') ??
+          '15m') as JwtSignOptions['expiresIn'];
 
         return {
           secret: config.getOrThrow<string>('JWT_SECRET'),
           signOptions: {
-            expiresIn: expiresIn as any,
+            expiresIn,
           },
         };
       },

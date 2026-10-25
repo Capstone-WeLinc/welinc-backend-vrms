@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import type { ServerResponse } from 'http';
 import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 
@@ -14,7 +15,7 @@ async function bootstrap() {
 
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads/',
-    setHeaders: (res) => {
+    setHeaders: (res: ServerResponse) => {
       res.setHeader('Cache-Control', 'public, max-age=86400');
     },
   });
@@ -23,7 +24,10 @@ async function bootstrap() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=()',
+    );
     next();
   });
 
@@ -52,7 +56,10 @@ async function bootstrap() {
           callback(null, true);
           return;
         }
-        callback(null, corsOrigins.includes(origin) || isLocalDevOrigin(origin));
+        callback(
+          null,
+          corsOrigins.includes(origin) || isLocalDevOrigin(origin),
+        );
         return;
       }
 
@@ -64,4 +71,4 @@ async function bootstrap() {
   });
   await app.listen(process.env['PORT'] ?? 3000);
 }
-bootstrap();
+void bootstrap();

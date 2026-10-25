@@ -8,7 +8,9 @@ export class MailService {
 
   constructor() {
     const host = process.env.SMTP_HOST;
-    const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+    const port = process.env.SMTP_PORT
+      ? parseInt(process.env.SMTP_PORT, 10)
+      : 587;
     const user = process.env.SMTP_USER;
     const pass = process.env.SMTP_PASS;
 
@@ -36,7 +38,8 @@ export class MailService {
     text: string;
     html?: string;
   }): Promise<void> {
-    const from = process.env.SMTP_FROM || 'WeLinc Logistics <no-reply@welinc.com>';
+    const from =
+      process.env.SMTP_FROM || 'WeLinc Logistics <no-reply@welinc.com>';
 
     if (this.transporter) {
       try {

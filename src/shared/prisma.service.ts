@@ -4,7 +4,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnApplicationShutdown {
+export class PrismaService
+  extends PrismaClient
+  implements OnApplicationShutdown
+{
   private readonly pool: pg.Pool;
 
   constructor() {

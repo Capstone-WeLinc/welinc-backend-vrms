@@ -35,7 +35,7 @@ export class RolesGuard implements CanActivate {
     if (!targetSystem) {
       // 1. Check referer/origin headers
       const referer = request.headers.referer || '';
-      const origin = (request.headers.origin as string) || '';
+      const origin = request.headers.origin || '';
       const source = (referer + '|' + origin).toLowerCase();
 
       if (source.includes(':8001') || source.includes('vrms')) {
@@ -73,13 +73,20 @@ export class RolesGuard implements CanActivate {
       }
 
       // 3. Fallback to query parameter system
-      if (!targetSystem && request.query?.system) {
-        targetSystem = String(request.query.system).toUpperCase();
+      const querySystem: unknown = Array.isArray(request.query?.system)
+        ? request.query.system[0]
+        : request.query?.system;
+      if (!targetSystem && typeof querySystem === 'string' && querySystem) {
+        targetSystem = querySystem.toUpperCase();
       }
 
       // 4. Fallback to body roleAssignments system
-      if (!targetSystem && (request.body as any)?.roleAssignments?.[0]?.system) {
-        targetSystem = String((request.body as any).roleAssignments[0].system).toUpperCase();
+      const body = request.body as
+        | { roleAssignments?: { system?: unknown }[] }
+        | undefined;
+      const bodySystem = body?.roleAssignments?.[0]?.system;
+      if (!targetSystem && typeof bodySystem === 'string' && bodySystem) {
+        targetSystem = bodySystem.toUpperCase();
       }
 
       user.system = targetSystem;
@@ -94,4 +101,3 @@ export class RolesGuard implements CanActivate {
     );
   }
 }
-

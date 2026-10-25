@@ -44,7 +44,6 @@ import {
   STALE_TICKET,
 } from './ticket-knowledge';
 
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type JwtUser = {
@@ -80,7 +79,10 @@ const LIST_PAGE_SIZE = 20;
 
 /** Validated `from` (inclusive) and `to` (exclusive) instants; `from >= to` is a 400. */
 function parseRange(from: string | undefined, to: string | undefined) {
-  const range = { from: from ? new Date(from) : undefined, to: to ? new Date(to) : undefined };
+  const range = {
+    from: from ? new Date(from) : undefined,
+    to: to ? new Date(to) : undefined,
+  };
   if (range.from && range.to && range.from >= range.to) {
     throw new BadRequestException('"from" must be before "to"');
   }
@@ -99,6 +101,22 @@ function generateRepairNumber(): string {
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
+
+/** The relations a ticket is loaded with, for formatTicket. */
+const ticketInclude = {
+  vehicle: { select: { plateNumber: true, model: true, status: true } },
+  driver: { select: { name: true, licenseNumber: true, isVerified: true } },
+  garage: { select: { name: true } },
+  issues: issueInclude,
+  mechanics: {
+    select: { id: true, name: true, isOutsourced: true, shopName: true },
+  },
+  repairParts: { orderBy: { createdAt: 'asc' } },
+} satisfies Prisma.RepairTicketInclude;
+
+type TicketRow = Prisma.RepairTicketGetPayload<{
+  include: typeof ticketInclude;
+}>;
 
 @Injectable()
 export class RepairsService {
@@ -120,7 +138,9 @@ export class RepairsService {
       },
     });
     if (!vehicle) {
-      throw new BadRequestException(`Vehicle with plate number "${dto.vehiclePlate}" not found`);
+      throw new BadRequestException(
+        `Vehicle with plate number "${dto.vehiclePlate}" not found`,
+      );
     }
 
     // Strict lookup: Garage
@@ -132,7 +152,9 @@ export class RepairsService {
       },
     });
     if (!garage) {
-      throw new BadRequestException(`Garage location "${dto.garageLocation}" not found`);
+      throw new BadRequestException(
+        `Garage location "${dto.garageLocation}" not found`,
+      );
     }
 
     // Spec 0007, AC-26: each issue's category must be active, and a picked entry Active.
@@ -140,7 +162,10 @@ export class RepairsService {
     const { categories, entries } = await this.issueSources(dto);
 
     // Lookup/Create: Drivers
-    const licenseKey = dto.driverName.toLowerCase().replace(/\s+/g, '-').substring(0, 50);
+    const licenseKey = dto.driverName
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .substring(0, 50);
     const existingDriver = await this.prisma.driver.findUnique({
       where: { licenseNumber: licenseKey },
     });
@@ -185,7 +210,9 @@ export class RepairsService {
           where: { name: m.name, isOutsourced: false },
         });
         if (!mechanic) {
-          throw new BadRequestException(`In-house mechanic "${m.name}" not found`);
+          throw new BadRequestException(
+            `In-house mechanic "${m.name}" not found`,
+          );
         }
         mechanicIds.push(mechanic.id);
       }
@@ -237,7 +264,7 @@ export class RepairsService {
           create: { userId: user.sub, email: user.email, action: 'CREATED' },
         },
       },
-      include: this.ticketInclude(),
+      include: ticketInclude,
     });
 
     this.logger.log(`Repair ticket created — ${repairNumber} by ${user.email}`);
@@ -281,8 +308,9 @@ export class RepairsService {
     };
   }
 
-  private async autoEmbedIssues(ticket: any): Promise<void> {
-    const AI_SERVICE = process.env.AI_SERVICE_URL || 'http://vrms-analytics-ai:8020';
+  private async autoEmbedIssues(ticket: TicketRow): Promise<void> {
+    const AI_SERVICE =
+      process.env.AI_SERVICE_URL || 'http://vrms-analytics-ai:8020';
     for (const issue of ticket.issues ?? []) {
       try {
         await fetch(`${AI_SERVICE}/ai/embed-issue`, {
@@ -294,7 +322,7 @@ export class RepairsService {
             description: issue.description,
           }),
           signal: AbortSignal.timeout(5000),
-        } as any);
+        });
       } catch (e) {
         this.logger.warn(`Auto-embed failed for issue ${issue.id}: ${e}`);
       }
@@ -306,7 +334,9 @@ export class RepairsService {
   async findAll(query: FindRepairsQueryDto, user: JwtUser) {
     const { search, status, garageId, overdue } = query;
     const isMechanic = this.isMechanic(user);
-    const mechanicRecord = isMechanic ? await this.getMechanicForUser(user) : null;
+    const mechanicRecord = isMechanic
+      ? await this.getMechanicForUser(user)
+      : null;
 
     // Fail closed: a mechanic login with no mechanic record sees nothing
     if (isMechanic && !mechanicRecord) return { data: [], total: 0 };
@@ -346,7 +376,7 @@ export class RepairsService {
       this.prisma.repairTicket.count({ where }),
       this.prisma.repairTicket.findMany({
         where,
-        include: this.ticketInclude(),
+        include: ticketInclude,
         // Most urgent first; id last so pages never repeat or skip a row
         orderBy: [
           { targetDueDate: { sort: 'asc', nulls: 'last' } },
@@ -357,7 +387,10 @@ export class RepairsService {
       }),
     ]);
 
-    return { data: tickets.map((t) => this.formatTicket(t, isMechanic)), total };
+    return {
+      data: tickets.map((t) => this.formatTicket(t, isMechanic)),
+      total,
+    };
   }
 
   // ── Repair history (completed + cancelled) ───────────────────────────────
@@ -366,11 +399,17 @@ export class RepairsService {
     const { search, status, garageId, page, limit } = query;
     const { from, to } = parseRange(query.from, query.to);
     const isMechanic = this.isMechanic(user);
-    const mechanicRecord = isMechanic ? await this.getMechanicForUser(user) : null;
+    const mechanicRecord = isMechanic
+      ? await this.getMechanicForUser(user)
+      : null;
 
     // Fail closed: a mechanic login with no mechanic record sees nothing
     if (isMechanic && !mechanicRecord) {
-      return { data: [], total: 0, summary: { closed: 0, completed: 0, cancelled: 0, spend: null } };
+      return {
+        data: [],
+        total: 0,
+        summary: { closed: 0, completed: 0, cancelled: 0, spend: null },
+      };
     }
 
     // One where for rows, count and summary, so a tile never disagrees with the list
@@ -387,7 +426,8 @@ export class RepairsService {
     }
 
     if (garageId) where.garageId = garageId;
-    if (from || to) where.completedAt = { ...(from && { gte: from }), ...(to && { lt: to }) };
+    if (from || to)
+      where.completedAt = { ...(from && { gte: from }), ...(to && { lt: to }) };
     if (mechanicRecord) where.mechanics = { some: { id: mechanicRecord.id } };
 
     const [tickets, groups] = await Promise.all([
@@ -407,8 +447,12 @@ export class RepairsService {
           driver: { select: { name: true } },
           garage: { select: { name: true } },
         },
-        orderBy: [{ completedAt: { sort: 'desc', nulls: 'last' } }, { id: 'desc' }],
-        ...(page !== undefined && limit !== undefined && { skip: (page - 1) * limit, take: limit }),
+        orderBy: [
+          { completedAt: { sort: 'desc', nulls: 'last' } },
+          { id: 'desc' },
+        ],
+        ...(page !== undefined &&
+          limit !== undefined && { skip: (page - 1) * limit, take: limit }),
       }),
       this.prisma.repairTicket.groupBy({
         by: ['repairStatus'],
@@ -418,9 +462,13 @@ export class RepairsService {
       }),
     ]);
 
-    const completedGroup = groups.find((g) => g.repairStatus === RepairStatus.COMPLETED);
+    const completedGroup = groups.find(
+      (g) => g.repairStatus === RepairStatus.COMPLETED,
+    );
     const completed = completedGroup?._count._all ?? 0;
-    const cancelled = groups.find((g) => g.repairStatus === RepairStatus.CANCELLED)?._count._all ?? 0;
+    const cancelled =
+      groups.find((g) => g.repairStatus === RepairStatus.CANCELLED)?._count
+        ._all ?? 0;
 
     const data = tickets.map((t) => {
       const closedAt = t.completedAt?.toISOString() ?? null;
@@ -439,7 +487,9 @@ export class RepairsService {
         cancellationReason: t.cancellationReason,
         isUnlocked: t.isUnlocked,
       };
-      return isMechanic ? row : { ...row, totalCost: t.totalCost ? Number(t.totalCost) : null };
+      return isMechanic
+        ? row
+        : { ...row, totalCost: t.totalCost ? Number(t.totalCost) : null };
     });
 
     return {
@@ -460,7 +510,7 @@ export class RepairsService {
     const isMechanic = this.isMechanic(user);
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: this.ticketInclude(),
+      include: ticketInclude,
     });
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
@@ -472,7 +522,9 @@ export class RepairsService {
         ? ticket.mechanics.some((m) => m.id === mechanicRecord.id)
         : false;
       if (!isAssigned) {
-        throw new ForbiddenException('You are not assigned to this repair ticket');
+        throw new ForbiddenException(
+          'You are not assigned to this repair ticket',
+        );
       }
     }
 
@@ -490,7 +542,10 @@ export class RepairsService {
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
-    if (dto.lastUpdatedAt && ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
+    if (
+      dto.lastUpdatedAt &&
+      ticket.updatedAt.toISOString() !== dto.lastUpdatedAt
+    ) {
       throw new ConflictException(
         'This ticket has been updated by another user. Please reload the page to see the latest changes.',
       );
@@ -513,11 +568,20 @@ export class RepairsService {
       let isValidTransition = false;
       if (nextStatus === RepairStatus.CANCELLED) {
         isValidTransition = true; // Allowed from any stage by Admin (checked below)
-      } else if (currentStatus === RepairStatus.PENDING && nextStatus === RepairStatus.IN_PROGRESS) {
+      } else if (
+        currentStatus === RepairStatus.PENDING &&
+        nextStatus === RepairStatus.IN_PROGRESS
+      ) {
         isValidTransition = true;
-      } else if (currentStatus === RepairStatus.IN_PROGRESS && nextStatus === RepairStatus.FOR_VERIFICATION) {
+      } else if (
+        currentStatus === RepairStatus.IN_PROGRESS &&
+        nextStatus === RepairStatus.FOR_VERIFICATION
+      ) {
         isValidTransition = true;
-      } else if (currentStatus === RepairStatus.FOR_VERIFICATION && nextStatus === RepairStatus.COMPLETED) {
+      } else if (
+        currentStatus === RepairStatus.FOR_VERIFICATION &&
+        nextStatus === RepairStatus.COMPLETED
+      ) {
         isValidTransition = true;
       }
 
@@ -532,7 +596,7 @@ export class RepairsService {
         const currentLabel = STATUS_LABELS[currentStatus] || currentStatus;
         const nextLabel = STATUS_LABELS[nextStatus] || nextStatus;
         throw new BadRequestException(
-          `Cannot change status from '${currentLabel}' to '${nextLabel}'. Tickets must progress in order: Pending ➔ In Progress ➔ For Verification ➔ Completed.`
+          `Cannot change status from '${currentLabel}' to '${nextLabel}'. Tickets must progress in order: Pending ➔ In Progress ➔ For Verification ➔ Completed.`,
         );
       }
     }
@@ -544,7 +608,9 @@ export class RepairsService {
         ? ticket.mechanics.some((m) => m.id === mechanicRecord.id)
         : false;
       if (!isAssigned) {
-        throw new ForbiddenException('You are not assigned to this repair ticket');
+        throw new ForbiddenException(
+          'You are not assigned to this repair ticket',
+        );
       }
       // Mechanics cannot transition to COMPLETED or CANCELLED
       if (!MECHANIC_ALLOWED_TRANSITIONS.includes(dto.status)) {
@@ -555,7 +621,10 @@ export class RepairsService {
     }
 
     // Cancellation requires a reason
-    if (dto.status === RepairStatus.CANCELLED && !dto.cancellationReason?.trim()) {
+    if (
+      dto.status === RepairStatus.CANCELLED &&
+      !dto.cancellationReason?.trim()
+    ) {
       throw new BadRequestException('A cancellation reason is required');
     }
 
@@ -658,7 +727,7 @@ export class RepairsService {
               }
             : {}),
         },
-        include: this.ticketInclude(),
+        include: ticketInclude,
       }),
       ...(statusChanged
         ? [
@@ -774,7 +843,7 @@ export class RepairsService {
       });
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
-        include: this.ticketInclude(),
+        include: ticketInclude,
       });
     });
 
@@ -834,7 +903,9 @@ export class RepairsService {
       ? ticket.mechanics.some((m) => m.id === mechanicRecord.id)
       : false;
     if (!isAssigned) {
-      throw new ForbiddenException('You are not assigned to this repair ticket');
+      throw new ForbiddenException(
+        'You are not assigned to this repair ticket',
+      );
     }
   }
 
@@ -852,7 +923,10 @@ export class RepairsService {
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
-    if (dto.lastUpdatedAt && ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
+    if (
+      dto.lastUpdatedAt &&
+      ticket.updatedAt.toISOString() !== dto.lastUpdatedAt
+    ) {
       throw new ConflictException(
         'This ticket has been updated by another user. Please reload the page to see the latest changes.',
       );
@@ -883,10 +957,18 @@ export class RepairsService {
     const laborCost = dto.laborCost ?? Number(ticket.laborCost ?? 0);
 
     if (!dto.isLumpSum && (!dto.parts || dto.parts.length === 0)) {
-      throw new BadRequestException('At least one part is required in itemized mode');
+      throw new BadRequestException(
+        'At least one part is required in itemized mode',
+      );
     }
 
-    let partsData: { repairTicketId: string; description: string; unitCost: number; quantity: number; subtotal: number }[] = [];
+    let partsData: {
+      repairTicketId: string;
+      description: string;
+      unitCost: number;
+      quantity: number;
+      subtotal: number;
+    }[] = [];
 
     if (dto.isLumpSum) {
       partsCost = dto.partsCost ?? Number(ticket.partsCost ?? 0);
@@ -932,18 +1014,28 @@ export class RepairsService {
           email: user.email,
           action: 'COST_UPDATE',
           fieldName: 'costs',
-          previousValue: JSON.stringify({ partsCost: previousParts, laborCost: previousLabor }),
-          newValue: JSON.stringify({ partsCost, laborCost, totalCost, isLumpSum: dto.isLumpSum }),
+          previousValue: JSON.stringify({
+            partsCost: previousParts,
+            laborCost: previousLabor,
+          }),
+          newValue: JSON.stringify({
+            partsCost,
+            laborCost,
+            totalCost,
+            isLumpSum: dto.isLumpSum,
+          }),
         },
       });
     });
 
     const updated = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: this.ticketInclude(),
+      include: ticketInclude,
     });
 
-    this.logger.log(`Costs updated on ticket ${ticket.repairNumber} by ${user.email}`);
+    this.logger.log(
+      `Costs updated on ticket ${ticket.repairNumber} by ${user.email}`,
+    );
     return this.present(updated!, false);
   }
 
@@ -953,7 +1045,9 @@ export class RepairsService {
     // Collect mechanic IDs that are assigned to any active (non-terminal) ticket
     const activeTickets = await this.prisma.repairTicket.findMany({
       where: {
-        repairStatus: { notIn: [RepairStatus.COMPLETED, RepairStatus.CANCELLED] },
+        repairStatus: {
+          notIn: [RepairStatus.COMPLETED, RepairStatus.CANCELLED],
+        },
       },
       select: { mechanics: { select: { id: true } } },
     });
@@ -973,7 +1067,6 @@ export class RepairsService {
 
   // ── Unlock terminal ticket ────────────────────────────────────────────────
 
-
   async unlockTicket(id: string, dto: UnlockTicketDto, user: JwtUser) {
     if (this.isMechanic(user)) {
       throw new ForbiddenException('Only Admins can unlock tickets');
@@ -983,7 +1076,9 @@ export class RepairsService {
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
     if (!TERMINAL_STATUSES.includes(ticket.repairStatus)) {
-      throw new BadRequestException('Only Completed or Cancelled tickets can be unlocked');
+      throw new BadRequestException(
+        'Only Completed or Cancelled tickets can be unlocked',
+      );
     }
 
     if (ticket.isUnlocked) {
@@ -997,7 +1092,7 @@ export class RepairsService {
           isUnlocked: true,
           unlockReason: dto.unlockReason.trim(),
         },
-        include: this.ticketInclude(),
+        include: ticketInclude,
       }),
       this.prisma.auditLog.create({
         data: {
@@ -1010,13 +1105,17 @@ export class RepairsService {
       }),
     ]);
 
-    this.logger.log(`Ticket ${ticket.repairNumber} unlocked by ${user.email}: ${dto.unlockReason}`);
+    this.logger.log(
+      `Ticket ${ticket.repairNumber} unlocked by ${user.email}: ${dto.unlockReason}`,
+    );
     return this.present(updated, false);
   }
 
   // ── Audit timeline (keyset paged, newest first) ──────────────────────────
 
-  async findAuditEvents(query: AuditEventsQueryDto): Promise<{ data: AuditEvent[]; nextCursor: string | null }> {
+  async findAuditEvents(
+    query: AuditEventsQueryDto,
+  ): Promise<{ data: AuditEvent[]; nextCursor: string | null }> {
     const limit = query.limit ?? AUDIT_PAGE_SIZE;
     const { from, to } = parseRange(query.from, query.to);
     const repairNumber = query.repairNumber?.trim();
@@ -1025,13 +1124,23 @@ export class RepairsService {
     if (query.type) filters.push({ action: query.type });
     if (query.actorId) {
       // The Person filter carries a VRMS user id; audit rows are matched by that user's email
-      const actor = await this.prisma.user.findUnique({ where: { id: query.actorId }, select: { email: true } });
+      const actor = await this.prisma.user.findUnique({
+        where: { id: query.actorId },
+        select: { email: true },
+      });
       if (!actor) return { data: [], nextCursor: null };
       filters.push({ email: { equals: actor.email, mode: 'insensitive' } });
     }
-    if (from || to) filters.push({ createdAt: { ...(from && { gte: from }), ...(to && { lt: to }) } });
+    if (from || to)
+      filters.push({
+        createdAt: { ...(from && { gte: from }), ...(to && { lt: to }) },
+      });
     if (repairNumber && repairNumber.length >= 2) {
-      filters.push({ repairTicket: { repairNumber: { contains: repairNumber, mode: 'insensitive' } } });
+      filters.push({
+        repairTicket: {
+          repairNumber: { contains: repairNumber, mode: 'insensitive' },
+        },
+      });
     }
     if (query.ticketId) filters.push({ repairTicketId: query.ticketId });
     if (query.cursor) filters.push(olderThan(decodeCursor(query.cursor)));
@@ -1059,7 +1168,8 @@ export class RepairsService {
 
     return {
       data: page.map((row) => toAuditEvent(row, usersByEmail)),
-      nextCursor: rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
+      nextCursor:
+        rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
     };
   }
 
@@ -1070,7 +1180,9 @@ export class RepairsService {
       select: { email: true },
     });
     const usersByEmail = await this.findUsersByEmail(rows.map((r) => r.email));
-    return [...usersByEmail.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return [...usersByEmail.values()].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }
 
   /**
@@ -1078,11 +1190,19 @@ export class RepairsService {
    * audit_logs has no relation to users, and its user_id is the auth service's id, so email is the link.
    * Soft deleted and inactive users are included: their changes are real.
    */
-  private async findUsersByEmail(emails: (string | null)[]): Promise<Map<string, ActorUser>> {
-    const keys = [...new Set(emails.map(emailKey).filter((k): k is string => !!k))];
+  private async findUsersByEmail(
+    emails: (string | null)[],
+  ): Promise<Map<string, ActorUser>> {
+    const keys = [
+      ...new Set(emails.map(emailKey).filter((k): k is string => !!k)),
+    ];
     if (keys.length === 0) return new Map();
     const users = await this.prisma.user.findMany({
-      where: { OR: keys.map((key) => ({ email: { equals: key, mode: 'insensitive' as const } })) },
+      where: {
+        OR: keys.map((key) => ({
+          email: { equals: key, mode: 'insensitive' as const },
+        })),
+      },
       select: { id: true, name: true, email: true },
     });
     return new Map(users.map((u) => [u.email.toLowerCase(), u]));
@@ -1106,22 +1226,9 @@ export class RepairsService {
     });
   }
 
-  private ticketInclude() {
-    return {
-      vehicle: { select: { plateNumber: true, model: true, status: true } },
-      driver: { select: { name: true, licenseNumber: true, isVerified: true } },
-      garage: { select: { name: true } },
-      issues: issueInclude,
-      mechanics: { select: { id: true, name: true, isOutsourced: true, shopName: true } },
-      repairParts: { orderBy: { createdAt: 'asc' as const } },
-    };
-  }
-
   /** formatTicket plus each linked entry's typical hours, for one ticket (spec 0007, AC-27). */
-  private async present(ticket: any, isMechanic: boolean) {
-    const issues =
-      (ticket as { issues?: { knowledgeEntryId: string | null }[] }).issues ??
-      [];
+  private async present(ticket: TicketRow, isMechanic: boolean) {
+    const issues = ticket.issues;
     const entryIds = [
       ...new Set(
         issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
@@ -1135,7 +1242,7 @@ export class RepairsService {
   }
 
   private formatTicket(
-    ticket: any,
+    ticket: TicketRow,
     isMechanic: boolean,
     typicalHours: Map<string, number | null> = new Map(),
   ) {
@@ -1149,17 +1256,18 @@ export class RepairsService {
       garageLocation: ticket.garage.name,
       odometerReading: ticket.odometer,
       targetDueDate: ticket.targetDueDate,
-      issueDescription: ticket.issues && ticket.issues.length > 0
-        ? ticket.issues.map((i: any) => i.description).join(', ')
-        : '',
+      issueDescription:
+        ticket.issues && ticket.issues.length > 0
+          ? ticket.issues.map((i) => i.description).join(', ')
+          : '',
       createdAt: ticket.createdAt.toISOString(),
       updatedAt: ticket.updatedAt.toISOString(),
       completedAt: ticket.completedAt?.toISOString() ?? null,
       cancellationReason: ticket.cancellationReason,
       failedVerificationReason: ticket.failedVerificationReason,
       remarks: ticket.remarks,
-      issues: ticket.issues.map((i: any) => formatIssue(i, typicalHours)),
-      mechanics: ticket.mechanics.map((m: any) => ({
+      issues: ticket.issues.map((i) => formatIssue(i, typicalHours)),
+      mechanics: ticket.mechanics.map((m) => ({
         id: m.id,
         name: m.name,
         isOutsourced: m.isOutsourced,
@@ -1179,7 +1287,7 @@ export class RepairsService {
         isUnlocked: ticket.isUnlocked,
         unlockReason: ticket.unlockReason,
         driverIsVerified: ticket.driver.isVerified,
-        repairParts: ticket.repairParts.map((p: any) => ({
+        repairParts: ticket.repairParts.map((p) => ({
           id: p.id,
           description: p.description,
           unitCost: Number(p.unitCost),

@@ -1,27 +1,23 @@
-import {
-  Injectable,
-  UnauthorizedException,
-} from "@nestjs/common";
-import { PassportStrategy } from "@nestjs/passport";
-import { ExtractJwt, Strategy } from "passport-jwt";
-import { ConfigService } from "@nestjs/config";
-import { SystemType } from "@prisma/client";
+import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import type { Request } from 'express';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { ConfigService } from '@nestjs/config';
+import { SystemType } from '@prisma/client';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(
-    config: ConfigService,
-  ) {
+  constructor(config: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.getOrThrow<string>("JWT_SECRET"),
+      secretOrKey: config.getOrThrow<string>('JWT_SECRET'),
       passReqToCallback: true,
     });
   }
 
-  async validate(
-    request: any,
+  validate(
+    request: Request,
     payload: {
       sub: string;
       email: string;
@@ -30,14 +26,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     },
   ) {
     if (!payload || !payload.sub || !payload.email) {
-      throw new UnauthorizedException("Invalid session");
+      throw new UnauthorizedException('Invalid session');
     }
 
     let requestedSystem = (payload.system || '') as SystemType;
 
-    if (!requestedSystem || !Object.values(SystemType).includes(requestedSystem)) {
+    if (
+      !requestedSystem ||
+      !Object.values(SystemType).includes(requestedSystem)
+    ) {
       const referer = request.headers?.referer || '';
-      const origin = (request.headers?.origin as string) || '';
+      const origin = request.headers?.origin || '';
       const source = (referer + '|' + origin).toLowerCase();
 
       if (source.includes(':8001') || source.includes('vrms')) {
