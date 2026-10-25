@@ -22,6 +22,10 @@ import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
 import { UnlockTicketDto } from './dto/unlock-ticket.dto';
+import {
+  CheckIssueStepDto,
+  LinkIssueKnowledgeDto,
+} from './dto/link-issue-knowledge.dto';
 
 type AuthRequest = { user: { sub: string; email: string; roles: { role: UserRole; system: string }[]; system: string } };
 
@@ -88,6 +92,31 @@ export class RepairsController {
     @Req() req: AuthRequest,
   ) {
     return this.repairsService.updateStatus(id, dto, req.user);
+  }
+
+  // ADMIN + assigned MECHANIC or CHIEF_MECHANIC — link, relink or unlink a known fix (spec 0007, AC-29)
+  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  @Patch(':id/issues/:issueId/knowledge')
+  linkKnowledge(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Body() dto: LinkIssueKnowledgeDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.repairsService.linkKnowledge(id, issueId, dto, req.user);
+  }
+
+  // ADMIN + assigned MECHANIC or CHIEF_MECHANIC — tick a known fix step (spec 0007, AC-28)
+  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  @Patch(':id/issues/:issueId/steps/:stepId')
+  checkStep(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Param('stepId', ParseUUIDPipe) stepId: string,
+    @Body() dto: CheckIssueStepDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.repairsService.checkStep(id, issueId, stepId, dto, req.user);
   }
 
   // ADMIN only — update costs (lump sum or itemized parts)

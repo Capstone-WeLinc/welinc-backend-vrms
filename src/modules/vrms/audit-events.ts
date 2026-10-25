@@ -25,12 +25,19 @@ export type AuditEvent = {
   cost?: { from: CostSnapshot | null; to: CostSnapshot | null } | null;
   unlockReason?: string;
   garage?: { from: string | null; to: string | null };
+  /** Spec 0007, AC-29: the known fix entry names before and after; null is none. */
+  knowledge?: {
+    issueId: string | null;
+    from: string | null;
+    to: string | null;
+  };
   rawAction: string;
 };
 
 export type AuditRow = {
   id: string;
   action: string;
+  fieldName?: string | null;
   userId: string | null;
   email: string | null;
   previousValue: string | null;
@@ -166,6 +173,13 @@ export function toAuditEvent(
       break;
     case 'SHOP_CHANGE':
       event.garage = { from: row.previousValue, to: row.newValue };
+      break;
+    case 'KNOWLEDGE_LINK':
+      event.knowledge = {
+        issueId: row.fieldName ?? null,
+        from: row.previousValue,
+        to: row.newValue,
+      };
       break;
   }
   return event;

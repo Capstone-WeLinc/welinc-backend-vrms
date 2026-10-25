@@ -81,6 +81,13 @@ export class KnowledgeController {
     return this.editor.create(dto, req.user);
   }
 
+  // Before entries/:id, so "options" never reaches the UUID pipe
+  @Roles(...KNOWLEDGE_READERS)
+  @Get('entries/options')
+  entryOptions(@Req() req: AuthRequest) {
+    return this.entries.options(req.user);
+  }
+
   @Roles(...KNOWLEDGE_READERS)
   @Get('entries/:id')
   findEntry(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthRequest) {

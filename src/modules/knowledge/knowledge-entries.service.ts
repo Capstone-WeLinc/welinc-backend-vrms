@@ -109,6 +109,44 @@ export class KnowledgeEntriesService {
     };
   }
 
+  /**
+   * GET /vrms/knowledge/entries/options: every Active entry for the repair form picker and the
+   * ticket's link Combobox, most seen first (AC-24, AC-27).
+   */
+  async options(user: JwtUser) {
+    const editor = isKnowledgeEditor(user);
+    const entries = await this.prisma.knowledgeEntry.findMany({
+      where: { status: KnowledgeEntryStatus.ACTIVE },
+      include: { category: { select: { name: true } } },
+    });
+    const stats = await loadStats(
+      this.prisma,
+      entries.map((e) => e.id),
+    );
+    return entries
+      .map((e) => ({ entry: e, stats: stats.get(e.id)! }))
+      .sort(
+        (a, b) =>
+          b.stats.seenCount - a.stats.seenCount ||
+          a.entry.name.localeCompare(b.entry.name, undefined, {
+            sensitivity: 'base',
+          }),
+      )
+      .map(({ entry, stats: s }) => ({
+        id: entry.id,
+        name: entry.name,
+        categoryId: entry.categoryId,
+        categoryName: entry.category.name,
+        symptoms: entry.symptoms,
+        suggestedPriority: entry.suggestedPriority,
+        descriptionTemplate: entry.descriptionTemplate,
+        estimatedHours: toNumber(entry.estimatedHours),
+        seenCount: s.seenCount,
+        typicalHours: s.typicalHours,
+        ...(editor ? { typicalCost: s.typicalCost } : {}),
+      }));
+  }
+
   /** GET /vrms/knowledge/entries/:id. A mechanic gets 404 for anything not ACTIVE (AC-16). */
   async findOne(id: string, user: JwtUser) {
     const editor = isKnowledgeEditor(user);

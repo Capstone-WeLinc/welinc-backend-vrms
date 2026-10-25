@@ -7,6 +7,7 @@ import {
   ValidateNested,
   IsEnum,
   IsBoolean,
+  IsUUID,
   MaxLength,
   ArrayMinSize,
   Min,
@@ -30,10 +31,14 @@ export class MechanicAssignmentDto {
 }
 
 export class RepairIssueDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  vehicleSystem: string;
+  // An active IssueCategory (spec 0007, AC-26); replaces the old free text vehicleSystem
+  @IsUUID('all', { message: 'Choose a system.' })
+  categoryId: string;
+
+  // An Active knowledge entry picked in the repair form; its steps are copied to the issue
+  @IsOptional()
+  @IsUUID()
+  knowledgeEntryId?: string;
 
   @IsString()
   @IsNotEmpty()

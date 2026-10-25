@@ -38,14 +38,15 @@ const blankToNull = ({ value }: { value: unknown }) => {
   return t === '' ? null : t;
 };
 
-function IsQuarterStep(options?: ValidationOptions) {
+/** 0.25, 0.5, 0.75 and so on: estimated hours and hours spent (spec 0007, AC-18, AC-30). */
+export function IsQuarterStep(message: string, options?: ValidationOptions) {
   return ValidateBy(
     {
       name: 'isQuarterStep',
       validator: {
         validate: (value: unknown) =>
           typeof value === 'number' && Number.isInteger(value * 4),
-        defaultMessage: () => 'Estimated hours go in steps of 0.25.',
+        defaultMessage: () => message,
       },
     },
     options,
@@ -68,7 +69,7 @@ export class EntryFieldsDto {
   @IsNumber({}, { message: 'Estimated hours must be a number.' })
   @Min(0.25, { message: 'Estimated hours must be 0.25 to 200.' })
   @Max(200, { message: 'Estimated hours must be 0.25 to 200.' })
-  @IsQuarterStep()
+  @IsQuarterStep('Estimated hours go in steps of 0.25.')
   estimatedHours?: number | null;
 
   @Transform(trim)
