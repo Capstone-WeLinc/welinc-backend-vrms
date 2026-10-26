@@ -37,7 +37,7 @@ export class ConfigService {
   // ─── Available In-house Mechanics ───────────────────────────────────────────
 
   async listAvailableMechanics() {
-    // Fetch all active in-house mechanics (non-outsourced, linked to a user)
+    // Fetch all active in-house mechanics (non-outsourced, linked to a welinc-auth user)
     const all = await this.prisma.mechanic.findMany({
       where: {
         isActive: true,
@@ -46,8 +46,9 @@ export class ConfigService {
       select: {
         id: true,
         name: true,
-        // The linked login's email, so the Users page can match a mechanic to an account (spec 0006).
-        user: { select: { email: true } },
+        // The Users page matches a mechanic to an account by authUserId (spec 0009, AC-9)
+        authUserId: true,
+        email: true,
         repairTickets: {
           where: {
             repairStatus: { in: ACTIVE_STATUSES },
@@ -62,7 +63,8 @@ export class ConfigService {
       id: mechanic.id,
       name: mechanic.name,
       isAvailable: mechanic.repairTickets.length === 0,
-      email: mechanic.user?.email ?? null,
+      email: mechanic.email,
+      authUserId: mechanic.authUserId,
     }));
   }
 

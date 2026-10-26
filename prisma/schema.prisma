@@ -13,20 +13,6 @@ datasource db {
 // ENUMS
 // ==========================================
 
-enum UserRole {
-  ADMIN
-  MECHANIC
-  CHIEF_MECHANIC
-  CUSTOMER_SUPPORT
-  OPERATIONS
-}
-
-enum SystemType {
-  VRMS
-  VMMS
-  BMS
-}
-
 enum VehicleStatus {
   AVAILABLE
   UNDER_REPAIR
@@ -97,43 +83,6 @@ enum SuggestionStatus {
 // ==========================================
 // MODELS
 // ==========================================
-
-model User {
-  id                  String               @id @default(uuid()) @db.Uuid
-  name                String               @db.VarChar(100)
-  email               String               @unique @map("email") @db.VarChar(255)
-  emailVerified       Boolean              @default(false) @map("email_verified")
-  passwordHash        String               @map("password_hash") @db.VarChar(255)
-  contact             String?              @db.VarChar(100)
-  profilePicture      String?              @map("profile_picture") @db.Text
-  isActive            Boolean              @default(true) @map("is_active")
-  failedLoginAttempts Int                  @default(0) @map("failed_login_attempts")
-  lockedAt            DateTime?            @map("locked_at") @db.Timestamptz(6)
-  deletedAt           DateTime?            @map("deleted_at") @db.Timestamptz(6)
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
-  roles               UserRoleAssignment[]
-  mechanic            Mechanic?
-  passwordResetTokens PasswordResetToken[]
-  refreshTokens       RefreshToken[]
-
-  @@index([deletedAt])
-  @@map("users")
-}
-
-model UserRoleAssignment {
-  id        String     @id @default(uuid()) @db.Uuid
-  userId    String     @map("user_id") @db.Uuid
-  role      UserRole
-  system    SystemType
-  createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, role, system])
-  @@map("user_roles")
-}
 
 model Booking {
   id                         String    @id @default(uuid()) @db.Uuid
@@ -216,7 +165,8 @@ model Garage {
 
 model Mechanic {
   id           String   @id @default(uuid()) @db.Uuid
-  userId       String?  @unique @map("user_id") @db.Uuid // Linked if in-house mechanic has a login
+  authUserId   String?  @unique @map("auth_user_id") @db.Uuid // welinc-auth User.id, no foreign key; null for outsourced (spec 0009)
+  email        String?  @db.VarChar(255) // lowercased copy from welinc-auth
   name         String   @db.VarChar(100)
   isOutsourced Boolean  @default(false) @map("is_outsourced")
   shopName     String?  @map("shop_name") @db.VarChar(100) // For outsourced "Other" shop names
@@ -224,7 +174,6 @@ model Mechanic {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   repairTickets RepairTicket[] @relation("RepairTicketMechanics")
 
   @@map("mechanics")
@@ -357,8 +306,9 @@ model ShopChangeLog {
 model AuditLog {
   id             String      @id @default(uuid()) @db.Uuid
   repairTicketId String      @map("repair_ticket_id") @db.Uuid
-  userId         String?     @map("user_id") @db.Uuid // null on backfilled CREATED rows
+  userId         String?     @map("user_id") @db.Uuid // welinc-auth User.id; null on backfilled CREATED rows
   email          String?     @db.VarChar(100)
+  actorName      String?     @map("actor_name") @db.VarChar(100) // the actor's name when the row was written (spec 0009)
   action         String      @db.VarChar(100) // CREATED, STATUS_CHANGE, COST_UPDATE, UNLOCK, SHOP_CHANGE
   fieldName      String?     @map("field_name") @db.VarChar(50)
   previousValue  String?     @map("previous_value") @db.Text
@@ -549,31 +499,4 @@ model KnowledgeEntryChange {
 
   @@index([entryId, createdAt])
   @@map("knowledge_entry_changes")
-}
-
-// ==========================================
-// AUTH TOKENS
-// ==========================================
-
-model PasswordResetToken {
-  id        String    @id @default(cuid())
-  userId    String    @map("user_id") @db.Uuid
-  otp       String
-  expiresAt DateTime  @map("expires_at")
-  usedAt    DateTime? @map("used_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("password_reset_tokens")
-}
-
-model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id") @db.Uuid
-  tokenHash String   @map("token_hash")
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("refresh_tokens")
 }

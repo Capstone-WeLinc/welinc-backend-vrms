@@ -44,7 +44,7 @@ npx prisma migrate dev   # asks first, see root rules
 - Ticket changes write audit events through `audit-events.ts`, so a new state change should add one.
 - Knowledge entry and category writes log one `KnowledgeEntryChange` row per changed field in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
 - Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp.
-- New variables go in `.env.example` only (today: `PORT`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRY`, `JWT_REFRESH_EXPIRY`, `SEMAPHORE_*`).
+- New variables go in `.env.example` only (today: `PORT`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRY`, `JWT_REFRESH_EXPIRY`, `SEMAPHORE_*`, `SMTP_*`, `CORS_ORIGINS`, `AI_SERVICE_URL`).
 
 ## Gotchas
 

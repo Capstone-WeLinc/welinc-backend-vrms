@@ -1,6 +1,7 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Prisma, RepairStatus, UserRole } from '@prisma/client';
+import { Prisma, RepairStatus } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsController } from './repairs.controller';
@@ -13,6 +14,7 @@ import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 type JwtUser = {
   sub: string;
   email: string;
+  name: string;
   roles: { role: UserRole; system: string }[];
   system: string;
 };
@@ -20,12 +22,14 @@ type JwtUser = {
 const admin: JwtUser = {
   sub: 'a',
   email: 'vrms.admin@welinc.com',
+  name: 'Victor Ramos',
   roles: [{ role: UserRole.ADMIN, system: 'VRMS' }],
   system: 'VRMS',
 };
 const mechanic: JwtUser = {
   sub: 'm',
   email: 'mech.juan@welinc.com',
+  name: 'Juan dela Cruz',
   roles: [{ role: UserRole.MECHANIC, system: 'VRMS' }],
   system: 'VRMS',
 };
@@ -49,7 +53,7 @@ function ticket(status: RepairStatus, totalCost: number | null) {
 
 function setup(mechanicRecord: { id: string } | null = null) {
   const prisma = {
-    mechanic: { findFirst: jest.fn().mockResolvedValue(mechanicRecord) },
+    mechanic: { findUnique: jest.fn().mockResolvedValue(mechanicRecord) },
     repairTicket: {
       findMany: jest
         .fn()
@@ -202,7 +206,7 @@ function openTicket(costs: {
 
 function listSetup(mechanicRecord: { id: string } | null = null) {
   const prisma = {
-    mechanic: { findFirst: jest.fn().mockResolvedValue(mechanicRecord) },
+    mechanic: { findUnique: jest.fn().mockResolvedValue(mechanicRecord) },
     repairTicket: {
       count: jest.fn().mockResolvedValue(1),
       findMany: jest
@@ -342,6 +346,16 @@ describe('RepairsService.findAuditEvents', () => {
       { where: Prisma.AuditLogWhereInput },
     ];
     expect(args.where.AND).toEqual([{ repairTicketId: GARAGE }]);
+  });
+
+  it('matches the Person filter on the welinc-auth id in userId (spec 0009, AC-10)', async () => {
+    const prisma = { auditLog: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new RepairsService(prisma as unknown as PrismaService);
+    await service.findAuditEvents({ actorId: GARAGE });
+    const [args] = prisma.auditLog.findMany.mock.calls[0] as [
+      { where: Prisma.AuditLogWhereInput },
+    ];
+    expect(args.where.AND).toEqual([{ userId: GARAGE }]);
   });
 });
 

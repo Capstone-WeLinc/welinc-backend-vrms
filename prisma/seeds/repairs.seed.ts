@@ -21,6 +21,12 @@ import {
 } from './catalog';
 import { SeededEntry } from './knowledge.seed';
 import {
+  BULK_MECHANICS,
+  CHIEF,
+  NAMED_MECHANICS,
+  VRMS_ADMIN,
+} from './shared-ids';
+import {
   DAY,
   HOUR,
   addWorkHours,
@@ -41,11 +47,17 @@ import {
 
 // Plays out each truck's repair history in order, so tickets never overlap on one truck, odometers
 // only go up, and a ticket's status is wherever its own timeline has reached today. Every change
-// writes the audit row the API would write. Audit userId stays null: it holds the auth service's
-// id, which this database doesn't know, and actors are matched by email anyway.
+// writes the audit row the API would write, with the welinc-auth id and name from shared-ids.ts.
 
 const HISTORY_MONTHS = 22;
-const ADMIN = 'vrms.admin@welinc.com';
+const ADMIN = VRMS_ADMIN.email;
+// Who wrote each audit row, by email: the welinc-auth id and name (spec 0009, AC-10)
+const PEOPLE = new Map(
+  [VRMS_ADMIN, CHIEF, ...NAMED_MECHANICS, ...BULK_MECHANICS].map((p) => [
+    p.email,
+    p,
+  ]),
+);
 const TARGET_HOURS: Record<RepairPriority, number> = {
   CRITICAL: 24,
   HIGH: 48,
@@ -115,20 +127,16 @@ export async function seedRepairs(
   const garages = new Map(
     (await prisma.garage.findMany()).map((g) => [g.name, g]),
   );
-  const admin = await prisma.user.findUniqueOrThrow({
-    where: { email: ADMIN },
-  });
 
   // ── Crews ────────────────────────────────────────────────────────────────
   const inHouse = await prisma.mechanic.findMany({
     where: { isOutsourced: false },
-    include: { user: { select: { email: true } } },
     orderBy: { name: 'asc' },
   });
   const garageNames = [...garages.keys()];
   let roundRobin = 0;
   const crews: Crew[] = inHouse.map((m) => {
-    const email = m.user?.email ?? null;
+    const email = m.email;
     const home = email ? HOME_GARAGE[email] : undefined;
     return {
       id: m.id,
@@ -196,8 +204,9 @@ export async function seedRepairs(
     rows.audits.push({
       id: uuid(),
       repairTicketId: ticketId,
-      userId: null,
+      userId: PEOPLE.get(email)?.id ?? null,
       email,
+      actorName: PEOPLE.get(email)?.name ?? null,
       action,
       createdAt: new Date(at),
       ...fields,
@@ -436,8 +445,8 @@ export async function seedRepairs(
       rows.shopChanges.push({
         id: uuid(),
         repairTicketId: ticketId,
-        changedByUserId: admin.id,
-        changedByName: admin.name,
+        changedByUserId: VRMS_ADMIN.id,
+        changedByName: VRMS_ADMIN.name,
         previousValue: from,
         newValue: garageName,
         changedAt: new Date(at),

@@ -40,6 +40,7 @@ export type AuditRow = {
   fieldName?: string | null;
   userId: string | null;
   email: string | null;
+  actorName?: string | null;
   previousValue: string | null;
   newValue: string | null;
   createdAt: Date;
@@ -130,27 +131,20 @@ export function parseNewCost(value: string | null): CostSnapshot | null {
   };
 }
 
-export type ActorUser = { id: string; name: string; email: string };
-
-/** Lookup key for an actor. audit_logs.user_id is the auth service's id, so actors match VRMS users by email. */
-export function emailKey(email: string | null | undefined): string | null {
-  const key = email?.trim().toLowerCase();
-  return key ? key : null;
-}
-
-export function toAuditEvent(
-  row: AuditRow,
-  usersByEmail: Map<string, ActorUser>,
-): AuditEvent {
-  const key = emailKey(row.email);
-  const user = key ? usersByEmail.get(key) : undefined;
+/** The actor is stored on the row itself: welinc-auth id, email and name at write time (spec 0009, AC-10). */
+export function toAuditEvent(row: AuditRow): AuditEvent {
   const event: AuditEvent = {
     id: row.id,
     type: row.action,
     at: row.createdAt.toISOString(),
-    actor: key
-      ? { id: user?.id ?? null, name: user?.name ?? null, email: row.email }
-      : null,
+    actor:
+      row.userId || row.email
+        ? {
+            id: row.userId,
+            name: row.actorName ?? row.email,
+            email: row.email,
+          }
+        : null,
     ticket: {
       id: row.repairTicket.id,
       repairNumber: row.repairTicket.repairNumber,

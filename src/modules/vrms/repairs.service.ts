@@ -10,15 +10,13 @@ import {
   KnowledgeEntryStatus,
   Prisma,
   RepairStatus,
-  UserRole,
   VehicleStatus,
 } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
 import { PrismaService } from '../../shared/prisma.service';
 import {
-  ActorUser,
   AuditEvent,
   decodeCursor,
-  emailKey,
   encodeCursor,
   olderThan,
   toAuditEvent,
@@ -49,6 +47,7 @@ import {
 type JwtUser = {
   sub: string;
   email: string;
+  name: string;
   roles: { role: UserRole; system: string }[];
   system: string;
 };
@@ -191,13 +190,14 @@ export class RepairsService {
     for (const m of dto.mechanics) {
       if (m.isOutsourced) {
         // Outsourced mechanic: dynamically create record if not exists
+        const name = m.name ?? ''; // required for outsourced by the DTO
         let mechanic = await this.prisma.mechanic.findFirst({
-          where: { name: m.name, isOutsourced: true },
+          where: { name, isOutsourced: true },
         });
         if (!mechanic) {
           mechanic = await this.prisma.mechanic.create({
             data: {
-              name: m.name,
+              name,
               isOutsourced: true,
               shopName: m.shopName ?? null,
             },
@@ -205,14 +205,12 @@ export class RepairsService {
         }
         mechanicIds.push(mechanic.id);
       } else {
-        // In-house mechanic: MUST exist in the database (pre-seeded/pre-configured)
+        // In house mechanic: an active row, picked by id (spec 0009, AC-27)
         const mechanic = await this.prisma.mechanic.findFirst({
-          where: { name: m.name, isOutsourced: false },
+          where: { id: m.id, isOutsourced: false, isActive: true },
         });
         if (!mechanic) {
-          throw new BadRequestException(
-            `In-house mechanic "${m.name}" not found`,
-          );
+          throw new BadRequestException('In house mechanic not found');
         }
         mechanicIds.push(mechanic.id);
       }
@@ -261,7 +259,12 @@ export class RepairsService {
         },
         // Nested so the ticket and its CREATED row are saved together or not at all
         auditLogs: {
-          create: { userId: user.sub, email: user.email, action: 'CREATED' },
+          create: {
+            userId: user.sub,
+            email: user.email,
+            actorName: user.name,
+            action: 'CREATED',
+          },
         },
       },
       include: ticketInclude,
@@ -736,6 +739,7 @@ export class RepairsService {
                 repairTicketId: id,
                 userId: user.sub,
                 email: user.email,
+                actorName: user.name,
                 action: 'STATUS_CHANGE',
                 fieldName: 'repairStatus',
                 previousValue: currentStatus,
@@ -835,6 +839,7 @@ export class RepairsService {
           repairTicketId: id,
           userId: user.sub,
           email: user.email,
+          actorName: user.name,
           action: 'KNOWLEDGE_LINK',
           fieldName: issueId,
           previousValue: issue.knowledgeEntry?.name ?? null,
@@ -1012,6 +1017,7 @@ export class RepairsService {
           repairTicketId: id,
           userId: user.sub,
           email: user.email,
+          actorName: user.name,
           action: 'COST_UPDATE',
           fieldName: 'costs',
           previousValue: JSON.stringify({
@@ -1099,6 +1105,7 @@ export class RepairsService {
           repairTicketId: id,
           userId: user.sub,
           email: user.email,
+          actorName: user.name,
           action: 'UNLOCK',
           newValue: dto.unlockReason.trim(),
         },
@@ -1122,15 +1129,8 @@ export class RepairsService {
 
     const filters: Prisma.AuditLogWhereInput[] = [];
     if (query.type) filters.push({ action: query.type });
-    if (query.actorId) {
-      // The Person filter carries a VRMS user id; audit rows are matched by that user's email
-      const actor = await this.prisma.user.findUnique({
-        where: { id: query.actorId },
-        select: { email: true },
-      });
-      if (!actor) return { data: [], nextCursor: null };
-      filters.push({ email: { equals: actor.email, mode: 'insensitive' } });
-    }
+    // The Person filter carries a welinc-auth user id (spec 0009, AC-10)
+    if (query.actorId) filters.push({ userId: query.actorId });
     if (from || to)
       filters.push({
         createdAt: { ...(from && { gte: from }), ...(to && { lt: to }) },
@@ -1154,6 +1154,7 @@ export class RepairsService {
         fieldName: true,
         userId: true,
         email: true,
+        actorName: true,
         previousValue: true,
         newValue: true,
         createdAt: true,
@@ -1164,48 +1165,35 @@ export class RepairsService {
     });
 
     const page = rows.slice(0, limit);
-    const usersByEmail = await this.findUsersByEmail(page.map((r) => r.email));
 
     return {
-      data: page.map((row) => toAuditEvent(row, usersByEmail)),
+      data: page.map(toAuditEvent),
       nextCursor:
         rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
     };
   }
 
-  async findAuditActors() {
-    const rows = await this.prisma.auditLog.findMany({
-      where: { email: { not: null } },
-      distinct: ['email'],
-      select: { email: true },
-    });
-    const usersByEmail = await this.findUsersByEmail(rows.map((r) => r.email));
-    return [...usersByEmail.values()].sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }
-
   /**
-   * One batched lookup of VRMS users by email, case insensitive, keyed by lowercased email.
-   * audit_logs has no relation to users, and its user_id is the auth service's id, so email is the link.
-   * Soft deleted and inactive users are included: their changes are real.
+   * One entry per person who wrote an audit row, with the name and email of their newest row
+   * (spec 0009, AC-10). Rows with no user id (backfilled CREATED rows) are left out.
    */
-  private async findUsersByEmail(
-    emails: (string | null)[],
-  ): Promise<Map<string, ActorUser>> {
-    const keys = [
-      ...new Set(emails.map(emailKey).filter((k): k is string => !!k)),
-    ];
-    if (keys.length === 0) return new Map();
-    const users = await this.prisma.user.findMany({
-      where: {
-        OR: keys.map((key) => ({
-          email: { equals: key, mode: 'insensitive' as const },
-        })),
-      },
-      select: { id: true, name: true, email: true },
-    });
-    return new Map(users.map((u) => [u.email.toLowerCase(), u]));
+  async findAuditActors() {
+    const rows = await this.prisma.$queryRaw<
+      { userId: string; actorName: string | null; email: string | null }[]
+    >`
+      SELECT DISTINCT ON (user_id)
+        user_id AS "userId", actor_name AS "actorName", email
+      FROM audit_logs
+      WHERE user_id IS NOT NULL
+      ORDER BY user_id, created_at DESC, id DESC
+    `;
+    return rows
+      .map((r) => ({
+        id: r.userId,
+        name: r.actorName ?? r.email ?? '',
+        email: r.email,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────
@@ -1219,10 +1207,10 @@ export class RepairsService {
     );
   }
 
+  /** The caller's Mechanic row, by welinc-auth id only (spec 0009, AC-8). */
   private async getMechanicForUser(user: JwtUser) {
-    // Find mechanic profile linked to this user account
-    return this.prisma.mechanic.findFirst({
-      where: { user: { email: user.email } },
+    return this.prisma.mechanic.findUnique({
+      where: { authUserId: user.sub },
     });
   }
 

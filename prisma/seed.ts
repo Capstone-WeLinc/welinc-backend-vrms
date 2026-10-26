@@ -4,7 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 
 import { seedGarages } from './seeds/garages.seed';
-import { seedUsers } from './seeds/users.seed';
+import { seedMechanics } from './seeds/mechanics.seed';
 import { seedVehicles } from './seeds/vehicles.seed';
 import { seedDrivers } from './seeds/drivers.seed';
 import { seedBookings } from './seeds/bookings.seed';
@@ -45,11 +45,6 @@ async function cleanDatabase(prisma: PrismaClient) {
   await prisma.mechanic.deleteMany({});
   await prisma.vehicle.deleteMany({});
   await prisma.garage.deleteMany({});
-  
-  await prisma.passwordResetToken.deleteMany({});
-  await prisma.refreshToken.deleteMany({});
-  await prisma.userRoleAssignment.deleteMany({});
-  await prisma.user.deleteMany({});
   console.log('Database cleaned successfully!\n');
 }
 
@@ -60,7 +55,7 @@ async function main() {
 
   await cleanDatabase(prisma);
   await seedGarages(prisma);
-  await seedUsers(prisma);
+  await seedMechanics(prisma);
   const vehicles = await seedVehicles(prisma);
   const drivers = await seedDrivers(prisma, now);
   await seedBookings(prisma);
@@ -70,7 +65,7 @@ async function main() {
 
   console.log('Database seeded successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('Login credentials:');
+  console.log('Login credentials (accounts live in welinc-auth; run its seed too):');
   console.log('  BMS Admin  → email: bms.admin@welinc.com  password: admin1234');
   console.log('  VRMS Admin → email: vrms.admin@welinc.com password: admin1234');
   console.log('  VMMS Admin → email: vmms.admin@welinc.com password: admin1234');

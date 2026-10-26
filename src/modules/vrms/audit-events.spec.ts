@@ -87,70 +87,62 @@ describe('toAuditEvent actor', () => {
   const base = {
     id: uuid(1),
     action: 'UNLOCK',
-    userId: 'c439b079-0000-4000-8000-000000000000', // auth service id, never a VRMS users.id
+    userId: 'c439b079-0000-4000-8000-000000000000', // the welinc-auth user id
     previousValue: null,
     newValue: 'Fix labor cost',
     createdAt: new Date('2026-10-22T02:42:00Z'),
     repairTicket: { id: uuid(9), repairNumber: 'REP-1' },
   };
-  const users = new Map([
-    [
-      'vrms.admin@welinc.com',
-      { id: uuid(2), name: 'VRMS Admin', email: 'vrms.admin@welinc.com' },
-    ],
-  ]);
 
-  it('matches the VRMS user by email, ignoring case, and keeps the stored email', () => {
-    const event = toAuditEvent(
-      { ...base, email: 'VRMS.Admin@welinc.com' },
-      users,
-    );
+  it('takes the id, email and name stored on the row', () => {
+    const event = toAuditEvent({
+      ...base,
+      email: 'vrms.admin@welinc.com',
+      actorName: 'Victor Ramos',
+    });
     expect(event.actor).toEqual({
-      id: uuid(2),
-      name: 'VRMS Admin',
-      email: 'VRMS.Admin@welinc.com',
+      id: base.userId,
+      name: 'Victor Ramos',
+      email: 'vrms.admin@welinc.com',
     });
     expect(event.unlockReason).toBe('Fix labor cost');
   });
 
-  it('keeps the email with no name when no VRMS user has it', () => {
-    const event = toAuditEvent({ ...base, email: 'gone@welinc.com' }, users);
+  it('shows the email as the name when the row has no name', () => {
+    const event = toAuditEvent({
+      ...base,
+      email: 'gone@welinc.com',
+      actorName: null,
+    });
     expect(event.actor).toEqual({
-      id: null,
-      name: null,
+      id: base.userId,
+      name: 'gone@welinc.com',
       email: 'gone@welinc.com',
     });
   });
 
-  it.each([null, '', '  '])(
-    'has no actor when the email is %p, even with a user id',
-    (email) => {
-      expect(toAuditEvent({ ...base, email }, users).actor).toBeNull();
-    },
-  );
+  it('has no actor when the row has neither a user id nor an email', () => {
+    expect(
+      toAuditEvent({ ...base, userId: null, email: null }).actor,
+    ).toBeNull();
+  });
 
   it('shapes a status change and leaves unreadable costs as null', () => {
-    const status = toAuditEvent(
-      {
-        ...base,
-        email: null,
-        action: 'STATUS_CHANGE',
-        previousValue: 'PENDING',
-        newValue: 'IN_PROGRESS',
-      },
-      users,
-    );
+    const status = toAuditEvent({
+      ...base,
+      email: null,
+      action: 'STATUS_CHANGE',
+      previousValue: 'PENDING',
+      newValue: 'IN_PROGRESS',
+    });
     expect(status.status).toEqual({ from: 'PENDING', to: 'IN_PROGRESS' });
-    const cost = toAuditEvent(
-      {
-        ...base,
-        email: null,
-        action: 'COST_UPDATE',
-        previousValue: 'x',
-        newValue: 'y',
-      },
-      users,
-    );
+    const cost = toAuditEvent({
+      ...base,
+      email: null,
+      action: 'COST_UPDATE',
+      previousValue: 'x',
+      newValue: 'y',
+    });
     expect(cost.cost).toBeNull();
   });
 });
