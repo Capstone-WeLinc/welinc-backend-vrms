@@ -1,6 +1,7 @@
-import { ExecutionContext } from '@nestjs/common';
+import { BadRequestException, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Prisma, RepairStatus, UserRole } from '@prisma/client';
+import { Prisma, RepairStatus } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsController } from './repairs.controller';
@@ -8,11 +9,16 @@ import { RepairsService } from './repairs.service';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
+import {
+  CreateRepairDto,
+  MechanicAssignmentDto,
+} from './dto/create-repair.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 
 type JwtUser = {
   sub: string;
   email: string;
+  name: string;
   roles: { role: UserRole; system: string }[];
   system: string;
 };
@@ -20,12 +26,14 @@ type JwtUser = {
 const admin: JwtUser = {
   sub: 'a',
   email: 'vrms.admin@welinc.com',
+  name: 'Victor Ramos',
   roles: [{ role: UserRole.ADMIN, system: 'VRMS' }],
   system: 'VRMS',
 };
 const mechanic: JwtUser = {
   sub: 'm',
   email: 'mech.juan@welinc.com',
+  name: 'Juan dela Cruz',
   roles: [{ role: UserRole.MECHANIC, system: 'VRMS' }],
   system: 'VRMS',
 };
@@ -49,7 +57,7 @@ function ticket(status: RepairStatus, totalCost: number | null) {
 
 function setup(mechanicRecord: { id: string } | null = null) {
   const prisma = {
-    mechanic: { findFirst: jest.fn().mockResolvedValue(mechanicRecord) },
+    mechanic: { findUnique: jest.fn().mockResolvedValue(mechanicRecord) },
     repairTicket: {
       findMany: jest
         .fn()
@@ -202,7 +210,7 @@ function openTicket(costs: {
 
 function listSetup(mechanicRecord: { id: string } | null = null) {
   const prisma = {
-    mechanic: { findFirst: jest.fn().mockResolvedValue(mechanicRecord) },
+    mechanic: { findUnique: jest.fn().mockResolvedValue(mechanicRecord) },
     repairTicket: {
       count: jest.fn().mockResolvedValue(1),
       findMany: jest
@@ -342,6 +350,193 @@ describe('RepairsService.findAuditEvents', () => {
       { where: Prisma.AuditLogWhereInput },
     ];
     expect(args.where.AND).toEqual([{ repairTicketId: GARAGE }]);
+  });
+
+  it('matches the Person filter on the welinc-auth id in userId (spec 0009, AC-10)', async () => {
+    const prisma = { auditLog: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new RepairsService(prisma as unknown as PrismaService);
+    await service.findAuditEvents({ actorId: GARAGE });
+    const [args] = prisma.auditLog.findMany.mock.calls[0] as [
+      { where: Prisma.AuditLogWhereInput },
+    ];
+    expect(args.where.AND).toEqual([{ userId: GARAGE }]);
+  });
+});
+
+describe('RepairsService.create in house mechanics (AC-27)', () => {
+  const MECH_ID = '00000000-0000-4000-8000-0000000000aa';
+  const dto = (mechanics: object[]) =>
+    ({
+      vehiclePlate: 'ABC 123',
+      garageLocation: 'Sta. Rosa',
+      driverName: 'Driver One',
+      issues: [],
+      mechanics,
+    }) as unknown as CreateRepairDto;
+
+  function createSetup(mechanicRow: { id: string } | null) {
+    const prisma = {
+      vehicle: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'v1' }),
+        update: jest.fn().mockRejectedValue(new Error('stop here')),
+      },
+      garage: { findFirst: jest.fn().mockResolvedValue({ id: 'g1' }) },
+      issueCategory: { findMany: jest.fn().mockResolvedValue([]) },
+      knowledgeEntry: { findMany: jest.fn().mockResolvedValue([]) },
+      driver: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'd1' }),
+        update: jest.fn().mockResolvedValue({ id: 'd1' }),
+        create: jest.fn(),
+      },
+      mechanic: {
+        findFirst: jest.fn().mockResolvedValue(mechanicRow),
+        create: jest.fn(),
+      },
+    };
+    return {
+      prisma,
+      service: new RepairsService(prisma as unknown as PrismaService),
+    };
+  }
+
+  it('answers 400 for an unknown or inactive in house id', async () => {
+    const { service, prisma } = createSetup(null);
+
+    const run = service.create(dto([{ id: MECH_ID }]), admin);
+
+    await expect(run).rejects.toBeInstanceOf(BadRequestException);
+    await expect(run).rejects.toThrow('In house mechanic not found');
+    expect(prisma.vehicle.update).not.toHaveBeenCalled();
+  });
+
+  it('looks the mechanic up by id, in house and active only', async () => {
+    const { service, prisma } = createSetup(null);
+
+    await service.create(dto([{ id: MECH_ID }]), admin).catch(() => {});
+
+    expect(prisma.mechanic.findFirst).toHaveBeenCalledWith({
+      where: { id: MECH_ID, isOutsourced: false, isActive: true },
+    });
+  });
+
+  it('never matches an in house mechanic by name', async () => {
+    const { service, prisma } = createSetup(null);
+
+    await service
+      .create(dto([{ id: MECH_ID, name: 'Juan dela Cruz' }]), admin)
+      .catch(() => {});
+
+    const [args] = prisma.mechanic.findFirst.mock.calls[0] as [
+      { where: Record<string, unknown> },
+    ];
+    expect(args.where).not.toHaveProperty('name');
+  });
+
+  it('goes on to the ticket when the in house id is an active row', async () => {
+    const { service, prisma } = createSetup({ id: MECH_ID });
+
+    await expect(service.create(dto([{ id: MECH_ID }]), admin)).rejects.toThrow(
+      'stop here',
+    );
+
+    expect(prisma.vehicle.update).toHaveBeenCalled();
+  });
+
+  it('keeps outsourced mechanics on the name and shop flow', async () => {
+    const { service, prisma } = createSetup(null);
+    prisma.mechanic.findFirst.mockResolvedValue({ id: 'out-1' });
+
+    await service
+      .create(
+        dto([{ isOutsourced: true, name: 'Shop Guy', shopName: 'Fix It' }]),
+        admin,
+      )
+      .catch(() => {});
+
+    expect(prisma.mechanic.findFirst).toHaveBeenCalledWith({
+      where: { name: 'Shop Guy', isOutsourced: true },
+    });
+  });
+
+  describe('the mechanic item in the request body', () => {
+    const check = (body: object) =>
+      validate(plainToInstance(MechanicAssignmentDto, body));
+
+    it('needs a uuid id for an in house mechanic', async () => {
+      expect(await check({})).not.toHaveLength(0);
+      expect(await check({ id: 'not-a-uuid' })).not.toHaveLength(0);
+      expect(await check({ id: MECH_ID })).toHaveLength(0);
+    });
+
+    it('needs a name, not an id, for an outsourced mechanic', async () => {
+      expect(await check({ isOutsourced: true })).not.toHaveLength(0);
+      expect(
+        await check({
+          isOutsourced: true,
+          name: 'Shop Guy',
+          shopName: 'Fix It',
+        }),
+      ).toHaveLength(0);
+    });
+  });
+});
+
+describe('RepairsService.findAuditActors (AC-10)', () => {
+  function actorsSetup(
+    rows: { userId: string; actorName: string | null; email: string | null }[],
+  ) {
+    const queryRaw = jest.fn().mockResolvedValue(rows);
+    const prisma = { $queryRaw: queryRaw };
+    return {
+      queryRaw,
+      service: new RepairsService(prisma as unknown as PrismaService),
+    };
+  }
+
+  it('maps each row to an id, a name and an email', async () => {
+    const { service } = actorsSetup([
+      { userId: 'u1', actorName: 'Ana', email: 'ana@welinc.com' },
+    ]);
+
+    expect(await service.findAuditActors()).toEqual([
+      { id: 'u1', name: 'Ana', email: 'ana@welinc.com' },
+    ]);
+  });
+
+  it('falls back to the email when the name is null, and to an empty name when both are', async () => {
+    const { service } = actorsSetup([
+      { userId: 'u1', actorName: null, email: 'ana@welinc.com' },
+      { userId: 'u2', actorName: null, email: null },
+    ]);
+
+    const actors = await service.findAuditActors();
+
+    expect(actors.find((a) => a.id === 'u1')?.name).toBe('ana@welinc.com');
+    expect(actors.find((a) => a.id === 'u2')?.name).toBe('');
+  });
+
+  it('sorts the list by name', async () => {
+    const { service } = actorsSetup([
+      { userId: 'u1', actorName: 'Zed', email: null },
+      { userId: 'u2', actorName: 'Ana', email: null },
+      { userId: 'u3', actorName: 'Mia', email: null },
+    ]);
+
+    const actors = await service.findAuditActors();
+
+    expect(actors.map((a) => a.name)).toEqual(['Ana', 'Mia', 'Zed']);
+  });
+
+  it('asks for one newest row per user and leaves out null user ids', async () => {
+    const { service, queryRaw } = actorsSetup([]);
+
+    await service.findAuditActors();
+
+    const [strings] = queryRaw.mock.calls[0] as [string[]];
+    const sql = strings.join(' ').replace(/\s+/g, ' ');
+    expect(sql).toContain('DISTINCT ON (user_id)');
+    expect(sql).toContain('WHERE user_id IS NOT NULL');
+    expect(sql).toContain('ORDER BY user_id, created_at DESC, id DESC');
   });
 });
 

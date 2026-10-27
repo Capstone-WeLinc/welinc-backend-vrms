@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { RepairStatus, UserRole } from '@prisma/client';
+import { RepairStatus } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsService } from './repairs.service';
 
@@ -8,6 +9,7 @@ import { RepairsService } from './repairs.service';
 type JwtUser = {
   sub: string;
   email: string;
+  name: string;
   roles: { role: UserRole; system: string }[];
   system: string;
 };
@@ -15,6 +17,7 @@ type JwtUser = {
 const admin: JwtUser = {
   sub: 'a',
   email: 'vrms.admin@welinc.com',
+  name: 'Victor Ramos',
   roles: [{ role: UserRole.ADMIN, system: 'VRMS' }],
   system: 'VRMS',
 };
@@ -160,6 +163,8 @@ describe('RepairsService.linkKnowledge', () => {
         fieldName: ISSUE,
         previousValue: 'Old fix',
         newValue: entry.name,
+        userId: admin.sub,
+        actorName: admin.name,
       }) as unknown,
     });
     // The ticket's updatedAt moves, guarded by the one the client loaded
@@ -291,7 +296,9 @@ describe('RepairsService.create with a common issue', () => {
     accountType: 'ONLINE' as const,
     garageLocation: 'Sta. Rosa',
     odometerReading: 1000,
-    mechanics: [{ name: 'Juan', isOutsourced: false }],
+    mechanics: [
+      { id: '00000000-0000-4000-8000-0000000000cc', isOutsourced: false },
+    ],
     shopName: 'Shop',
     priority: 'HIGH' as const,
     issues: [

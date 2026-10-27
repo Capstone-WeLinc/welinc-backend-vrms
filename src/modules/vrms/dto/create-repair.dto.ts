@@ -11,14 +11,21 @@ import {
   MaxLength,
   ArrayMinSize,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+// In house mechanics come by Mechanic id, outsourced ones by name and shop (spec 0009, AC-27)
 export class MechanicAssignmentDto {
+  @ValidateIf((m: MechanicAssignmentDto) => !m.isOutsourced)
+  @IsUUID()
+  id?: string;
+
+  @ValidateIf((m: MechanicAssignmentDto) => !!m.isOutsourced)
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  name: string;
+  name?: string;
 
   @IsOptional()
   @IsBoolean()

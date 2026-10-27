@@ -1,8 +1,9 @@
-import { UserRole } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
 
 export type JwtUser = {
   sub: string;
   email: string;
+  name: string;
   roles: { role: UserRole; system: string }[];
   system: string;
 };

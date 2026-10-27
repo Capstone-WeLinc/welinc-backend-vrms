@@ -170,6 +170,7 @@ export class KnowledgeEntryEditorService {
         repairTicketId: issue.repairTicketId,
         userId: user.sub,
         email: user.email,
+        actorName: user.name,
         action: 'KNOWLEDGE_LINK',
         fieldName: issue.id,
         previousValue: null,

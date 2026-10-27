@@ -10,10 +10,11 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import type { AuthUser } from '../../auth/account-check';
 import { RepairsService } from './repairs.service';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
@@ -27,14 +28,7 @@ import {
   LinkIssueKnowledgeDto,
 } from './dto/link-issue-knowledge.dto';
 
-type AuthRequest = {
-  user: {
-    sub: string;
-    email: string;
-    roles: { role: UserRole; system: string }[];
-    system: string;
-  };
-};
+type AuthRequest = { user: AuthUser };
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('vrms/repairs')
