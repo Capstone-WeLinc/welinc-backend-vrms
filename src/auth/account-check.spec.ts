@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AccountCheck, CACHE_TTL_MS } from './account-check';
+import { AccountCheck, CACHE_MAX_ENTRIES, CACHE_TTL_MS } from './account-check';
 
 // Spec 0009, AC-4, AC-7 and AC-25.
 
@@ -154,5 +154,40 @@ describe('AccountCheck', () => {
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect([a.fresh, b.fresh].sort()).toEqual([false, true]);
+  });
+
+  // covers: AC-4 (capped at 5,000 entries, oldest dropped first)
+  describe('cache cap', () => {
+    async function fill(check: AccountCheck, count: number) {
+      for (let i = 0; i < count; i++) await check.confirm(`tok-${i}`);
+    }
+
+    it('keeps every answer while the cache is at its cap', async () => {
+      const { fetchMock, check } = setup();
+      fetchMock.mockImplementation(() => answer(200, ME));
+
+      await fill(check, CACHE_MAX_ENTRIES);
+      fetchMock.mockClear();
+      const again = await check.confirm('tok-0');
+
+      expect(again.fresh).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('drops the oldest entry first when one more token arrives', async () => {
+      const { fetchMock, check } = setup();
+      fetchMock.mockImplementation(() => answer(200, ME));
+
+      await fill(check, CACHE_MAX_ENTRIES + 1);
+      fetchMock.mockClear();
+
+      const newest = await check.confirm(`tok-${CACHE_MAX_ENTRIES}`);
+      expect(newest.fresh).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const oldest = await check.confirm('tok-0');
+      expect(oldest.fresh).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 });
