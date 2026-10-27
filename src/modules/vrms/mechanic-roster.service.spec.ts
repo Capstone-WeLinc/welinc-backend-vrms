@@ -1,4 +1,6 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { AccountCheck, AuthUser } from '../../auth/account-check';
 import { MechanicRoster } from './mechanic-roster.service';
@@ -216,5 +218,199 @@ describe('MechanicRoster.ensure', () => {
 
     prisma.mechanic.findUnique.mockRejectedValueOnce(new Error('db down'));
     await expect(roster.ensure(caller('MECHANIC'))).resolves.toBeUndefined();
+  });
+});
+
+// Spec 0009, AC-11 and AC-13: two writers can race for the same authUserId. The unique violation
+// (P2002) is recovered by reading the row again, and counts only include rows that really changed.
+describe('MechanicRoster duplicate row race', () => {
+  const uniqueViolation = () =>
+    new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+    });
+
+  const rowFor = (authUserId: string, over: Partial<Row> = {}): Row => ({
+    id: `m-${authUserId}`,
+    authUserId,
+    name: `Name ${authUserId}`,
+    email: `${authUserId}@welinc.com`,
+    isActive: true,
+    isOutsourced: false,
+    ...over,
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  describe('sync', () => {
+    // covers: AC-11
+    it('counts nothing when the winner already wrote the same values', async () => {
+      const { roster, prisma, rows } = setup([], [user('a', 'MECHANIC')]);
+      prisma.mechanic.upsert.mockImplementationOnce(() => {
+        rows.push(rowFor('a'));
+        return Promise.reject(uniqueViolation());
+      });
+
+      const result = await roster.sync('tok');
+
+      expect(result).toEqual({ created: 0, updated: 0, deactivated: 0 });
+      expect(prisma.mechanic.update).not.toHaveBeenCalled();
+      expect(rows.filter((r) => r.authUserId === 'a')).toHaveLength(1);
+    });
+
+    it('updates the row the winner wrote when its values still differ', async () => {
+      const { roster, prisma, rows } = setup([], [user('a', 'MECHANIC')]);
+      prisma.mechanic.upsert.mockImplementationOnce(() => {
+        rows.push(rowFor('a', { name: 'Stale name', isActive: false }));
+        return Promise.reject(uniqueViolation());
+      });
+
+      const result = await roster.sync('tok');
+
+      expect(result).toEqual({ created: 0, updated: 1, deactivated: 0 });
+      expect(prisma.mechanic.update).toHaveBeenCalledWith({
+        where: { authUserId: 'a' },
+        data: { name: 'Name a', email: 'a@welinc.com', isActive: true },
+      });
+    });
+
+    it('counts nothing when the row is gone again after the violation', async () => {
+      const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
+      prisma.mechanic.upsert.mockRejectedValueOnce(uniqueViolation());
+
+      const result = await roster.sync('tok');
+
+      expect(result).toEqual({ created: 0, updated: 0, deactivated: 0 });
+      expect(prisma.mechanic.update).not.toHaveBeenCalled();
+    });
+
+    it('rethrows an error that is not a unique violation', async () => {
+      const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
+      prisma.mechanic.upsert.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(roster.sync('tok')).rejects.toThrow('db down');
+    });
+
+    it('rethrows a different Prisma error code', async () => {
+      const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
+      prisma.mechanic.upsert.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Record not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(roster.sync('tok')).rejects.toBeInstanceOf(
+        Prisma.PrismaClientKnownRequestError,
+      );
+    });
+
+    // covers: AC-11 (two concurrent calls leave one row per authUserId and never answer 500)
+    it('leaves one row per authUserId when two syncs run at the same time', async () => {
+      const { roster, prisma, rows } = setup([], [user('a', 'MECHANIC')]);
+      // Each upsert decides at its start whether the row exists, like the unique index would
+      prisma.mechanic.upsert.mockImplementation(
+        async ({
+          where,
+          create,
+          update,
+        }: {
+          where: { authUserId: string };
+          create: Omit<Row, 'id'>;
+          update: Partial<Row>;
+        }) => {
+          const existedAtStart = rows.find(
+            (r) => r.authUserId === where.authUserId,
+          );
+          await Promise.resolve();
+          const now = rows.find((r) => r.authUserId === where.authUserId);
+          if (existedAtStart) Object.assign(existedAtStart, update);
+          else if (now) throw uniqueViolation();
+          else rows.push({ id: 'm-new', ...create });
+          return {};
+        },
+      );
+
+      const [first, second] = await Promise.all([
+        roster.sync('tok'),
+        roster.sync('tok'),
+      ]);
+
+      expect(rows.filter((r) => r.authUserId === 'a')).toHaveLength(1);
+      expect(first.created + second.created).toBeGreaterThanOrEqual(1);
+      expect(first.updated + second.updated).toBe(0);
+    });
+  });
+
+  describe('ensure', () => {
+    const caller = (): AuthUser => ({
+      sub: 'a',
+      email: 'A@welinc.com',
+      name: 'Name a',
+      system: 'VRMS',
+      roles: [{ role: 'MECHANIC', system: 'VRMS' }],
+    });
+
+    // covers: AC-13 (two first requests at once still end with exactly one row)
+    it('recovers from a unique violation without writing again or failing', async () => {
+      const { roster, prisma, rows } = setup([], []);
+      const logged = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
+      prisma.mechanic.upsert.mockImplementationOnce(() => {
+        rows.push(rowFor('a'));
+        return Promise.reject(uniqueViolation());
+      });
+
+      await expect(roster.ensure(caller())).resolves.toBeUndefined();
+
+      expect(rows.filter((r) => r.authUserId === 'a')).toHaveLength(1);
+      expect(prisma.mechanic.update).not.toHaveBeenCalled();
+      expect(logged).not.toHaveBeenCalled();
+    });
+
+    it('fixes the winner row when its values differ after a violation', async () => {
+      const { roster, prisma, rows } = setup([], []);
+      prisma.mechanic.upsert.mockImplementationOnce(() => {
+        rows.push(rowFor('a', { isActive: false }));
+        return Promise.reject(uniqueViolation());
+      });
+
+      await roster.ensure(caller());
+
+      expect(prisma.mechanic.update).toHaveBeenCalledWith({
+        where: { authUserId: 'a' },
+        data: { name: 'Name a', email: 'a@welinc.com', isActive: true },
+      });
+    });
+
+    it('logs and swallows a failed write so the request still runs', async () => {
+      const { roster, prisma } = setup([], []);
+      const logged = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
+      prisma.mechanic.upsert.mockRejectedValueOnce(new Error('db down'));
+
+      await expect(roster.ensure(caller())).resolves.toBeUndefined();
+
+      expect(logged).toHaveBeenCalledTimes(1);
+      expect(String(logged.mock.calls[0][0])).toContain('db down');
+    });
+
+    it('logs and swallows a failed re-read after a violation', async () => {
+      const { roster, prisma } = setup([], []);
+      const logged = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => {});
+      prisma.mechanic.upsert.mockRejectedValueOnce(uniqueViolation());
+      prisma.mechanic.findUnique
+        .mockResolvedValueOnce(null) // the ensure read
+        .mockResolvedValueOnce(null) // the write's own read
+        .mockRejectedValueOnce(new Error('read failed'));
+
+      await expect(roster.ensure(caller())).resolves.toBeUndefined();
+
+      expect(logged).toHaveBeenCalledTimes(1);
+    });
   });
 });
