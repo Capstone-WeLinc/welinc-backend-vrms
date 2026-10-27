@@ -160,6 +160,20 @@ export class RepairsService {
     // Checked before any write, so a 400 leaves nothing half done.
     const { categories, entries } = await this.issueSources(dto);
 
+    // In house mechanics come by id and must be active (spec 0009, AC-27). Checked here, before
+    // any write, so a 400 leaves nothing half done.
+    const inHouseIds = new Map<string, string>();
+    for (const m of dto.mechanics) {
+      if (m.isOutsourced) continue;
+      const mechanic = await this.prisma.mechanic.findFirst({
+        where: { id: m.id, isOutsourced: false, isActive: true },
+      });
+      if (!mechanic) {
+        throw new BadRequestException('In house mechanic not found');
+      }
+      inHouseIds.set(m.id ?? '', mechanic.id);
+    }
+
     // Lookup/Create: Drivers
     const licenseKey = dto.driverName
       .toLowerCase()
@@ -205,14 +219,8 @@ export class RepairsService {
         }
         mechanicIds.push(mechanic.id);
       } else {
-        // In house mechanic: an active row, picked by id (spec 0009, AC-27)
-        const mechanic = await this.prisma.mechanic.findFirst({
-          where: { id: m.id, isOutsourced: false, isActive: true },
-        });
-        if (!mechanic) {
-          throw new BadRequestException('In house mechanic not found');
-        }
-        mechanicIds.push(mechanic.id);
+        // In house mechanic: already checked above
+        mechanicIds.push(inHouseIds.get(m.id ?? '') as string);
       }
     }
 

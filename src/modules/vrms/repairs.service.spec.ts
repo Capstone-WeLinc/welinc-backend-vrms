@@ -409,6 +409,31 @@ describe('RepairsService.create in house mechanics (AC-27)', () => {
     expect(prisma.vehicle.update).not.toHaveBeenCalled();
   });
 
+  // Follow up from the review: a rejected ticket leaves nothing behind
+  it('writes no driver row when the in house mechanic is rejected', async () => {
+    const { service, prisma } = createSetup(null);
+
+    await service.create(dto([{ id: MECH_ID }]), admin).catch(() => {});
+
+    expect(prisma.driver.findUnique).not.toHaveBeenCalled();
+    expect(prisma.driver.update).not.toHaveBeenCalled();
+    expect(prisma.driver.create).not.toHaveBeenCalled();
+    expect(prisma.mechanic.create).not.toHaveBeenCalled();
+  });
+
+  it('writes no outsourced mechanic when a later in house mechanic is rejected', async () => {
+    const { service, prisma } = createSetup(null);
+
+    await service
+      .create(
+        dto([{ isOutsourced: true, name: 'Shop Guy' }, { id: MECH_ID }]),
+        admin,
+      )
+      .catch(() => {});
+
+    expect(prisma.mechanic.create).not.toHaveBeenCalled();
+  });
+
   it('looks the mechanic up by id, in house and active only', async () => {
     const { service, prisma } = createSetup(null);
 
