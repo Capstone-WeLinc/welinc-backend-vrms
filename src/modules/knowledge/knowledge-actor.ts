@@ -8,12 +8,6 @@ export type JwtUser = {
   system: string;
 };
 
-/** Readers (spec 0007, AC-3). */
-export const KNOWLEDGE_READERS = [
-  UserRole.ADMIN,
-  UserRole.CHIEF_MECHANIC,
-  UserRole.MECHANIC,
-];
 /** Editors (spec 0007, AC-3). The permission matrix (feature 5) takes these lists over. */
 export const KNOWLEDGE_EDITORS = [UserRole.ADMIN, UserRole.CHIEF_MECHANIC];
 

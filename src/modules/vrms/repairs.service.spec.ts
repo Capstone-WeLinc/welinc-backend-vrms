@@ -1,8 +1,18 @@
-import { BadRequestException, ExecutionContext } from '@nestjs/common';
+import {
+  BadRequestException,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Prisma, RepairStatus } from '@prisma/client';
 import { UserRole } from '../../auth/roles';
-import { RolesGuard } from '../../auth/guards/roles.guard';
+import { buildAbility } from '../../auth/permissions/ability.factory';
+import {
+  defaultAbility,
+  FakePermissions,
+} from '../../auth/permissions/permissions.fake';
+import { PermissionsGuard } from '../../auth/permissions/permissions.guard';
+import type { PermissionsService } from '../../auth/permissions/permissions.service';
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsController } from './repairs.controller';
 import { RepairsService } from './repairs.service';
@@ -38,6 +48,14 @@ const mechanic: JwtUser = {
   system: 'VRMS',
 };
 
+// Under the default matrix (spec 0011, AC-14)
+const asAdmin = defaultAbility(admin);
+const asMechanic = defaultAbility(mechanic);
+const readsNothing = buildAbility('x', new Set());
+const MINE = {
+  OR: [{ assignments: { some: { mechanic: { is: { authUserId: 'm' } } } } }],
+};
+
 function ticket(status: RepairStatus, totalCost: number | null) {
   return {
     id: `id-${Math.random()}`,
@@ -55,9 +73,8 @@ function ticket(status: RepairStatus, totalCost: number | null) {
   };
 }
 
-function setup(mechanicRecord: { id: string } | null = null) {
+function setup() {
   const prisma = {
-    mechanic: { findUnique: jest.fn().mockResolvedValue(mechanicRecord) },
     repairTicket: {
       findMany: jest
         .fn()
@@ -104,7 +121,7 @@ describe('RepairsService.findHistory', () => {
         page: 1,
         limit: 2,
       },
-      admin,
+      asAdmin,
     );
     expect(res.summary).toEqual({
       finished: 35,
@@ -127,19 +144,17 @@ describe('RepairsService.findHistory', () => {
   });
 
   it('gives a mechanic only assigned tickets, with no costs and spend null', async () => {
-    const { prisma, service } = setup({ id: 'mech-1' });
-    const res = await service.findHistory({}, mechanic);
-    expect(whereOf(prisma.repairTicket.findMany).assignments).toEqual({
-      some: { mechanicId: 'mech-1' },
-    });
+    const { prisma, service } = setup();
+    const res = await service.findHistory({}, asMechanic);
+    expect(whereOf(prisma.repairTicket.findMany).AND).toEqual([MINE]);
     expect(res.summary.spend).toBeNull();
     expect(res.data.every((row) => !('totalCost' in row))).toBe(true);
     expect(res.data[0]).toHaveProperty('isUnlocked');
   });
 
-  it('fails closed for a mechanic login with no mechanic record', async () => {
-    const { prisma, service } = setup(null);
-    const res = await service.findHistory({}, mechanic);
+  it('answers empty with no query when the caller may read no ticket', async () => {
+    const { prisma, service } = setup();
+    const res = await service.findHistory({}, readsNothing);
     expect(res).toEqual({
       data: [],
       total: 0,
@@ -150,7 +165,7 @@ describe('RepairsService.findHistory', () => {
 
   it('holds only finished tickets by default, never an open one like ON_HOLD (AC-4a)', async () => {
     const { prisma, service } = setup();
-    await service.findHistory({}, admin);
+    await service.findHistory({}, asAdmin);
     expect(whereOf(prisma.repairTicket.findMany).repairStatus).toEqual({
       in: [RepairStatus.CLOSED, RepairStatus.CANCELLED],
     });
@@ -161,14 +176,17 @@ describe('RepairsService.findHistory', () => {
     await expect(
       service.findHistory(
         { from: '2026-10-02T00:00:00Z', to: '2026-10-01T00:00:00Z' },
-        admin,
+        asAdmin,
       ),
     ).rejects.toThrow('"from" must be before "to"');
   });
 });
 
 describe('audit routes', () => {
-  const guard = new RolesGuard(new Reflector());
+  const guard = new PermissionsGuard(
+    new Reflector(),
+    new FakePermissions() as unknown as PermissionsService,
+  );
   const context = (handler: (...args: never[]) => unknown, user: JwtUser) =>
     ({
       getHandler: () => handler,
@@ -177,17 +195,22 @@ describe('audit routes', () => {
         getRequest: () => ({
           user,
           headers: {},
+          method: 'GET',
           path: '/vrms/repairs/audit-logs',
         }),
       }),
     }) as unknown as ExecutionContext;
 
   it.each(['findAuditEvents', 'findAuditActors'] as const)(
-    '%s answers admins only (a mechanic gets 403)',
-    (name) => {
+    '%s needs audit.view, which only Admin holds by default (a mechanic gets 403)',
+    async (name) => {
       const handler = RepairsController.prototype[name];
-      expect(guard.canActivate(context(handler, admin))).toBe(true);
-      expect(guard.canActivate(context(handler, mechanic))).toBe(false);
+      await expect(guard.canActivate(context(handler, admin))).resolves.toBe(
+        true,
+      );
+      await expect(
+        guard.canActivate(context(handler, mechanic)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     },
   );
 });
@@ -220,9 +243,8 @@ function openTicket(costs: {
   };
 }
 
-function listSetup(mechanicRecord: { id: string } | null = null) {
+function listSetup() {
   const prisma = {
-    mechanic: { findUnique: jest.fn().mockResolvedValue(mechanicRecord) },
     repairTicket: {
       count: jest.fn().mockResolvedValue(1),
       findMany: jest
@@ -250,7 +272,7 @@ const NOW = new Date('2026-10-22T08:00:00Z');
 describe('RepairsService.findAll', () => {
   it('orders by due date with no due date last, then newest, then id, the same for count and rows', async () => {
     const { prisma, service } = listSetup();
-    await service.findAll({ page: 2, limit: 20 }, admin);
+    await service.findAll({ page: 2, limit: 20 }, asAdmin);
     const args = argsOf(prisma.repairTicket.findMany);
     expect(args.orderBy).toEqual([
       { dueAt: { sort: 'asc', nulls: 'last' } },
@@ -263,9 +285,11 @@ describe('RepairsService.findAll', () => {
 
   it('holds every open status by default (ON_HOLD included) and returns every row with no paging', async () => {
     const { prisma, service } = listSetup();
-    await service.findAll({}, admin);
+    await service.findAll({}, asAdmin);
     const args = argsOf(prisma.repairTicket.findMany);
     expect(args.where).toEqual({
+      // ticket.view_all: every ticket
+      AND: [{}],
       repairStatus: {
         in: [
           RepairStatus.OPEN,
@@ -284,7 +308,7 @@ describe('RepairsService.findAll', () => {
 
   it('defaults the missing half of page and limit', async () => {
     const { prisma, service } = listSetup();
-    await service.findAll({ page: 3 }, admin);
+    await service.findAll({ page: 3 }, asAdmin);
     expect(argsOf(prisma.repairTicket.findMany)).toMatchObject({
       skip: 40,
       take: 20,
@@ -299,7 +323,7 @@ describe('RepairsService.findAll', () => {
         garageId: GARAGE,
         mechanicId: MECHANIC,
       },
-      admin,
+      asAdmin,
     );
     expect(whereOf(prisma.repairTicket.findMany)).toMatchObject({
       repairStatus: RepairStatus.IN_PROGRESS,
@@ -313,11 +337,12 @@ describe('RepairsService.findAll', () => {
     const { prisma, service } = listSetup();
     await service.findAll(
       { overdue: true, status: RepairStatus.CLOSED },
-      admin,
+      asAdmin,
     );
     const where = whereOf(prisma.repairTicket.findMany);
     expect(where.repairStatus).toBe(RepairStatus.CLOSED);
     expect(where.AND).toEqual([
+      {},
       {
         repairStatus: {
           in: [
@@ -336,23 +361,26 @@ describe('RepairsService.findAll', () => {
     jest.useRealTimers();
   });
 
-  it('ignores mechanicId for a mechanic and scopes to their own tickets', async () => {
-    const { prisma, service } = listSetup({ id: 'mech-1' });
-    await service.findAll({ mechanicId: MECHANIC }, mechanic);
-    expect(whereOf(prisma.repairTicket.findMany).assignments).toEqual({
-      some: { mechanicId: 'mech-1' },
-    });
+  it("keeps a mechanic's own scope even with a mechanicId filter", async () => {
+    const { prisma, service } = listSetup();
+    await service.findAll({ mechanicId: MECHANIC }, asMechanic);
+    const where = whereOf(prisma.repairTicket.findMany);
+    expect(where.AND).toEqual([MINE]);
+    expect(where.assignments).toEqual({ some: { mechanicId: MECHANIC } });
   });
 
-  it('fails closed for a mechanic login with no mechanic record', async () => {
-    const { prisma, service } = listSetup(null);
-    expect(await service.findAll({}, mechanic)).toEqual({ data: [], total: 0 });
+  it('answers empty with no query when the caller may read no ticket', async () => {
+    const { prisma, service } = listSetup();
+    expect(await service.findAll({}, readsNothing)).toEqual({
+      data: [],
+      total: 0,
+    });
     expect(prisma.repairTicket.findMany).not.toHaveBeenCalled();
   });
 
   it('sends a stored 0 cost as 0, not null', async () => {
     const { service } = listSetup();
-    const res = await service.findAll({}, admin);
+    const res = await service.findAll({}, asAdmin);
     expect(res.data[0]).toMatchObject({
       partsCost: 0,
       laborCost: 0,

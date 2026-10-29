@@ -6,6 +6,8 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { subject } from '@casl/ability';
+import { accessibleBy } from '@casl/prisma';
 import {
   KnowledgeEntryStatus,
   Prisma,
@@ -13,6 +15,7 @@ import {
   VehicleStatus,
 } from '@prisma/client';
 import { UserRole } from '../../auth/roles';
+import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
 import {
   AuditEvent,
@@ -97,6 +100,20 @@ function parseRange(from: string | undefined, to: string | undefined) {
   return range;
 }
 
+/** The tickets the caller may read, as a where; null when they may read none (spec 0011, AC-10). */
+function readableTickets(
+  ability: AppAbility,
+): Prisma.RepairTicketWhereInput | null {
+  // accessibleBy's no access marker fails a query, so answer empty before reaching Prisma
+  if (!ability.can('read', 'RepairTicket')) return null;
+  return accessibleBy(ability, 'read').ofType('RepairTicket');
+}
+
+/** Without ticket.costs.view the ability forbids the cost fields (spec 0011, AC-11). */
+function canSeeCosts(ability: AppAbility): boolean {
+  return ability.can('read', 'RepairTicket', 'totalCost');
+}
+
 function generateRepairNumber(): string {
   const now = new Date();
   const date = [
@@ -120,7 +137,8 @@ const ticketInclude = {
     orderBy: { assignedAt: 'asc' },
     select: {
       mechanicId: true,
-      mechanic: { select: { id: true, name: true } },
+      // authUserId so the ability's ownership condition can match a loaded ticket
+      mechanic: { select: { id: true, name: true, authUserId: true } },
     },
   },
   repairParts: { orderBy: { createdAt: 'asc' } },
@@ -330,15 +348,10 @@ export class RepairsService {
 
   // ── List repair tickets ──────────────────────────────────────────────────
 
-  async findAll(query: FindRepairsQueryDto, user: JwtUser) {
-    const { search, status, garageId, overdue } = query;
-    const isMechanic = this.isMechanic(user);
-    const mechanicRecord = isMechanic
-      ? await this.getMechanicForUser(user)
-      : null;
-
-    // Fail closed: a mechanic login with no mechanic record sees nothing
-    if (isMechanic && !mechanicRecord) return { data: [], total: 0 };
+  async findAll(query: FindRepairsQueryDto, ability: AppAbility) {
+    const { search, status, garageId, overdue, mechanicId } = query;
+    const scope = readableTickets(ability);
+    if (!scope) return { data: [], total: 0 };
 
     const where: Prisma.RepairTicketWhereInput = {
       repairStatus: status ?? { in: OPEN_STATUSES },
@@ -354,17 +367,19 @@ export class RepairsService {
 
     if (garageId) where.garageId = garageId;
 
-    // A mechanic is always scoped to their own tickets; mechanicId is an admin filter
-    const mechanicId = mechanicRecord?.id ?? query.mechanicId;
+    // A filter inside the caller's scope, never a way around it
     if (mechanicId) where.assignments = { some: { mechanicId } };
 
-    // Overdue only ever matches open tickets, whatever status was asked for
-    if (overdue) {
-      where.AND = [
-        { repairStatus: { in: OPEN_STATUSES } },
-        { dueAt: { lt: new Date() } },
-      ];
-    }
+    // The scope goes first; overdue only ever matches open tickets, whatever status was asked for
+    where.AND = [
+      scope,
+      ...(overdue
+        ? [
+            { repairStatus: { in: OPEN_STATUSES } },
+            { dueAt: { lt: new Date() } },
+          ]
+        : []),
+    ];
 
     // Neither page nor limit: every row, as the dashboard expects. One of them: the other defaults
     const paged = query.page !== undefined || query.limit !== undefined;
@@ -386,24 +401,21 @@ export class RepairsService {
       }),
     ]);
 
+    const hideCosts = !canSeeCosts(ability);
     return {
-      data: tickets.map((t) => this.formatTicket(t, isMechanic)),
+      data: tickets.map((t) => this.formatTicket(t, hideCosts)),
       total,
     };
   }
 
   // ── Repair history (closed + cancelled) ──────────────────────────────────
 
-  async findHistory(query: HistoryQueryDto, user: JwtUser) {
+  async findHistory(query: HistoryQueryDto, ability: AppAbility) {
     const { search, status, garageId, page, limit } = query;
     const { from, to } = parseRange(query.from, query.to);
-    const isMechanic = this.isMechanic(user);
-    const mechanicRecord = isMechanic
-      ? await this.getMechanicForUser(user)
-      : null;
-
-    // Fail closed: a mechanic login with no mechanic record sees nothing
-    if (isMechanic && !mechanicRecord) {
+    const hideCosts = !canSeeCosts(ability);
+    const scope = readableTickets(ability);
+    if (!scope) {
       return {
         data: [],
         total: 0,
@@ -413,6 +425,7 @@ export class RepairsService {
 
     // One where for rows, count and summary, so a tile never disagrees with the list
     const where: Prisma.RepairTicketWhereInput = {
+      AND: [scope],
       repairStatus: status ?? { in: FINISHED_STATUSES },
     };
 
@@ -427,8 +440,6 @@ export class RepairsService {
     if (garageId) where.garageId = garageId;
     if (from || to)
       where.closedAt = { ...(from && { gte: from }), ...(to && { lt: to }) };
-    if (mechanicRecord)
-      where.assignments = { some: { mechanicId: mechanicRecord.id } };
 
     const [tickets, groups] = await Promise.all([
       this.prisma.repairTicket.findMany({
@@ -485,7 +496,7 @@ export class RepairsService {
         cancellationReason: t.cancellationReason,
         isUnlocked: t.isUnlocked,
       };
-      return isMechanic
+      return hideCosts
         ? row
         : { ...row, totalCost: t.totalCost ? Number(t.totalCost) : null };
     });
@@ -497,15 +508,15 @@ export class RepairsService {
         finished: closed + cancelled,
         closed,
         cancelled,
-        spend: isMechanic ? null : Number(closedGroup?._sum.totalCost ?? 0),
+        // An aggregate of costs, so it follows the same key
+        spend: hideCosts ? null : Number(closedGroup?._sum.totalCost ?? 0),
       },
     };
   }
 
   // ── Single repair ticket ─────────────────────────────────────────────────
 
-  async findOne(id: string, user: JwtUser) {
-    const isMechanic = this.isMechanic(user);
+  async findOne(id: string, ability: AppAbility) {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
       include: ticketInclude,
@@ -513,20 +524,14 @@ export class RepairsService {
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
-    // Mechanics can only view tickets they are assigned to
-    if (isMechanic) {
-      const mechanicRecord = await this.getMechanicForUser(user);
-      const isAssigned = mechanicRecord
-        ? ticket.assignments.some((a) => a.mechanicId === mechanicRecord.id)
-        : false;
-      if (!isAssigned) {
-        throw new ForbiddenException(
-          'You are not assigned to this repair ticket',
-        );
-      }
+    // ticket.view reads only assigned tickets; ticket.view_all reads every one
+    if (!ability.can('read', subject('RepairTicket', ticket))) {
+      throw new ForbiddenException(
+        'You are not assigned to this repair ticket',
+      );
     }
 
-    return this.present(ticket, isMechanic);
+    return this.present(ticket, !canSeeCosts(ability));
   }
 
   // ── Update repair status ─────────────────────────────────────────────────
@@ -1171,7 +1176,7 @@ export class RepairsService {
   }
 
   /** formatTicket plus each linked entry's typical hours, for one ticket (spec 0007, AC-27). */
-  private async present(ticket: TicketRow, isMechanic: boolean) {
+  private async present(ticket: TicketRow, hideCosts: boolean) {
     const issues = ticket.issues;
     const entryIds = [
       ...new Set(
@@ -1182,12 +1187,12 @@ export class RepairsService {
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );
-    return this.formatTicket(ticket, isMechanic, hours);
+    return this.formatTicket(ticket, hideCosts, hours);
   }
 
   private formatTicket(
     ticket: TicketRow,
-    isMechanic: boolean,
+    hideCosts: boolean,
     typicalHours: Map<string, number | null> = new Map(),
   ) {
     const base = {
@@ -1224,7 +1229,7 @@ export class RepairsService {
     };
 
     // Cost and admin-only fields. A ticket's history is read from GET /vrms/repairs/audit-logs?ticketId=
-    if (!isMechanic) {
+    if (!hideCosts) {
       return {
         ...base,
         // != null so a stored 0 is sent as 0 (recorded), not as missing

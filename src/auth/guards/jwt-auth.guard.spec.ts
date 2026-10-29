@@ -3,6 +3,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import type { AccountCheck, AuthUser } from '../account-check';
 import { FakeAccountCheck } from '../account-check.fake';
@@ -32,10 +33,15 @@ function setup(authorization: string | undefined = 'Bearer abc.def.ghi') {
   };
   const context = {
     switchToHttp: () => ({ getRequest: () => request }),
+    getHandler: () => () => undefined,
+    getClass: () => class {},
   } as unknown as ExecutionContext;
   const check = new FakeAccountCheck(mechanic);
   const confirm = jest.spyOn(check, 'confirm');
-  const guard = new JwtAuthGuard(check as unknown as AccountCheck);
+  const guard = new JwtAuthGuard(
+    check as unknown as AccountCheck,
+    new Reflector(),
+  );
   // The signature check is passport's; the guard under test is what runs after it
   const signature = jest
     .spyOn(
