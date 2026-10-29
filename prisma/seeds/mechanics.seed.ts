@@ -16,7 +16,6 @@ export async function seedMechanics(prisma: PrismaClient) {
       authUserId: p.id,
       email: p.email.toLowerCase(),
       name: p.name,
-      isOutsourced: false,
     })),
   });
   console.log(`  ${people.length} in house mechanics created.\n`);

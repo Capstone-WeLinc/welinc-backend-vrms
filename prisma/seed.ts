@@ -7,9 +7,7 @@ import { seedGarages } from './seeds/garages.seed';
 import { seedMechanics } from './seeds/mechanics.seed';
 import { seedVehicles } from './seeds/vehicles.seed';
 import { seedDrivers } from './seeds/drivers.seed';
-import { seedBookings } from './seeds/bookings.seed';
 import { seedRepairs } from './seeds/repairs.seed';
-import { seedVmms } from './seeds/vmms.seed';
 import { seedKnowledge } from './seeds/knowledge.seed';
 import { SEED } from './seeds/random';
 
@@ -23,24 +21,14 @@ async function cleanDatabase(prisma: PrismaClient) {
   console.log('Cleaning database...');
   await prisma.knowledgeSuggestion.deleteMany({});
   await prisma.knowledgeEntryChange.deleteMany({});
+  // Audit rows first: the database refuses to delete a ticket that still has them (spec 0010, AC-8)
   await prisma.auditLog.deleteMany({});
-  await prisma.shopChangeLog.deleteMany({});
+  await prisma.ticketAssignment.deleteMany({});
   await prisma.repairPart.deleteMany({});
   await prisma.repairIssue.deleteMany({});
   await prisma.repairTicket.deleteMany({});
   // Steps and parts go with their entry; the issue categories belong to the migration and stay
   await prisma.knowledgeEntry.deleteMany({});
-  
-  // Clean self-referencing maintenance schedules
-  await prisma.maintenanceSchedule.updateMany({
-    data: { previousScheduleId: null },
-  });
-  await prisma.maintenanceSchedule.deleteMany({});
-  
-  await prisma.checklistItem.deleteMany({});
-  await prisma.checklistTemplate.deleteMany({});
-  
-  await prisma.booking.deleteMany({});
   await prisma.driver.deleteMany({});
   await prisma.mechanic.deleteMany({});
   await prisma.vehicle.deleteMany({});
@@ -58,10 +46,8 @@ async function main() {
   await seedMechanics(prisma);
   const vehicles = await seedVehicles(prisma);
   const drivers = await seedDrivers(prisma, now);
-  await seedBookings(prisma);
   const { entries, categoryId } = await seedKnowledge(prisma, now);
   await seedRepairs(prisma, { now, vehicles, drivers, entries, categoryId });
-  await seedVmms(prisma, now);
 
   console.log('Database seeded successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

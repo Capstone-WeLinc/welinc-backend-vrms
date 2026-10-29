@@ -90,7 +90,7 @@ export async function loadStats(
   const rows = await prisma.$queryRaw<StatsRow[]>(Prisma.sql`
     WITH linked AS (
       SELECT ri.knowledge_entry_id AS entry_id, ri.hours_spent, t.id AS ticket_id, t.repair_status,
-             t.created_at, t.completed_at, t.total_cost
+             t.created_at, t.closed_at, t.total_cost
       FROM repair_issues ri
       JOIN repair_tickets t ON t.id = ri.repair_ticket_id
       WHERE ri.knowledge_entry_id = ANY(${entryIds}::uuid[]) AND t.repair_status <> 'CANCELLED'
@@ -100,19 +100,19 @@ export async function loadStats(
              count(*)::int AS seen_count,
              max(created_at) AS last_seen_at,
              (percentile_cont(0.5) WITHIN GROUP (ORDER BY hours_spent)
-               FILTER (WHERE repair_status = 'COMPLETED' AND hours_spent IS NOT NULL))::float8 AS hours_median,
-             (count(*) FILTER (WHERE repair_status = 'COMPLETED' AND hours_spent IS NOT NULL))::int AS hours_samples
+               FILTER (WHERE repair_status = 'CLOSED' AND hours_spent IS NOT NULL))::float8 AS hours_median,
+             (count(*) FILTER (WHERE repair_status = 'CLOSED' AND hours_spent IS NOT NULL))::int AS hours_samples
       FROM linked
       GROUP BY entry_id
     ),
     days AS (
       SELECT entry_id,
-             (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM completed_at - created_at) / 86400))::float8 AS days_median,
+             (percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM closed_at - created_at) / 86400))::float8 AS days_median,
              count(*)::int AS days_samples
       FROM (
-        SELECT DISTINCT entry_id, ticket_id, created_at, completed_at
+        SELECT DISTINCT entry_id, ticket_id, created_at, closed_at
         FROM linked
-        WHERE repair_status = 'COMPLETED' AND completed_at IS NOT NULL
+        WHERE repair_status = 'CLOSED' AND closed_at IS NOT NULL
       ) d
       GROUP BY entry_id
     ),
@@ -121,7 +121,7 @@ export async function loadStats(
              (percentile_cont(0.5) WITHIN GROUP (ORDER BY total_cost))::float8 AS cost_median,
              count(*)::int AS cost_samples
       FROM linked l
-      WHERE repair_status = 'COMPLETED' AND total_cost IS NOT NULL
+      WHERE repair_status = 'CLOSED' AND total_cost IS NOT NULL
         AND (SELECT count(*) FROM repair_issues r2 WHERE r2.repair_ticket_id = l.ticket_id) = 1
       GROUP BY entry_id
     )

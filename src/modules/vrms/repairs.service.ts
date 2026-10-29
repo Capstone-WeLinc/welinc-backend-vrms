@@ -16,11 +16,24 @@ import { UserRole } from '../../auth/roles';
 import { PrismaService } from '../../shared/prisma.service';
 import {
   AuditEvent,
+  auditData,
+  costEvent,
+  createdEvent,
   decodeCursor,
   encodeCursor,
+  knowledgeLinkEvent,
   olderThan,
+  statusEvent,
   toAuditEvent,
+  unlockEvent,
+  whoName,
 } from './audit-events';
+import {
+  FINISHED_STATUSES,
+  isFinished,
+  OPEN_STATUSES,
+  STATUS_LABELS,
+} from './ticket-statuses';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -52,23 +65,19 @@ type JwtUser = {
   system: string;
 };
 
-// Allowed status transitions per role
+// Mechanics and chief mechanics may only start work and send it for verification; closing and
+// cancelling stay Admin only until feature 16 replaces these moves (spec 0010, AC-4)
 const MECHANIC_ALLOWED_TRANSITIONS: RepairStatus[] = [
-  RepairStatus.PENDING,
   RepairStatus.IN_PROGRESS,
   RepairStatus.FOR_VERIFICATION,
 ];
 
-const OPEN_STATUSES: RepairStatus[] = [
-  RepairStatus.PENDING,
-  RepairStatus.IN_PROGRESS,
-  RepairStatus.FOR_VERIFICATION,
-];
-
-const TERMINAL_STATUSES: RepairStatus[] = [
-  RepairStatus.COMPLETED,
-  RepairStatus.CANCELLED,
-];
+// Today's forward moves on the v2 names; any open status may also move to CANCELLED
+const FORWARD_MOVES: Partial<Record<RepairStatus, RepairStatus>> = {
+  [RepairStatus.ASSIGNED]: RepairStatus.IN_PROGRESS,
+  [RepairStatus.IN_PROGRESS]: RepairStatus.FOR_VERIFICATION,
+  [RepairStatus.FOR_VERIFICATION]: RepairStatus.CLOSED,
+};
 
 const AUDIT_PAGE_SIZE = 50;
 
@@ -107,8 +116,12 @@ const ticketInclude = {
   driver: { select: { name: true, licenseNumber: true, isVerified: true } },
   garage: { select: { name: true } },
   issues: issueInclude,
-  mechanics: {
-    select: { id: true, name: true, isOutsourced: true, shopName: true },
+  assignments: {
+    orderBy: { assignedAt: 'asc' },
+    select: {
+      mechanicId: true,
+      mechanic: { select: { id: true, name: true } },
+    },
   },
   repairParts: { orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.RepairTicketInclude;
@@ -160,18 +173,14 @@ export class RepairsService {
     // Checked before any write, so a 400 leaves nothing half done.
     const { categories, entries } = await this.issueSources(dto);
 
-    // In house mechanics come by id and must be active (spec 0009, AC-27). Checked here, before
-    // any write, so a 400 leaves nothing half done.
-    const inHouseIds = new Map<string, string>();
-    for (const m of dto.mechanics) {
-      if (m.isOutsourced) continue;
-      const mechanic = await this.prisma.mechanic.findFirst({
-        where: { id: m.id, isOutsourced: false, isActive: true },
-      });
-      if (!mechanic) {
-        throw new BadRequestException('In house mechanic not found');
-      }
-      inHouseIds.set(m.id ?? '', mechanic.id);
+    // Mechanics come by id and must be active (spec 0009, AC-27; spec 0010, AC-12). Checked here,
+    // before any write, so a 400 leaves nothing half done.
+    const mechanicIds = [...new Set(dto.mechanics.map((m) => m.id))];
+    const activeCount = await this.prisma.mechanic.count({
+      where: { id: { in: mechanicIds }, isActive: true },
+    });
+    if (activeCount !== mechanicIds.length) {
+      throw new BadRequestException('In house mechanic not found');
     }
 
     // Lookup/Create: Drivers
@@ -199,38 +208,15 @@ export class RepairsService {
           },
         });
 
-    // Lookup/Create: Mechanics
-    const mechanicIds: string[] = [];
-    for (const m of dto.mechanics) {
-      if (m.isOutsourced) {
-        // Outsourced mechanic: dynamically create record if not exists
-        const name = m.name ?? ''; // required for outsourced by the DTO
-        let mechanic = await this.prisma.mechanic.findFirst({
-          where: { name, isOutsourced: true },
-        });
-        if (!mechanic) {
-          mechanic = await this.prisma.mechanic.create({
-            data: {
-              name,
-              isOutsourced: true,
-              shopName: m.shopName ?? null,
-            },
-          });
-        }
-        mechanicIds.push(mechanic.id);
-      } else {
-        // In house mechanic: already checked above
-        mechanicIds.push(inHouseIds.get(m.id ?? '') as string);
-      }
-    }
-
     // Set vehicle status to UNDER_REPAIR
     await this.prisma.vehicle.update({
       where: { id: vehicle.id },
       data: { status: VehicleStatus.UNDER_REPAIR },
     });
 
-    // Create the repair ticket with issues
+    // The DTO requires a mechanic, so a new ticket starts Assigned (spec 0010, AC-3)
+    const now = new Date();
+    const reporter = { userId: user.sub, name: whoName(user) };
     const ticket = await this.prisma.repairTicket.create({
       data: {
         repairNumber,
@@ -238,7 +224,11 @@ export class RepairsService {
         driverId: driver.id,
         garageId: garage.id,
         odometer: dto.odometerReading,
-        repairStatus: RepairStatus.PENDING,
+        repairStatus: RepairStatus.ASSIGNED,
+        priority: dto.priority,
+        reportedByUserId: reporter.userId,
+        reportedByName: reporter.name,
+        lastActivityAt: now,
         // Linked issues get a copy of the entry's steps (the CREATED row covers the link, no KNOWLEDGE_LINK)
         issues: {
           create: dto.issues.map((issue) => {
@@ -262,18 +252,16 @@ export class RepairsService {
             };
           }),
         },
-        mechanics: {
-          connect: mechanicIds.map((id) => ({ id })),
+        assignments: {
+          create: mechanicIds.map((mechanicId) => ({
+            mechanicId,
+            assignedAt: now,
+            assignedByUserId: reporter.userId,
+            assignedByName: reporter.name,
+          })),
         },
         // Nested so the ticket and its CREATED row are saved together or not at all
-        auditLogs: {
-          create: {
-            userId: user.sub,
-            email: user.email,
-            actorName: user.name,
-            action: 'CREATED',
-          },
-        },
+        auditLogs: { create: auditData(user, createdEvent(), now) },
       },
       include: ticketInclude,
     });
@@ -368,13 +356,13 @@ export class RepairsService {
 
     // A mechanic is always scoped to their own tickets; mechanicId is an admin filter
     const mechanicId = mechanicRecord?.id ?? query.mechanicId;
-    if (mechanicId) where.mechanics = { some: { id: mechanicId } };
+    if (mechanicId) where.assignments = { some: { mechanicId } };
 
     // Overdue only ever matches open tickets, whatever status was asked for
     if (overdue) {
       where.AND = [
         { repairStatus: { in: OPEN_STATUSES } },
-        { targetDueDate: { lt: new Date() } },
+        { dueAt: { lt: new Date() } },
       ];
     }
 
@@ -390,7 +378,7 @@ export class RepairsService {
         include: ticketInclude,
         // Most urgent first; id last so pages never repeat or skip a row
         orderBy: [
-          { targetDueDate: { sort: 'asc', nulls: 'last' } },
+          { dueAt: { sort: 'asc', nulls: 'last' } },
           { createdAt: 'desc' },
           { id: 'desc' },
         ],
@@ -404,7 +392,7 @@ export class RepairsService {
     };
   }
 
-  // ── Repair history (completed + cancelled) ───────────────────────────────
+  // ── Repair history (closed + cancelled) ──────────────────────────────────
 
   async findHistory(query: HistoryQueryDto, user: JwtUser) {
     const { search, status, garageId, page, limit } = query;
@@ -419,13 +407,13 @@ export class RepairsService {
       return {
         data: [],
         total: 0,
-        summary: { closed: 0, completed: 0, cancelled: 0, spend: null },
+        summary: { finished: 0, closed: 0, cancelled: 0, spend: null },
       };
     }
 
     // One where for rows, count and summary, so a tile never disagrees with the list
     const where: Prisma.RepairTicketWhereInput = {
-      repairStatus: status ?? { in: TERMINAL_STATUSES },
+      repairStatus: status ?? { in: FINISHED_STATUSES },
     };
 
     if (search) {
@@ -438,8 +426,9 @@ export class RepairsService {
 
     if (garageId) where.garageId = garageId;
     if (from || to)
-      where.completedAt = { ...(from && { gte: from }), ...(to && { lt: to }) };
-    if (mechanicRecord) where.mechanics = { some: { id: mechanicRecord.id } };
+      where.closedAt = { ...(from && { gte: from }), ...(to && { lt: to }) };
+    if (mechanicRecord)
+      where.assignments = { some: { mechanicId: mechanicRecord.id } };
 
     const [tickets, groups] = await Promise.all([
       this.prisma.repairTicket.findMany({
@@ -450,7 +439,7 @@ export class RepairsService {
           repairStatus: true,
           createdAt: true,
           updatedAt: true,
-          completedAt: true,
+          closedAt: true,
           cancellationReason: true,
           isUnlocked: true,
           totalCost: true,
@@ -459,7 +448,7 @@ export class RepairsService {
           garage: { select: { name: true } },
         },
         orderBy: [
-          { completedAt: { sort: 'desc', nulls: 'last' } },
+          { closedAt: { sort: 'desc', nulls: 'last' } },
           { id: 'desc' },
         ],
         ...(page !== undefined &&
@@ -473,16 +462,15 @@ export class RepairsService {
       }),
     ]);
 
-    const completedGroup = groups.find(
-      (g) => g.repairStatus === RepairStatus.COMPLETED,
+    const closedGroup = groups.find(
+      (g) => g.repairStatus === RepairStatus.CLOSED,
     );
-    const completed = completedGroup?._count._all ?? 0;
+    const closed = closedGroup?._count._all ?? 0;
     const cancelled =
       groups.find((g) => g.repairStatus === RepairStatus.CANCELLED)?._count
         ._all ?? 0;
 
     const data = tickets.map((t) => {
-      const closedAt = t.completedAt?.toISOString() ?? null;
       const row = {
         id: t.id,
         repairNumber: t.repairNumber,
@@ -493,8 +481,7 @@ export class RepairsService {
         garageLocation: t.garage.name,
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
-        completedAt: closedAt,
-        closedAt,
+        closedAt: t.closedAt?.toISOString() ?? null,
         cancellationReason: t.cancellationReason,
         isUnlocked: t.isUnlocked,
       };
@@ -505,12 +492,12 @@ export class RepairsService {
 
     return {
       data,
-      total: completed + cancelled,
+      total: closed + cancelled,
       summary: {
-        closed: completed + cancelled,
-        completed,
+        finished: closed + cancelled,
+        closed,
         cancelled,
-        spend: isMechanic ? null : Number(completedGroup?._sum.totalCost ?? 0),
+        spend: isMechanic ? null : Number(closedGroup?._sum.totalCost ?? 0),
       },
     };
   }
@@ -530,7 +517,7 @@ export class RepairsService {
     if (isMechanic) {
       const mechanicRecord = await this.getMechanicForUser(user);
       const isAssigned = mechanicRecord
-        ? ticket.mechanics.some((m) => m.id === mechanicRecord.id)
+        ? ticket.assignments.some((a) => a.mechanicId === mechanicRecord.id)
         : false;
       if (!isAssigned) {
         throw new ForbiddenException(
@@ -548,7 +535,7 @@ export class RepairsService {
     const isMechanic = this.isMechanic(user);
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: { mechanics: true, vehicle: true, issues: true },
+      include: { assignments: true, vehicle: true, issues: true },
     });
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
@@ -562,52 +549,26 @@ export class RepairsService {
       );
     }
 
-    // Enforce sequential transitions and prevent reversal/skipping (VR-CR-02)
+    // Today's forward moves on the v2 names, plus cancel from any open status (spec 0010, AC-4)
     const currentStatus = ticket.repairStatus;
     const nextStatus = dto.status;
+    const statusChanged = nextStatus !== currentStatus;
 
-    // Terminal lock — only bypassed if Admin has explicitly unlocked the ticket
-    if (TERMINAL_STATUSES.includes(currentStatus)) {
-      if (!ticket.isUnlocked) {
-        throw new BadRequestException(
-          'Completed or Cancelled repair tickets are locked and cannot be edited. An Admin must unlock this ticket first.',
-        );
-      }
+    // Finished lock: only bypassed if an Admin has explicitly unlocked the ticket
+    if (isFinished(currentStatus) && !ticket.isUnlocked) {
+      throw new BadRequestException(
+        'Closed or Cancelled repair tickets are locked and cannot be edited. An Admin must unlock this ticket first.',
+      );
     }
 
-    if (nextStatus !== currentStatus) {
-      let isValidTransition = false;
-      if (nextStatus === RepairStatus.CANCELLED) {
-        isValidTransition = true; // Allowed from any stage by Admin (checked below)
-      } else if (
-        currentStatus === RepairStatus.PENDING &&
-        nextStatus === RepairStatus.IN_PROGRESS
-      ) {
-        isValidTransition = true;
-      } else if (
-        currentStatus === RepairStatus.IN_PROGRESS &&
-        nextStatus === RepairStatus.FOR_VERIFICATION
-      ) {
-        isValidTransition = true;
-      } else if (
-        currentStatus === RepairStatus.FOR_VERIFICATION &&
-        nextStatus === RepairStatus.COMPLETED
-      ) {
-        isValidTransition = true;
-      }
-
+    if (statusChanged) {
+      const isValidTransition =
+        nextStatus === RepairStatus.CANCELLED
+          ? OPEN_STATUSES.includes(currentStatus)
+          : FORWARD_MOVES[currentStatus] === nextStatus;
       if (!isValidTransition) {
-        const STATUS_LABELS: Record<string, string> = {
-          PENDING: 'Pending',
-          IN_PROGRESS: 'In Progress',
-          FOR_VERIFICATION: 'For Verification',
-          COMPLETED: 'Completed',
-          CANCELLED: 'Cancelled',
-        };
-        const currentLabel = STATUS_LABELS[currentStatus] || currentStatus;
-        const nextLabel = STATUS_LABELS[nextStatus] || nextStatus;
         throw new BadRequestException(
-          `Cannot change status from '${currentLabel}' to '${nextLabel}'. Tickets must progress in order: Pending ➔ In Progress ➔ For Verification ➔ Completed.`,
+          `Cannot change status from '${STATUS_LABELS[currentStatus]}' to '${STATUS_LABELS[nextStatus]}'. Tickets must progress in order: Assigned ➔ In progress ➔ For verification ➔ Closed.`,
         );
       }
     }
@@ -616,17 +577,17 @@ export class RepairsService {
     if (isMechanic) {
       const mechanicRecord = await this.getMechanicForUser(user);
       const isAssigned = mechanicRecord
-        ? ticket.mechanics.some((m) => m.id === mechanicRecord.id)
+        ? ticket.assignments.some((a) => a.mechanicId === mechanicRecord.id)
         : false;
       if (!isAssigned) {
         throw new ForbiddenException(
           'You are not assigned to this repair ticket',
         );
       }
-      // Mechanics cannot transition to COMPLETED or CANCELLED
+      // Closing and cancelling stay Admin only
       if (!MECHANIC_ALLOWED_TRANSITIONS.includes(dto.status)) {
         throw new ForbiddenException(
-          `Mechanics cannot set status to ${dto.status}. Allowed: ${MECHANIC_ALLOWED_TRANSITIONS.join(', ')}`,
+          `Mechanics cannot change status to '${STATUS_LABELS[dto.status]}'. Allowed: ${MECHANIC_ALLOWED_TRANSITIONS.map((s) => STATUS_LABELS[s]).join(', ')}.`,
         );
       }
     }
@@ -647,10 +608,11 @@ export class RepairsService {
     const resolutions = sendsForVerification
       ? checkResolutions(ticket.issues, dto.resolutions)
       : null;
-    const resolvedAt = new Date();
+    // One clock reading for the audit row, lastActivityAt and the close fields (AC-10)
+    const now = new Date();
 
     // Build update data
-    const updateData: Record<string, any> = {
+    const updateData: Prisma.RepairTicketUpdateInput = {
       repairStatus: dto.status,
       // Re-lock ticket after any edit (if it was unlocked)
       isUnlocked: false,
@@ -658,10 +620,6 @@ export class RepairsService {
 
     if (dto.cancellationReason) {
       updateData.cancellationReason = dto.cancellationReason.trim();
-    }
-
-    if (dto.failedVerificationReason) {
-      updateData.failedVerificationReason = dto.failedVerificationReason.trim();
     }
 
     if (dto.remarks?.trim()) {
@@ -679,28 +637,31 @@ export class RepairsService {
       }
     }
 
-    const statusChanged = nextStatus !== currentStatus;
-
-    // completedAt is the close time: set only on a real change into a closed status,
-    // so saving an unlocked closed ticket never re-dates it
-    if (statusChanged && TERMINAL_STATUSES.includes(nextStatus)) {
-      updateData.completedAt = new Date();
+    if (statusChanged) {
+      // Only an audited action moves lastActivityAt; an unlocked save with no move writes no row
+      updateData.lastActivityAt = now;
+      // closedAt is the close time: set only on a real move into a finished status,
+      // so saving an unlocked finished ticket never re-dates it
+      if (isFinished(nextStatus)) updateData.closedAt = now;
+      // Whoever closes the ticket verified it (Admin today); cancelling records no verifier
+      if (nextStatus === RepairStatus.CLOSED) {
+        updateData.verifiedByUserId = user.sub;
+        updateData.verifiedByName = whoName(user);
+        updateData.verifiedAt = now;
+      }
     }
 
-    // When completing or cancelling, revert vehicle status
-    if (
-      dto.status === RepairStatus.COMPLETED ||
-      dto.status === RepairStatus.CANCELLED
-    ) {
+    // When closing or cancelling, revert vehicle status
+    if (isFinished(dto.status)) {
       await this.prisma.vehicle.update({
         where: { id: ticket.vehicleId },
         data: { status: VehicleStatus.AVAILABLE },
       });
     }
 
-    // On completion, sync odometer reading back to the master Vehicle record
+    // On close, sync odometer reading back to the master Vehicle record
     // (only if the ticket's reading is higher than the current stored value)
-    if (dto.status === RepairStatus.COMPLETED) {
+    if (dto.status === RepairStatus.CLOSED) {
       const currentVehicle = await this.prisma.vehicle.findUnique({
         where: { id: ticket.vehicleId },
         select: { odometer: true },
@@ -731,7 +692,7 @@ export class RepairsService {
                     data: resolutionData(
                       resolutions.get(issue.id)!,
                       !!issue.knowledgeEntryId,
-                      resolvedAt,
+                      now,
                     ),
                   })),
                 },
@@ -745,13 +706,17 @@ export class RepairsService {
             this.prisma.auditLog.create({
               data: {
                 repairTicketId: id,
-                userId: user.sub,
-                email: user.email,
-                actorName: user.name,
-                action: 'STATUS_CHANGE',
-                fieldName: 'repairStatus',
-                previousValue: currentStatus,
-                newValue: nextStatus,
+                ...auditData(
+                  user,
+                  statusEvent(
+                    currentStatus,
+                    nextStatus,
+                    nextStatus === RepairStatus.CANCELLED
+                      ? dto.cancellationReason
+                      : dto.remarks,
+                  ),
+                  now,
+                ),
               },
             }),
           ]
@@ -782,7 +747,7 @@ export class RepairsService {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
       include: {
-        mechanics: true,
+        assignments: true,
         issues: { include: { knowledgeEntry: { select: { name: true } } } },
       },
     });
@@ -792,7 +757,7 @@ export class RepairsService {
     if (!issue) throw new NotFoundException('Issue not found on this ticket');
     if (!LINKABLE_STATUSES.includes(ticket.repairStatus)) {
       throw new BadRequestException(
-        'A known fix can only be changed while the ticket is Pending or In progress.',
+        'A known fix can only be changed while the ticket is Assigned or In progress.',
       );
     }
     if (ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
@@ -814,11 +779,12 @@ export class RepairsService {
       );
     }
 
+    const now = new Date();
     const updated = await this.prisma.$transaction(async (tx) => {
       // The stale check again inside the transaction: only the loaded updatedAt may move on
       const { count } = await tx.repairTicket.updateMany({
         where: { id, updatedAt: ticket.updatedAt },
-        data: { updatedAt: new Date() },
+        data: { updatedAt: now, lastActivityAt: now },
       });
       if (count === 0) throw new ConflictException(STALE_TICKET);
 
@@ -845,13 +811,15 @@ export class RepairsService {
       await tx.auditLog.create({
         data: {
           repairTicketId: id,
-          userId: user.sub,
-          email: user.email,
-          actorName: user.name,
-          action: 'KNOWLEDGE_LINK',
-          fieldName: issueId,
-          previousValue: issue.knowledgeEntry?.name ?? null,
-          newValue: entry?.name ?? null,
+          ...auditData(
+            user,
+            knowledgeLinkEvent(
+              issueId,
+              issue.knowledgeEntry?.name ?? null,
+              entry?.name ?? null,
+            ),
+            now,
+          ),
         },
       });
       return tx.repairTicket.findUniqueOrThrow({
@@ -876,7 +844,7 @@ export class RepairsService {
   ) {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: { mechanics: true },
+      include: { assignments: true },
     });
     if (!ticket) throw new NotFoundException('Repair ticket not found');
     await this.assertCanWork(ticket, user);
@@ -907,13 +875,13 @@ export class RepairsService {
 
   /** Admins may work any ticket; a mechanic or chief only one assigned to them. */
   private async assertCanWork(
-    ticket: { mechanics: { id: string }[] },
+    ticket: { assignments: { mechanicId: string }[] },
     user: JwtUser,
   ) {
     if (!this.isMechanic(user)) return;
     const mechanicRecord = await this.getMechanicForUser(user);
     const isAssigned = mechanicRecord
-      ? ticket.mechanics.some((m) => m.id === mechanicRecord.id)
+      ? ticket.assignments.some((a) => a.mechanicId === mechanicRecord.id)
       : false;
     if (!isAssigned) {
       throw new ForbiddenException(
@@ -945,22 +913,17 @@ export class RepairsService {
       );
     }
 
-    // Cost encoding only available at FOR_VERIFICATION or later
-    const costAllowedStatuses: RepairStatus[] = [
-      RepairStatus.FOR_VERIFICATION,
-      RepairStatus.COMPLETED,
-      RepairStatus.CANCELLED,
-    ];
-    if (!costAllowedStatuses.includes(ticket.repairStatus)) {
+    // Cost encoding only available at FOR_VERIFICATION or once finished
+    if (
+      ticket.repairStatus !== RepairStatus.FOR_VERIFICATION &&
+      !isFinished(ticket.repairStatus)
+    ) {
       throw new BadRequestException(
         'Cost encoding is only available once the ticket reaches "For Verification" status.',
       );
     }
 
-    const isTerminal =
-      ticket.repairStatus === RepairStatus.COMPLETED ||
-      ticket.repairStatus === RepairStatus.CANCELLED;
-    if (isTerminal && !ticket.isUnlocked) {
+    if (isFinished(ticket.repairStatus) && !ticket.isUnlocked) {
       throw new BadRequestException(
         'This ticket is locked. You must unlock the ticket first to edit costs.',
       );
@@ -997,8 +960,18 @@ export class RepairsService {
     }
 
     const totalCost = partsCost + laborCost;
-    const previousParts = ticket.partsCost ? Number(ticket.partsCost) : null;
-    const previousLabor = ticket.laborCost ? Number(ticket.laborCost) : null;
+    // One COST_UPDATE row for the whole save, with every field that changed (spec 0010, AC-6)
+    const event = costEvent(
+      {
+        partsCost: ticket.partsCost != null ? Number(ticket.partsCost) : null,
+        laborCost: ticket.laborCost != null ? Number(ticket.laborCost) : null,
+        totalCost: ticket.totalCost != null ? Number(ticket.totalCost) : null,
+        isLumpSum: ticket.isLumpSum,
+      },
+      { partsCost, laborCost, totalCost, isLumpSum: dto.isLumpSum },
+    );
+    const audited = event.changes.length > 0;
+    const now = new Date();
 
     await this.prisma.$transaction(async (tx) => {
       // Clear existing itemized parts
@@ -1017,29 +990,16 @@ export class RepairsService {
           laborCost,
           totalCost,
           isUnlocked: false,
+          // A save that changes no amount writes no audit row, so it is not activity (AC-10)
+          ...(audited && { lastActivityAt: now }),
         },
       });
 
-      await tx.auditLog.create({
-        data: {
-          repairTicketId: id,
-          userId: user.sub,
-          email: user.email,
-          actorName: user.name,
-          action: 'COST_UPDATE',
-          fieldName: 'costs',
-          previousValue: JSON.stringify({
-            partsCost: previousParts,
-            laborCost: previousLabor,
-          }),
-          newValue: JSON.stringify({
-            partsCost,
-            laborCost,
-            totalCost,
-            isLumpSum: dto.isLumpSum,
-          }),
-        },
-      });
+      if (audited) {
+        await tx.auditLog.create({
+          data: { repairTicketId: id, ...auditData(user, event, now) },
+        });
+      }
     });
 
     const updated = await this.prisma.repairTicket.findUnique({
@@ -1056,25 +1016,15 @@ export class RepairsService {
   // ── List available (unoccupied) in-house mechanics ────────────────────────
 
   async listAvailableMechanics() {
-    // Collect mechanic IDs that are assigned to any active (non-terminal) ticket
-    const activeTickets = await this.prisma.repairTicket.findMany({
-      where: {
-        repairStatus: {
-          notIn: [RepairStatus.COMPLETED, RepairStatus.CANCELLED],
-        },
-      },
-      select: { mechanics: { select: { id: true } } },
-    });
-
-    const busyIds = activeTickets.flatMap((t) => t.mechanics.map((m) => m.id));
-
+    // Active mechanics not assigned to any open ticket
     return this.prisma.mechanic.findMany({
       where: {
-        isOutsourced: false,
         isActive: true,
-        ...(busyIds.length > 0 ? { id: { notIn: busyIds } } : {}),
+        assignments: {
+          none: { repairTicket: { repairStatus: { in: OPEN_STATUSES } } },
+        },
       },
-      select: { id: true, name: true, shopName: true },
+      select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -1089,9 +1039,9 @@ export class RepairsService {
     const ticket = await this.prisma.repairTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
-    if (!TERMINAL_STATUSES.includes(ticket.repairStatus)) {
+    if (!isFinished(ticket.repairStatus)) {
       throw new BadRequestException(
-        'Only Completed or Cancelled tickets can be unlocked',
+        'Only Closed or Cancelled tickets can be unlocked',
       );
     }
 
@@ -1099,23 +1049,21 @@ export class RepairsService {
       throw new BadRequestException('This ticket is already unlocked');
     }
 
+    const now = new Date();
     const [updated] = await this.prisma.$transaction([
       this.prisma.repairTicket.update({
         where: { id },
         data: {
           isUnlocked: true,
           unlockReason: dto.unlockReason.trim(),
+          lastActivityAt: now,
         },
         include: ticketInclude,
       }),
       this.prisma.auditLog.create({
         data: {
           repairTicketId: id,
-          userId: user.sub,
-          email: user.email,
-          actorName: user.name,
-          action: 'UNLOCK',
-          newValue: dto.unlockReason.trim(),
+          ...auditData(user, unlockEvent(dto.unlockReason), now),
         },
       }),
     ]);
@@ -1138,7 +1086,7 @@ export class RepairsService {
     const filters: Prisma.AuditLogWhereInput[] = [];
     if (query.type) filters.push({ action: query.type });
     // The Person filter carries a welinc-auth user id (spec 0009, AC-10)
-    if (query.actorId) filters.push({ userId: query.actorId });
+    if (query.actorId) filters.push({ actorUserId: query.actorId });
     if (from || to)
       filters.push({
         createdAt: { ...(from && { gte: from }), ...(to && { lt: to }) },
@@ -1159,12 +1107,12 @@ export class RepairsService {
       select: {
         id: true,
         action: true,
-        fieldName: true,
-        userId: true,
-        email: true,
+        actorUserId: true,
         actorName: true,
-        previousValue: true,
-        newValue: true,
+        actorEmail: true,
+        actorRole: true,
+        changes: true,
+        note: true,
         createdAt: true,
         repairTicket: { select: { id: true, repairNumber: true } },
       },
@@ -1183,17 +1131,17 @@ export class RepairsService {
 
   /**
    * One entry per person who wrote an audit row, with the name and email of their newest row
-   * (spec 0009, AC-10). Rows with no user id (backfilled CREATED rows) are left out.
+   * (spec 0009, AC-10). Rows with no user id (system events) are left out.
    */
   async findAuditActors() {
     const rows = await this.prisma.$queryRaw<
       { userId: string; actorName: string | null; email: string | null }[]
     >`
-      SELECT DISTINCT ON (user_id)
-        user_id AS "userId", actor_name AS "actorName", email
+      SELECT DISTINCT ON (actor_user_id)
+        actor_user_id AS "userId", actor_name AS "actorName", actor_email AS email
       FROM audit_logs
-      WHERE user_id IS NOT NULL
-      ORDER BY user_id, created_at DESC, id DESC
+      WHERE actor_user_id IS NOT NULL
+      ORDER BY actor_user_id, created_at DESC, id DESC
     `;
     return rows
       .map((r) => ({
@@ -1251,23 +1199,27 @@ export class RepairsService {
       driverName: ticket.driver.name,
       garageLocation: ticket.garage.name,
       odometerReading: ticket.odometer,
-      targetDueDate: ticket.targetDueDate,
+      priority: ticket.priority,
+      dueAt: ticket.dueAt?.toISOString() ?? null,
+      dueAtSource: ticket.dueAtSource,
+      reportedByName: ticket.reportedByName,
+      verifiedByName: ticket.verifiedByName,
+      verifiedAt: ticket.verifiedAt?.toISOString() ?? null,
       issueDescription:
         ticket.issues && ticket.issues.length > 0
           ? ticket.issues.map((i) => i.description).join(', ')
           : '',
       createdAt: ticket.createdAt.toISOString(),
       updatedAt: ticket.updatedAt.toISOString(),
-      completedAt: ticket.completedAt?.toISOString() ?? null,
+      lastActivityAt: ticket.lastActivityAt.toISOString(),
+      closedAt: ticket.closedAt?.toISOString() ?? null,
       cancellationReason: ticket.cancellationReason,
-      failedVerificationReason: ticket.failedVerificationReason,
       remarks: ticket.remarks,
       issues: ticket.issues.map((i) => formatIssue(i, typicalHours)),
-      mechanics: ticket.mechanics.map((m) => ({
-        id: m.id,
-        name: m.name,
-        isOutsourced: m.isOutsourced,
-        shopName: m.shopName,
+      // Built from TicketAssignment, so callers see the same list as before (AC-5)
+      mechanics: ticket.assignments.map((a) => ({
+        id: a.mechanic.id,
+        name: a.mechanic.name,
       })),
     };
 

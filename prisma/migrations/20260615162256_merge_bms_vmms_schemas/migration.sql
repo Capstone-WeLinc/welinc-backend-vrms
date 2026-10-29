@@ -1,4 +1,0 @@
--- This merge marker intentionally contains no DDL.
--- The VMMS checklist and maintenance schedule tables are created by:
--- - 20260602000000_add_checklist_templates
--- - 20260603152632_add_maintenance_schedule

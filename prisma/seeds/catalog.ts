@@ -34,8 +34,6 @@ export type Problem = {
   /** Relative frequency across the fleet. */
   weight: number;
   laborHours: [number, number];
-  /** Chance the job goes to an outside shop. */
-  outsourced: number;
   rootCauses: string[];
   reports: string[];
   fixes: string[];
@@ -55,7 +53,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 14,
     laborHours: [1.25, 3],
-    outsourced: 0.03,
     rootCauses: [
       'Front brake pads worn',
       'Brake pads worn to the backing plate',
@@ -117,7 +114,6 @@ export const PROBLEMS: Problem[] = [
     weight: 4,
     beforeDaysAgo: 370, // the old entry was retired for "Brake pads worn"
     laborHours: [1, 2],
-    outsourced: 0,
     rootCauses: ['Brake squeal'],
     reports: ['Brakes squeal at low speed.'],
     fixes: ['Cleaned the brake assembly and applied anti squeal paste.'],
@@ -143,7 +139,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'CRITICAL',
     weight: 4,
     laborHours: [2, 4],
-    outsourced: 0.05,
     rootCauses: [
       'Rear wheel cylinder leaking',
       'Brake hose cracked',
@@ -198,7 +193,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 4,
     laborHours: [1.5, 3],
-    outsourced: 0.02,
     rootCauses: ['Front rotors warped', 'Brake rotor runout out of spec'],
     reports: [
       'Steering wheel shakes when braking from highway speed.',
@@ -244,7 +238,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 6,
     laborHours: [1.5, 3],
-    outsourced: 0,
     rootCauses: ['Valve cover gasket leaking', 'Oil leak at the valve cover'],
     reports: [
       'Oil drips under the engine after parking overnight at the Sta. Rosa yard.',
@@ -292,7 +285,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 7,
     laborHours: [0.75, 1.75],
-    outsourced: 0,
     rootCauses: ['Fuel filter clogged', 'Water in the fuel separator'],
     reports: [
       'Engine loses power going uphill and sputters under load.',
@@ -331,7 +323,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 3,
     laborHours: [1, 2],
-    outsourced: 0,
     rootCauses: ['Glow plugs burned out', 'Glow plug relay failed'],
     reports: [
       'Hard to start in the early morning, lots of white smoke for the first minutes.',
@@ -368,7 +359,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 3,
     laborHours: [3, 6],
-    outsourced: 0.75,
     rootCauses: ['Injector nozzles worn', 'Fuel injectors dripping'],
     reports: [
       'Black smoke when accelerating and fuel use is up by about a fifth.',
@@ -410,7 +400,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 8,
     laborHours: [0.25, 1],
-    outsourced: 0,
     rootCauses: ['Battery failed the load test', 'Battery at end of life'],
     reports: [
       'Truck will not start in the morning, only clicks.',
@@ -450,7 +439,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 4,
     laborHours: [1.5, 3],
-    outsourced: 0.45,
     rootCauses: ['Alternator not charging', 'Alternator regulator failed'],
     reports: [
       'Battery light on while driving, battery dead the next morning.',
@@ -488,7 +476,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 3,
     laborHours: [1.5, 2.5],
-    outsourced: 0.4,
     rootCauses: ['Starter solenoid failing', 'Starter motor brushes worn'],
     reports: [
       'Single click when turning the key, battery tested fine.',
@@ -524,7 +511,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'LOW',
     weight: 5,
     laborHours: [0.25, 1],
-    outsourced: 0,
     rootCauses: [
       'Tail light bulb burned out',
       'Blown fuse on the lighting circuit',
@@ -569,7 +555,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 4,
     laborHours: [2.5, 4.5],
-    outsourced: 0.25,
     rootCauses: ['Rear leaf spring broken', 'Leaf spring center bolt sheared'],
     reports: [
       'Truck leans to the right when loaded, loud clunk over bumps.',
@@ -609,7 +594,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 4,
     laborHours: [1, 2],
-    outsourced: 0,
     rootCauses: ['Rear shock absorbers leaking', 'Shock absorbers worn out'],
     reports: [
       'Truck bounces a lot after speed bumps, cargo shifts.',
@@ -649,7 +633,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 3,
     laborHours: [1.5, 2.5],
-    outsourced: 0.1,
     rootCauses: ['Tie rod ends worn', 'Steering play from worn tie rod ends'],
     reports: [
       'Steering feels loose, truck wanders on the expressway.',
@@ -689,7 +672,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'CRITICAL',
     weight: 5,
     laborHours: [1, 2],
-    outsourced: 0,
     rootCauses: [
       'Radiator hose leaking',
       'Lower radiator hose cracked',
@@ -738,7 +720,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 3,
     laborHours: [2.5, 4.5],
-    outsourced: 0.1,
     rootCauses: ['Water pump seal leaking', 'Water pump bearing worn'],
     reports: [
       'Coolant dripping from behind the fan, level drops every day.',
@@ -779,7 +760,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 2,
     laborHours: [2, 4],
-    outsourced: 0.85,
     rootCauses: ['Radiator core clogged', 'Radiator fins blocked'],
     reports: [
       'Runs hot on long uphill runs even with full coolant.',
@@ -818,7 +798,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 4,
     laborHours: [5, 8],
-    outsourced: 0.3,
     rootCauses: ['Clutch disc worn', 'Clutch slipping'],
     reports: [
       'Engine revs climb but the truck does not speed up going uphill.',
@@ -866,7 +845,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'HIGH',
     weight: 3,
     laborHours: [1.5, 3],
-    outsourced: 0.05,
     rootCauses: [
       'Clutch slave cylinder leaking',
       'Clutch master cylinder seal worn',
@@ -910,7 +888,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 2,
     laborHours: [2, 3.5],
-    outsourced: 0.1,
     rootCauses: ['Transmission rear oil seal leaking'],
     reports: [
       'Gear oil dripping where the propeller shaft meets the transmission.',
@@ -945,7 +922,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 6,
     laborHours: [0.5, 1.25],
-    outsourced: 0,
     rootCauses: [
       'Rear tire worn past the limit',
       'Tire sidewall cut',
@@ -988,7 +964,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 14,
     laborHours: [1, 2.5],
-    outsourced: 0.3,
     recentDays: 75,
     rootCauses: ['Aircon not cooling'],
     reports: [
@@ -1027,7 +1002,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'MEDIUM',
     weight: 9,
     laborHours: [0.75, 2],
-    outsourced: 0.2,
     recentDays: 90,
     rootCauses: ['Rear cargo door latch broken'],
     reports: [
@@ -1051,7 +1025,6 @@ export const PROBLEMS: Problem[] = [
     priority: 'LOW',
     weight: 5,
     laborHours: [0.25, 1],
-    outsourced: 0,
     recentDays: 120,
     rootCauses: ['Horn not working'],
     reports: [
@@ -1131,7 +1104,6 @@ PROBLEMS.push(
       priority: 'LOW',
       weight: 0.2,
       laborHours: [0.5, 1.5],
-      outsourced: 0.1,
       rootCauses: [rootCause],
       reports: [report],
       fixes: [fix],
@@ -1464,63 +1436,6 @@ export const DRIVERS: DriverSpec[] = [
     licenseNumber: 'N03-23-319958',
     isVerified: true,
     garage: 'Pulilan',
-  },
-];
-
-/** Outside shops near each garage, and the person the garage deals with there. */
-export const SHOPS: {
-  shopName: string;
-  contact: string;
-  garage: string;
-  trades: string[];
-}[] = [
-  {
-    shopName: 'JB Diesel Calibration Center',
-    contact: 'Jun Bautista',
-    garage: 'Sta. Rosa',
-    trades: ['Engine', 'Transmission'],
-  },
-  {
-    shopName: "Rodel's Auto Electrical",
-    contact: 'Rodel Manalo',
-    garage: 'Sta. Rosa',
-    trades: ['Electrical'],
-  },
-  {
-    shopName: 'Tonyo Radiator Works',
-    contact: 'Antonio Cabrera',
-    garage: 'Sta. Rosa',
-    trades: ['Cooling'],
-  },
-  {
-    shopName: 'Marikina Underchassis Specialist',
-    contact: 'Ben Villareal',
-    garage: 'Marikina',
-    trades: ['Suspension', 'Brakes', 'General'],
-  },
-  {
-    shopName: 'Kalumpang Auto Electric',
-    contact: 'Larry Santos',
-    garage: 'Marikina',
-    trades: ['Electrical'],
-  },
-  {
-    shopName: 'Concepcion Radiator and Aircon',
-    contact: 'Gil Ramirez',
-    garage: 'Marikina',
-    trades: ['Cooling', 'Electrical'],
-  },
-  {
-    shopName: 'Bulacan Heavy Duty Transmission',
-    contact: 'Ernie Galang',
-    garage: 'Pulilan',
-    trades: ['Transmission', 'Engine'],
-  },
-  {
-    shopName: 'Pulilan Truck Parts and Services',
-    contact: 'Boyet Lacson',
-    garage: 'Pulilan',
-    trades: ['Suspension', 'Brakes', 'Cooling', 'General', 'Electrical'],
   },
 ];
 

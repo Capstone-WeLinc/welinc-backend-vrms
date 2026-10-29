@@ -9,11 +9,10 @@ import { MechanicRoster } from './mechanic-roster.service';
 
 type Row = {
   id: string;
-  authUserId: string | null;
+  authUserId: string;
   name: string;
   email: string | null;
   isActive: boolean;
-  isOutsourced: boolean;
 };
 
 function fakePrisma(rows: Row[]) {
@@ -24,11 +23,7 @@ function fakePrisma(rows: Row[]) {
     findUnique: jest.fn(({ where }: { where: { authUserId: string } }) =>
       Promise.resolve(find(where.authUserId)),
     ),
-    findMany: jest.fn(({ where }: { where: { isOutsourced: boolean } }) =>
-      Promise.resolve(
-        rows.filter((r) => r.isOutsourced === where.isOutsourced),
-      ),
-    ),
+    findMany: jest.fn(() => Promise.resolve([...rows])),
     upsert: jest.fn(
       ({
         where,
@@ -103,7 +98,6 @@ describe('MechanicRoster.sync', () => {
         name: 'Old',
         email: 'b@welinc.com',
         isActive: true,
-        isOutsourced: false,
       },
       {
         id: 'm2',
@@ -111,15 +105,6 @@ describe('MechanicRoster.sync', () => {
         name: 'Gone',
         email: null,
         isActive: true,
-        isOutsourced: false,
-      },
-      {
-        id: 'm3',
-        authUserId: null,
-        name: 'Shop guy',
-        email: null,
-        isActive: true,
-        isOutsourced: true,
       },
     ];
     const { roster } = setup(rows, [
@@ -143,8 +128,6 @@ describe('MechanicRoster.sync', () => {
     // A locked mechanic leaves the picker until unlocked
     expect(rows.find((r) => r.authUserId === 'c')?.isActive).toBe(false);
     expect(rows.find((r) => r.id === 'm2')?.isActive).toBe(false);
-    // Outsourced rows are never touched
-    expect(rows.find((r) => r.id === 'm3')?.isActive).toBe(true);
     expect(rows.some((r) => r.authUserId === 'd' || r.authUserId === 'e')).toBe(
       false,
     );
@@ -202,7 +185,6 @@ describe('MechanicRoster.ensure', () => {
           name: 'Name a',
           email: 'a@welinc.com',
           isActive: false,
-          isOutsourced: false,
         },
       ],
       [],
@@ -236,7 +218,6 @@ describe('MechanicRoster duplicate row race', () => {
     name: `Name ${authUserId}`,
     email: `${authUserId}@welinc.com`,
     isActive: true,
-    isOutsourced: false,
     ...over,
   });
 

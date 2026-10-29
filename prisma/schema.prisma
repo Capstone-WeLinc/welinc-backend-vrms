@@ -17,43 +17,27 @@ enum VehicleStatus {
   AVAILABLE
   UNDER_REPAIR
   UNDER_MAINTENANCE
+  DISABLED
 }
 
+// Spec 0010. Open is every status except CLOSED and CANCELLED (src/modules/vrms/ticket-statuses.ts).
 enum RepairStatus {
-  PENDING
+  OPEN
+  ASSIGNED
   IN_PROGRESS
+  ON_HOLD
   FOR_VERIFICATION
-  COMPLETED
-  CANCELLED
-}
-
-enum AccountType {
-  IN_HOUSE
   OUTSOURCED
-}
-
-enum MaintenanceStatus {
-  PENDING
-  DUE
-  IN_PROGRESS
-  COMPLETED
-  OVERDUE
+  PENDING_APPROVAL
+  CLOSED
   CANCELLED
 }
 
-enum MaintenanceTriggerType {
+// Where a ticket's dueAt came from; set and cleared together with dueAt.
+enum DueAtSource {
+  PRIORITY
+  ISSUE_TYPE
   MANUAL
-  ODOMETER
-  TIME
-}
-
-enum MaintenanceIntervalType {
-  DAILY
-  WEEKLY
-  MONTHLY
-  QUARTERLY
-  SEMI_ANNUALLY
-  ANNUALLY
 }
 
 enum RepairPriority {
@@ -82,55 +66,9 @@ enum SuggestionStatus {
 
 // ==========================================
 // MODELS
+// "Who" fields hold a welinc-auth user id with no foreign key, plus a name copied at the time,
+// because user rows live in welinc-auth (spec 0009, spec 0010).
 // ==========================================
-
-model Booking {
-  id                         String    @id @default(uuid()) @db.Uuid
-  bookingId                  String    @unique @map("booking_id") @db.VarChar(50)
-  client                     String    @db.VarChar(200)
-  service                    String    @db.VarChar(100)
-  serviceType                String?   @map("service_type") @db.VarChar(120)
-  deliveryCategory           String?   @map("delivery_category") @db.VarChar(40)
-  date                       String    @db.Text
-  address                    String?   @db.Text
-  pickupAddress              String?   @map("pickup_address") @db.Text
-  deliveryAddress            String?   @map("delivery_address") @db.Text
-  status                     String    @default("For Plotting") @map("status") @db.Text
-  amount                     Decimal?  @db.Decimal(10, 2)
-  totalAmount                String?   @map("total_amount") @db.Text
-  paymentStatus              String?   @default("Pending") @map("payment_status") @db.Text
-  paymentMethod              String?   @map("payment_method") @db.Text
-  fullName                   String?   @map("full_name") @db.VarChar(200)
-  contact                    String?   @db.Text
-  email                      String?   @db.Text
-  deliveryLocation           String?   @map("delivery_location") @db.Text
-  estimatedItems             Int?      @map("estimated_items")
-  itemDetails                String?   @map("item_details") @db.Text
-  specialInstructions        String?   @map("special_instructions") @db.Text
-  notes                      String?   @db.Text
-  discrepancyNote            String?   @map("discrepancy_note") @db.Text
-  flagged                    Boolean   @default(false) @map("flagged")
-  servicesAvailed            String[]  @default([]) @map("services_availed")
-  protectiveMaterials        String[]  @default([]) @map("protective_materials")
-  additionalServicesAvailed  Json?     @map("additional_services_availed")
-  hasInsurance               Boolean   @default(false) @map("has_insurance")
-  permitRequired             Boolean   @default(false) @map("permit_required")
-  time                       String?   @map("time") @db.Text
-  garage                     String?   @map("garage") @db.Text
-  deliveryType               String?   @map("delivery_type") @db.Text
-  vehicleId                  String?   @map("vehicle_id") @db.Uuid
-  driverId                   String?   @map("driver_id") @db.Uuid
-  helperIds                  String[]  @map("helper_ids")
-  deletedAt                  DateTime? @map("deleted_at") @db.Timestamptz(6)
-  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  vehicle                    Vehicle?  @relation(fields: [vehicleId], references: [id])
-  driver                     Driver?   @relation(fields: [driverId], references: [id])
-
-  @@index([deletedAt])
-  @@map("bookings")
-}
 
 model Vehicle {
   id            String         @id @default(uuid()) @db.Uuid
@@ -144,7 +82,6 @@ model Vehicle {
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   repairTickets RepairTicket[]
-  bookings      Booking[]
 
   @@index([deletedAt])
   @@map("vehicles")
@@ -163,18 +100,17 @@ model Garage {
   @@map("garages")
 }
 
+// In house mechanics only; each row comes from the roster sync (spec 0009).
 model Mechanic {
-  id           String   @id @default(uuid()) @db.Uuid
-  authUserId   String?  @unique @map("auth_user_id") @db.Uuid // welinc-auth User.id, no foreign key; null for outsourced (spec 0009)
-  email        String?  @db.VarChar(255) // lowercased copy from welinc-auth
-  name         String   @db.VarChar(100)
-  isOutsourced Boolean  @default(false) @map("is_outsourced")
-  shopName     String?  @map("shop_name") @db.VarChar(100) // For outsourced "Other" shop names
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id         String   @id @default(uuid()) @db.Uuid
+  authUserId String   @unique @map("auth_user_id") @db.Uuid // welinc-auth User.id, no foreign key
+  email      String?  @db.VarChar(255) // lowercased copy from welinc-auth
+  name       String   @db.VarChar(100)
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  repairTickets RepairTicket[] @relation("RepairTicketMechanics")
+  assignments TicketAssignment[]
 
   @@map("mechanics")
 }
@@ -189,7 +125,6 @@ model Driver {
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   repairTickets RepairTicket[]
-  bookings      Booking[]
 
   @@index([licenseNumber])
   @@index([deletedAt])
@@ -197,42 +132,64 @@ model Driver {
 }
 
 model RepairTicket {
-  id                       String       @id @default(uuid()) @db.Uuid
-  repairNumber             String       @unique @map("repair_number") @db.VarChar(50) // REP-YYYYMMDD-XXXX
-  repairStatus             RepairStatus @default(PENDING) @map("repair_status")
-  vehicleId                String       @map("vehicle_id") @db.Uuid
-  driverId                 String       @map("driver_id") @db.Uuid
-  garageId                 String       @map("garage_id") @db.Uuid
-  odometer                 Int
-  targetDueDate            DateTime?    @map("target_due_date") @db.Timestamptz(6)
-  durationDays             Int?         @map("duration_days")
-  durationHours            Int?         @map("duration_hours")
-  partsCost                Decimal?     @map("parts_cost") @db.Decimal(10, 2)
-  laborCost                Decimal?     @map("labor_cost") @db.Decimal(10, 2)
-  totalCost                Decimal?     @map("total_cost") @db.Decimal(10, 2)
-  isLumpSum                Boolean      @default(false) @map("is_lump_sum")
-  cancellationReason       String?      @map("cancellation_reason") @db.Text
-  failedVerificationReason String?      @map("failed_verification_reason") @db.Text
-  remarks                  String?      @db.Text
-  isUnlocked               Boolean      @default(false) @map("is_unlocked")
-  unlockReason             String?      @map("unlock_reason") @db.Text
-  isArchived               Boolean      @default(false) @map("is_archived")
-  createdAt                DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
-  completedAt              DateTime?    @map("completed_at") @db.Timestamptz(6)
+  id                 String         @id @default(uuid()) @db.Uuid
+  repairNumber       String         @unique @map("repair_number") @db.VarChar(50) // REP-YYYYMMDD-XXXX
+  repairStatus       RepairStatus   @default(OPEN) @map("repair_status")
+  priority           RepairPriority @default(MEDIUM)
+  vehicleId          String         @map("vehicle_id") @db.Uuid
+  driverId           String         @map("driver_id") @db.Uuid
+  garageId           String         @map("garage_id") @db.Uuid
+  odometer           Int
+  reportedByUserId   String?        @map("reported_by_user_id") @db.Uuid
+  reportedByName     String?        @map("reported_by_name") @db.VarChar(100)
+  verifiedByUserId   String?        @map("verified_by_user_id") @db.Uuid // set on the move to CLOSED
+  verifiedByName     String?        @map("verified_by_name") @db.VarChar(100)
+  verifiedAt         DateTime?      @map("verified_at") @db.Timestamptz(6)
+  dueAt              DateTime?      @map("due_at") @db.Timestamptz(6)
+  dueAtSource        DueAtSource?   @map("due_at_source")
+  partsCost          Decimal?       @map("parts_cost") @db.Decimal(10, 2)
+  laborCost          Decimal?       @map("labor_cost") @db.Decimal(10, 2)
+  totalCost          Decimal?       @map("total_cost") @db.Decimal(10, 2)
+  isLumpSum          Boolean        @default(false) @map("is_lump_sum")
+  cancellationReason String?        @map("cancellation_reason") @db.Text
+  remarks            String?        @db.Text
+  isUnlocked         Boolean        @default(false) @map("is_unlocked")
+  unlockReason       String?        @map("unlock_reason") @db.Text
+  lastActivityAt     DateTime       @default(now()) @map("last_activity_at") @db.Timestamptz(6) // moved only by a person's audited action
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  closedAt           DateTime?      @map("closed_at") @db.Timestamptz(6) // set on the move to CLOSED or CANCELLED
 
-  vehicle        Vehicle          @relation(fields: [vehicleId], references: [id])
-  driver         Driver           @relation(fields: [driverId], references: [id])
-  garage         Garage           @relation(fields: [garageId], references: [id])
-  issues         RepairIssue[]
-  mechanics      Mechanic[]       @relation("RepairTicketMechanics")
-  repairParts    RepairPart[]
-  shopChangeLogs ShopChangeLog[]
-  auditLogs      AuditLog[]
+  vehicle     Vehicle            @relation(fields: [vehicleId], references: [id])
+  driver      Driver             @relation(fields: [driverId], references: [id])
+  garage      Garage             @relation(fields: [garageId], references: [id])
+  issues      RepairIssue[]
+  assignments TicketAssignment[]
+  repairParts RepairPart[]
+  auditLogs   AuditLog[]
 
   @@index([repairStatus, createdAt])
+  @@index([repairStatus, lastActivityAt])
+  @@index([dueAt])
   @@index([vehicleId])
   @@map("repair_tickets")
+}
+
+// The only link between a ticket and its mechanics. Unassigning deletes the row; the audit log keeps history.
+model TicketAssignment {
+  id               String   @id @default(uuid()) @db.Uuid
+  repairTicketId   String   @map("repair_ticket_id") @db.Uuid
+  mechanicId       String   @map("mechanic_id") @db.Uuid
+  assignedAt       DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  assignedByUserId String?  @map("assigned_by_user_id") @db.Uuid
+  assignedByName   String?  @map("assigned_by_name") @db.VarChar(100)
+
+  repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  mechanic     Mechanic     @relation(fields: [mechanicId], references: [id])
+
+  @@unique([repairTicketId, mechanicId])
+  @@index([mechanicId])
+  @@map("ticket_assignments")
 }
 
 model RepairIssue {
@@ -276,118 +233,44 @@ model RepairIssueStep {
 }
 
 model RepairPart {
-  id             String      @id @default(uuid()) @db.Uuid
-  repairTicketId String      @map("repair_ticket_id") @db.Uuid
-  description    String      @db.VarChar(255)
-  unitCost       Decimal     @map("unit_cost") @db.Decimal(10, 2)
-  quantity       Int         @default(1)
-  subtotal       Decimal     @db.Decimal(10, 2) // unitCost * quantity, stored for reporting
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  id             String   @id @default(uuid()) @db.Uuid
+  repairTicketId String   @map("repair_ticket_id") @db.Uuid
+  description    String   @db.VarChar(255)
+  unitCost       Decimal  @map("unit_cost") @db.Decimal(10, 2)
+  quantity       Int      @default(1)
+  subtotal       Decimal  @db.Decimal(10, 2) // unitCost * quantity, stored for reporting
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
 
   @@map("repair_parts")
 }
 
-model ShopChangeLog {
-  id             String      @id @default(uuid()) @db.Uuid
-  repairTicketId String      @map("repair_ticket_id") @db.Uuid
-  changedByUserId String     @map("changed_by_user_id") @db.Uuid
-  changedByName  String      @map("changed_by_name") @db.VarChar(100)
-  previousValue  String      @map("previous_value") @db.VarChar(255)
-  newValue       String      @map("new_value") @db.VarChar(255)
-  changedAt      DateTime    @default(now()) @map("changed_at") @db.Timestamptz(6)
-
-  repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
-
-  @@map("shop_change_logs")
-}
-
+// One row per event; its field changes are a JSON list of { field, before, after } (spec 0010).
+// Never updated or deleted by code, and a ticket with audit rows cannot be deleted.
 model AuditLog {
-  id             String      @id @default(uuid()) @db.Uuid
-  repairTicketId String      @map("repair_ticket_id") @db.Uuid
-  userId         String?     @map("user_id") @db.Uuid // welinc-auth User.id; null on backfilled CREATED rows
-  email          String?     @db.VarChar(100)
-  actorName      String?     @map("actor_name") @db.VarChar(100) // the actor's name when the row was written (spec 0009)
-  action         String      @db.VarChar(100) // CREATED, STATUS_CHANGE, COST_UPDATE, UNLOCK, SHOP_CHANGE
-  fieldName      String?     @map("field_name") @db.VarChar(50)
-  previousValue  String?     @map("previous_value") @db.Text
-  newValue       String?     @map("new_value") @db.Text
-  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3) // ms precision so keyset cursors match exactly
+  id             String   @id @default(uuid()) @db.Uuid
+  repairTicketId String   @map("repair_ticket_id") @db.Uuid
+  actorUserId    String?  @map("actor_user_id") @db.Uuid // welinc-auth User.id; null only for system events
+  actorName      String?  @map("actor_name") @db.VarChar(100)
+  actorEmail     String?  @map("actor_email") @db.VarChar(255)
+  actorRole      String?  @map("actor_role") @db.VarChar(30) // ADMIN, CHIEF_MECHANIC, MECHANIC or SYSTEM
+  action         String   @db.VarChar(50) // event name from audit-events.ts
+  changes        Json     @default("[]")
+  note           String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3) // ms precision so keyset cursors match exactly
 
-  repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Restrict)
 
   @@index([repairTicketId, createdAt])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
-  @@index([email])
+  @@index([actorEmail])
   @@index([action])
   @@map("audit_logs")
 }
 
-model ChecklistTemplate {
-  id        String            @id @default(uuid()) @db.Uuid
-  type      String            @db.VarChar(100) // Oil Change, Brake Inspection, etc.
-  items     ChecklistItem[]
-  schedules MaintenanceSchedule[]
-  deletedAt DateTime?         @map("deleted_at") @db.Timestamptz(6)
-  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([type])
-  @@index([deletedAt])
-  @@map("checklist_templates")
-}
-
-model ChecklistItem {
-  id                 String   @id @default(uuid()) @db.Uuid
-  checklistTemplateId String  @map("checklist_template_id") @db.Uuid
-  text               String   @db.Text
-  order              Int      @default(0)
-  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(6)
-  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  checklistTemplate ChecklistTemplate @relation(fields: [checklistTemplateId], references: [id], onDelete: Cascade)
-
-  @@index([checklistTemplateId])
-  @@index([deletedAt])
-  @@map("checklist_items")
-}
-
-model MaintenanceSchedule {
-  id                       String            @id @default(uuid()) @db.Uuid
-  vehicleId                String            @db.VarChar(50)
-  title                    String            @db.VarChar(100)
-  garageId                 String?           @map("garage_id") @db.VarChar(50)
-  status                   MaintenanceStatus @default(PENDING)
-  assignedMechanic         String            @map("assigned_mechanic") @db.VarChar(100)
-  accountType              AccountType?      @map("account_type")
-  checklistTemplateId      String?           @map("checklist_template_id") @db.Uuid
-  odometerReading          Int?              @map("odometer_reading")
-  triggerType              MaintenanceTriggerType? @map("trigger_type")
-  intervalKm               Int?              @map("interval_km")
-  bufferDistanceKm         Int?              @map("buffer_distance_km")
-  startingReferenceReadingKm Int?           @map("starting_reference_reading_km")
-  intervalType             MaintenanceIntervalType? @map("interval_type")
-  startReferenceDate       DateTime?         @map("start_reference_date") @db.Timestamptz(6)
-  previousScheduleId       String?           @unique @map("previous_schedule_id") @db.Uuid
-  workOrderProgress        Json?             @map("work_order_progress")
-  deletedAt                DateTime?         @map("deleted_at") @db.Timestamptz(6)
-  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  checklistTemplate ChecklistTemplate? @relation(fields: [checklistTemplateId], references: [id], onDelete: SetNull)
-  previousSchedule   MaintenanceSchedule? @relation("MaintenanceScheduleRecurrence", fields: [previousScheduleId], references: [id], onDelete: SetNull)
-  nextSchedule       MaintenanceSchedule? @relation("MaintenanceScheduleRecurrence")
-
-  @@index([checklistTemplateId])
-  @@index([deletedAt])
-  @@map("maintenance_schedules")
-}
-
 // ==========================================
 // KNOWLEDGE BASE (spec 0007)
-// "Who" fields hold the JWT email with no foreign key, like AuditLog, because user rows live in welinc-auth.
 // ==========================================
 
 model IssueCategory {
@@ -481,22 +364,24 @@ model KnowledgeSuggestion {
   @@map("knowledge_suggestions")
 }
 
-// The WL-704 change log, shaped like AuditLog: one row per changed field.
+// The WL-704 change log, shaped like AuditLog: one row per save, its field changes as a JSON list.
 model KnowledgeEntryChange {
-  id            String   @id @default(uuid()) @db.Uuid
-  entryId       String?  @map("entry_id") @db.Uuid
-  categoryId    String?  @map("category_id") @db.Uuid
-  userId        String?  @map("user_id") @db.Uuid
-  email         String   @db.VarChar(255)
-  action        String   @db.VarChar(50) // ENTRY_CREATED, ENTRY_UPDATED, ENTRY_STATUS, CATEGORY_CREATED, CATEGORY_UPDATED, CATEGORY_STATUS
-  fieldName     String?  @map("field_name") @db.VarChar(50)
-  previousValue String?  @map("previous_value") @db.Text
-  newValue      String?  @map("new_value") @db.Text
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id          String   @id @default(uuid()) @db.Uuid
+  entryId     String?  @map("entry_id") @db.Uuid
+  categoryId  String?  @map("category_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  actorName   String?  @map("actor_name") @db.VarChar(100)
+  actorEmail  String?  @map("actor_email") @db.VarChar(255)
+  actorRole   String?  @map("actor_role") @db.VarChar(30)
+  action      String   @db.VarChar(50) // ENTRY_CREATED, ENTRY_UPDATED, ENTRY_STATUS, CATEGORY_CREATED, CATEGORY_UPDATED, CATEGORY_STATUS
+  changes     Json     @default("[]")
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   entry    KnowledgeEntry? @relation(fields: [entryId], references: [id])
   category IssueCategory?  @relation(fields: [categoryId], references: [id])
 
   @@index([entryId, createdAt])
+  @@index([categoryId, createdAt])
   @@map("knowledge_entry_changes")
 }

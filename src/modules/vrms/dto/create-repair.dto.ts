@@ -6,35 +6,17 @@ import {
   IsArray,
   ValidateNested,
   IsEnum,
-  IsBoolean,
   IsUUID,
   MaxLength,
   ArrayMinSize,
   Min,
-  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// In house mechanics come by Mechanic id, outsourced ones by name and shop (spec 0009, AC-27)
+// In house mechanics only, by Mechanic id (spec 0010, AC-12). Outsourced shops come back with feature 36.
 export class MechanicAssignmentDto {
-  @ValidateIf((m: MechanicAssignmentDto) => !m.isOutsourced)
   @IsUUID()
-  id?: string;
-
-  @ValidateIf((m: MechanicAssignmentDto) => !!m.isOutsourced)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  name?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isOutsourced?: boolean;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  shopName?: string;
+  id: string;
 }
 
 export class RepairIssueDto {
@@ -96,11 +78,6 @@ export class CreateRepairDto {
   @ValidateNested({ each: true })
   @Type(() => MechanicAssignmentDto)
   mechanics: MechanicAssignmentDto[];
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  shopName: string;
 
   @IsEnum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';

@@ -42,13 +42,18 @@ function fullTicket() {
     id: TICKET,
     repairNumber: 'REP-1',
     repairStatus: RepairStatus.IN_PROGRESS,
+    priority: 'HIGH',
     odometer: 1000,
-    targetDueDate: null,
+    dueAt: null,
+    dueAtSource: null,
+    reportedByName: 'Victor Ramos',
+    verifiedByName: null,
+    verifiedAt: null,
     createdAt: LOADED,
     updatedAt: new Date('2026-10-25T02:00:00.000Z'),
-    completedAt: null,
+    lastActivityAt: new Date('2026-10-25T02:00:00.000Z'),
+    closedAt: null,
     cancellationReason: null,
-    failedVerificationReason: null,
     remarks: null,
     partsCost: null,
     laborCost: null,
@@ -59,7 +64,7 @@ function fullTicket() {
     vehicle: { plateNumber: 'ABC 123', model: 'Hilux', status: 'UNDER_REPAIR' },
     driver: { name: 'Driver', licenseNumber: 'driver', isVerified: true },
     garage: { name: 'Sta. Rosa' },
-    mechanics: [],
+    assignments: [],
     repairParts: [],
     issues: [
       {
@@ -111,7 +116,7 @@ function setupLink(
         repairNumber: 'REP-1',
         repairStatus: overrides.status ?? RepairStatus.IN_PROGRESS,
         updatedAt: LOADED,
-        mechanics: [],
+        assignments: [],
         issues: [
           {
             id: ISSUE,
@@ -160,18 +165,31 @@ describe('RepairsService.linkKnowledge', () => {
     expect(tx.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'KNOWLEDGE_LINK',
-        fieldName: ISSUE,
-        previousValue: 'Old fix',
-        newValue: entry.name,
-        userId: admin.sub,
+        changes: [
+          { field: 'knowledgeEntry', before: 'Old fix', after: entry.name },
+          { field: 'issueId', before: null, after: ISSUE },
+        ],
+        actorUserId: admin.sub,
         actorName: admin.name,
+        actorRole: 'ADMIN',
       }) as unknown,
     });
-    // The ticket's updatedAt moves, guarded by the one the client loaded
+    // The ticket's updatedAt and lastActivityAt move together with the row's createdAt (spec 0010,
+    // AC-10), guarded by the updatedAt the client loaded
+    const [{ data }] = tx.repairTicket.updateMany.mock.calls[0] as [
+      { data: { updatedAt: Date; lastActivityAt: Date } },
+    ];
     expect(tx.repairTicket.updateMany).toHaveBeenCalledWith({
       where: { id: TICKET, updatedAt: LOADED },
-      data: { updatedAt: expect.any(Date) as unknown },
+      data: {
+        updatedAt: data.lastActivityAt,
+        lastActivityAt: data.lastActivityAt,
+      },
     });
+    const [{ data: row }] = tx.auditLog.create.mock.calls[0] as [
+      { data: { createdAt: Date } },
+    ];
+    expect(row.createdAt).toBe(data.lastActivityAt);
     const issues = res.issues as { knowledgeEntry: { name: string } | null }[];
     expect(issues[0].knowledgeEntry?.name).toBe(entry.name);
   });
@@ -190,7 +208,12 @@ describe('RepairsService.linkKnowledge', () => {
       data: { knowledgeEntryId: null, steps: undefined },
     });
     expect(tx.auditLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ newValue: null }) as unknown,
+      data: expect.objectContaining({
+        changes: [
+          { field: 'knowledgeEntry', before: 'Old fix', after: null },
+          { field: 'issueId', before: null, after: ISSUE },
+        ],
+      }) as unknown,
     });
   });
 
@@ -279,7 +302,7 @@ describe('RepairsService.create with a common issue', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'd1' }),
       },
-      mechanic: { findFirst: jest.fn().mockResolvedValue({ id: 'm1' }) },
+      mechanic: { count: jest.fn().mockResolvedValue(1) },
       repairTicket: { create: jest.fn().mockResolvedValue(fullTicket()) },
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
@@ -296,10 +319,7 @@ describe('RepairsService.create with a common issue', () => {
     accountType: 'ONLINE' as const,
     garageLocation: 'Sta. Rosa',
     odometerReading: 1000,
-    mechanics: [
-      { id: '00000000-0000-4000-8000-0000000000cc', isOutsourced: false },
-    ],
-    shopName: 'Shop',
+    mechanics: [{ id: '00000000-0000-4000-8000-0000000000cc' }],
     priority: 'HIGH' as const,
     issues: [
       {
@@ -331,6 +351,40 @@ describe('RepairsService.create with a common issue', () => {
         knowledgeEntryId: null,
       },
     ]);
+  });
+
+  // Spec 0010, AC-3, AC-5 and AC-10
+  it('saves the ticket as Assigned with its priority, reporter, assignments and one clock', async () => {
+    const { prisma, service } = setupCreate();
+    await service.create(dto, admin);
+    const [{ data }] = prisma.repairTicket.create.mock.calls[0] as [
+      {
+        data: {
+          lastActivityAt: Date;
+          assignments: { create: Record<string, unknown>[] };
+          auditLogs: { create: Record<string, unknown> };
+        } & Record<string, unknown>;
+      },
+    ];
+    expect(data).toMatchObject({
+      repairStatus: RepairStatus.ASSIGNED,
+      priority: 'HIGH',
+      reportedByUserId: admin.sub,
+      reportedByName: 'Victor Ramos',
+    });
+    expect(data.assignments.create).toEqual([
+      {
+        mechanicId: '00000000-0000-4000-8000-0000000000cc',
+        assignedAt: data.lastActivityAt,
+        assignedByUserId: admin.sub,
+        assignedByName: 'Victor Ramos',
+      },
+    ]);
+    expect(data.auditLogs.create).toMatchObject({
+      action: 'CREATED',
+      changes: [],
+      createdAt: data.lastActivityAt,
+    });
   });
 
   it('refuses an entry that is not Active, before any write', async () => {

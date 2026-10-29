@@ -24,6 +24,12 @@ import {
   staleConflict,
 } from './knowledge-changes';
 import { KnowledgeEntriesService } from './knowledge-entries.service';
+import {
+  auditData,
+  knowledgeLinkEvent,
+  readChanges,
+} from '../vrms/audit-events';
+import { LINKABLE_STATUSES } from '../vrms/ticket-knowledge';
 
 const STALE_ENTRY =
   'Someone else changed this entry. Reload to see their changes.';
@@ -97,7 +103,7 @@ export class KnowledgeEntryEditorService {
         });
         await tx.knowledgeEntryChange.createMany({
           data: changeRows(user, 'ENTRY_CREATED', { entryId: entry.id }, [
-            { fieldName: 'status', previousValue: null, newValue: dto.status },
+            { field: 'status', before: null, after: dto.status },
           ]),
         });
         ({ linked, skipped } = await this.linkGroup(tx, entry, dto, user));
@@ -149,33 +155,31 @@ export class KnowledgeEntryEditorService {
         !i.suggestionDismissedAt &&
         i.repairTicket.repairStatus !== RepairStatus.CANCELLED,
     );
-    const open: RepairStatus[] = [
-      RepairStatus.PENDING,
-      RepairStatus.IN_PROGRESS,
-    ];
     for (const issue of eligible) {
       await tx.repairIssue.update({
         where: { id: issue.id },
         data: {
           knowledgeEntryId: entry.id,
           categoryId: issue.categoryId ?? entry.categoryId,
-          ...(open.includes(issue.repairTicket.repairStatus)
+          ...(LINKABLE_STATUSES.includes(issue.repairTicket.repairStatus)
             ? { steps: { create: positioned(dto.steps, 'text') } }
             : {}),
         },
       });
     }
+    // A person's audited action, so each linked ticket's lastActivityAt moves with it (spec 0010, AC-10)
+    const now = new Date();
     await tx.auditLog.createMany({
       data: eligible.map((issue) => ({
         repairTicketId: issue.repairTicketId,
-        userId: user.sub,
-        email: user.email,
-        actorName: user.name,
-        action: 'KNOWLEDGE_LINK',
-        fieldName: issue.id,
-        previousValue: null,
-        newValue: entry.name,
+        ...auditData(user, knowledgeLinkEvent(issue.id, null, entry.name), now),
       })),
+    });
+    await tx.repairTicket.updateMany({
+      where: {
+        id: { in: [...new Set(eligible.map((i) => i.repairTicketId))] },
+      },
+      data: { lastActivityAt: now },
     });
     return { linked: eligible.length, skipped: ids.length - eligible.length };
   }
@@ -277,9 +281,9 @@ export class KnowledgeEntryEditorService {
       await tx.knowledgeEntryChange.createMany({
         data: changeRows(user, 'ENTRY_STATUS', { entryId: id }, [
           {
-            fieldName: 'status',
-            previousValue: existing.status,
-            newValue: dto.status,
+            field: 'status',
+            before: existing.status,
+            after: dto.status,
           },
         ]),
       });
@@ -292,20 +296,23 @@ export class KnowledgeEntryEditorService {
   async changes(id: string) {
     const exists = await this.prisma.knowledgeEntry.count({ where: { id } });
     if (!exists) throw notFound('entry');
-    return this.prisma.knowledgeEntryChange.findMany({
+    const rows = await this.prisma.knowledgeEntryChange.findMany({
       where: { entryId: id },
       orderBy: { createdAt: 'desc' },
       take: CHANGE_LOG_LIMIT,
       select: {
         id: true,
-        email: true,
+        actorUserId: true,
+        actorName: true,
+        actorEmail: true,
+        actorRole: true,
         action: true,
-        fieldName: true,
-        previousValue: true,
-        newValue: true,
+        changes: true,
+        note: true,
         createdAt: true,
       },
     });
+    return rows.map((row) => ({ ...row, changes: readChanges(row.changes) }));
   }
 
   /** An entry can only be created in, or moved to, an active category (Key invariants). */
