@@ -385,3 +385,48 @@ model KnowledgeEntryChange {
   @@index([categoryId, createdAt])
   @@map("knowledge_entry_changes")
 }
+
+// ==========================================
+// PERMISSIONS (spec 0011)
+// ==========================================
+
+// One row per matrix role and catalog key (src/auth/permissions/catalog.ts). Roles and keys are
+// code constants, so no foreign keys. The startup backfill only inserts; locked cells come from
+// the catalog, never this table.
+model RolePermission {
+  role            String   @db.VarChar(30)
+  permission      String   @db.VarChar(60)
+  allowed         Boolean
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid // welinc-auth User.id; null for System
+
+  @@id([role, permission])
+  @@map("role_permissions")
+}
+
+// One row (id 1, kept by a check constraint). Each replica compares this version on every
+// checked request and reloads its grants when it moves.
+model PermissionMatrix {
+  id        Int      @id @db.SmallInt
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("permission_matrix")
+}
+
+// Every applied matrix change, kept forever. A null actor is System (the startup backfill).
+model PermissionChange {
+  id          String   @id @default(uuid()) @db.Uuid
+  role        String   @db.VarChar(30)
+  permission  String   @db.VarChar(60)
+  before      Boolean? // null when the row was created
+  after       Boolean? // null when the row was removed
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  actorName   String?  @map("actor_name") @db.VarChar(100)
+  actorEmail  String?  @map("actor_email") @db.VarChar(255)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@map("permission_changes")
+}

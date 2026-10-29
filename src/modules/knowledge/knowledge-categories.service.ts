@@ -3,7 +3,8 @@ import { IssueCategory, KnowledgeEntryStatus } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 import { ListCategoriesQueryDto } from './dto/list-categories-query.dto';
-import { isKnowledgeEditor, JwtUser } from './knowledge-actor';
+import type { AppAbility } from '../../auth/permissions/ability.factory';
+import { JwtUser } from './knowledge-actor';
 import {
   changeRows,
   diffFields,
@@ -37,9 +38,9 @@ export class KnowledgeCategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** In sortOrder, with the entry count over every status. Inactive ones only for editors who ask. */
-  async list(query: ListCategoriesQueryDto, user: JwtUser) {
+  async list(query: ListCategoriesQueryDto, ability: AppAbility) {
     const includeInactive =
-      query.includeInactive === true && isKnowledgeEditor(user);
+      query.includeInactive === true && ability.can('edit', 'IssueCategory');
     const categories = await this.prisma.issueCategory.findMany({
       where: includeInactive ? {} : { isActive: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],

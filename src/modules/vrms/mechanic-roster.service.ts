@@ -107,8 +107,7 @@ export class MechanicRoster implements OnModuleInit {
     }
   }
 
-  /** AC-11: makes the in house rows match welinc-auth's VRMS users, asking as the calling admin. */
-  async sync(token: string): Promise<SyncResult> {
+  private async fetchUsers(token: string): Promise<AuthUserRow[]> {
     const body = await askAuth(this.usersUrl, token, this.logger);
     const users = readUsers(body);
     if (!users) {
@@ -117,6 +116,48 @@ export class MechanicRoster implements OnModuleInit {
       );
       throw new ServiceUnavailableException(UNAVAILABLE);
     }
+    return users;
+  }
+
+  /**
+   * Spec 0011, AC-33: brings one person's Mechanic row in step with welinc-auth and says whether they
+   * still hold access to VRMS as a mechanic (active account, mechanic role). Returns null when there
+   * is no Mechanic row for them.
+   */
+  async refreshOne(
+    token: string,
+    authUserId: string,
+  ): Promise<{ mechanicId: string; stillActive: boolean } | null> {
+    const users = await this.fetchUsers(token);
+    const row = await this.prisma.mechanic.findUnique({
+      where: { authUserId },
+      select: { id: true, name: true, email: true, isActive: true },
+    });
+    if (!row) return null;
+    const found = users.find(
+      (u) => u.id === authUserId && u.roles.some(isMechanicRole),
+    );
+    if (!found) {
+      if (row.isActive) {
+        await this.prisma.mechanic.update({
+          where: { authUserId },
+          data: { isActive: false },
+        });
+      }
+      return { mechanicId: row.id, stillActive: false };
+    }
+    const want: Wanted = {
+      name: found.name,
+      email: found.email.toLowerCase(),
+      isActive: found.isActive,
+    };
+    if (this.differs(row, want)) await this.write(authUserId, want);
+    return { mechanicId: row.id, stillActive: want.isActive };
+  }
+
+  /** AC-11: makes the in house rows match welinc-auth's VRMS users, asking as the calling admin. */
+  async sync(token: string): Promise<SyncResult> {
+    const users = await this.fetchUsers(token);
 
     const wanted = new Map<string, Wanted>();
     for (const u of users) {
@@ -124,7 +165,8 @@ export class MechanicRoster implements OnModuleInit {
       wanted.set(u.id, {
         name: u.name,
         email: u.email.toLowerCase(),
-        isActive: u.isActive && !u.isLocked,
+        // Spec 0011, AC-31: a locked account is still a mechanic; only deactivation or losing the role is not
+        isActive: u.isActive,
       });
     }
 

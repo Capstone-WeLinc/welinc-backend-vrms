@@ -1,8 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { subject } from '@casl/ability';
 import { KnowledgeEntryStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { FindEntriesQueryDto } from './dto/find-entries-query.dto';
-import { isKnowledgeEditor, JwtUser } from './knowledge-actor';
+import type { AppAbility } from '../../auth/permissions/ability.factory';
+import { editsKnowledge } from './knowledge-actor';
 import {
   EntryStats,
   loadRepeatVehicles,
@@ -31,8 +33,8 @@ export class KnowledgeEntriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** GET /vrms/knowledge/entries (spec 0007, AC-8 to AC-10, Value sourcing). */
-  async list(query: FindEntriesQueryDto, user: JwtUser) {
-    const editor = isKnowledgeEditor(user);
+  async list(query: FindEntriesQueryDto, ability: AppAbility) {
+    const editor = editsKnowledge(ability);
     const status = editor ? (query.status ?? 'ACTIVE') : 'ACTIVE';
     const statusWhere: Prisma.KnowledgeEntryWhereInput =
       status === 'ALL' ? {} : { status: status };
@@ -113,8 +115,8 @@ export class KnowledgeEntriesService {
    * GET /vrms/knowledge/entries/options: every Active entry for the repair form picker and the
    * ticket's link Combobox, most seen first (AC-24, AC-27).
    */
-  async options(user: JwtUser) {
-    const editor = isKnowledgeEditor(user);
+  async options(ability: AppAbility) {
+    const editor = editsKnowledge(ability);
     const entries = await this.prisma.knowledgeEntry.findMany({
       where: { status: KnowledgeEntryStatus.ACTIVE },
       include: { category: { select: { name: true } } },
@@ -148,8 +150,8 @@ export class KnowledgeEntriesService {
   }
 
   /** GET /vrms/knowledge/entries/:id. A mechanic gets 404 for anything not ACTIVE (AC-16). */
-  async findOne(id: string, user: JwtUser) {
-    const editor = isKnowledgeEditor(user);
+  async findOne(id: string, ability: AppAbility) {
+    const editor = editsKnowledge(ability);
     const entry = await this.prisma.knowledgeEntry.findUnique({
       where: { id },
       include: {
@@ -164,7 +166,8 @@ export class KnowledgeEntriesService {
         },
       },
     });
-    if (!entry || (!editor && entry.status !== KnowledgeEntryStatus.ACTIVE)) {
+    // knowledge.view reads Active entries only; anything else is a 404, never a 403 (AC-13)
+    if (!entry || !ability.can('read', subject('KnowledgeEntry', entry))) {
       throw new NotFoundException("This entry isn't available.");
     }
 

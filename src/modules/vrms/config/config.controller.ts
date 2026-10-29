@@ -4,56 +4,84 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
-  UseGuards,
+  Req,
+  Body,
 } from '@nestjs/common';
-import { UserRole } from '../../../auth/roles';
-import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../../auth/guards/roles.guard';
-import { Roles } from '../../../auth/decorators/roles.decorator';
+import { RequirePermission } from '../../../auth/permissions/permission.decorators';
 import { ConfigService } from './config.service';
+import type { AuthUser } from '../../../auth/account-check';
 import { MechanicRoster } from '../mechanic-roster.service';
+import { MechanicWorkService } from '../mechanic-work.service';
+import { ReleaseTicketsDto } from '../dto/release-tickets.dto';
 
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('vrms')
 export class ConfigController {
   constructor(
     private readonly configService: ConfigService,
     private readonly mechanicRoster: MechanicRoster,
+    private readonly mechanicWork: MechanicWorkService,
   ) {}
 
-  // GET /vrms/config/garages — Admin + Mechanic
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // GET /vrms/config/garages
+  @RequirePermission('config.read')
   @Get('config/garages')
   listGarages() {
     return this.configService.listGarages();
   }
 
-  // GET /vrms/config/vehicles — Admin + Mechanic
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // GET /vrms/config/vehicles
+  @RequirePermission('config.read')
   @Get('config/vehicles')
   listVehicles() {
     return this.configService.listVehicles();
   }
 
-  // GET /vrms/mechanics/available — Admin + Mechanic
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // GET /vrms/mechanics/available
+  @RequirePermission('config.read')
   @Get('mechanics/available')
   listAvailableMechanics() {
     return this.configService.listAvailableMechanics();
   }
 
-  // POST /vrms/mechanics/sync — Admin. Brings the in house mechanics in step with welinc-auth,
+  // POST /vrms/mechanics/sync. Brings the in house mechanics in step with welinc-auth,
   // asking as the calling admin (spec 0009, AC-11)
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @Post('mechanics/sync')
   @HttpCode(HttpStatus.OK)
   syncMechanics(@Headers('authorization') authorization: string) {
     return this.mechanicRoster.sync(authorization.replace(/^Bearer\s+/i, ''));
   }
 
-  // GET /vrms/config/drivers — Admin + Mechanic (autocomplete suggestions)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // GET /vrms/mechanics/:authUserId/open-work (spec 0011, AC-32)
+  @RequirePermission('users.manage')
+  @Get('mechanics/:authUserId/open-work')
+  openWork(@Param('authUserId', ParseUUIDPipe) authUserId: string) {
+    return this.mechanicWork.openWork(authUserId);
+  }
+
+  // POST /vrms/mechanics/:authUserId/release-tickets (spec 0011, AC-33)
+  @RequirePermission('users.manage')
+  @Post('mechanics/:authUserId/release-tickets')
+  @HttpCode(HttpStatus.OK)
+  releaseTickets(
+    @Param('authUserId', ParseUUIDPipe) authUserId: string,
+    @Body() dto: ReleaseTicketsDto,
+    @Req() req: { user: AuthUser },
+    @Headers('authorization') authorization: string,
+  ) {
+    return this.mechanicWork.release(
+      authUserId,
+      dto.reason,
+      req.user,
+      authorization.replace(/^Bearer\s+/i, ''),
+    );
+  }
+
+  // GET /vrms/config/drivers (autocomplete suggestions)
+  @RequirePermission('config.read')
   @Get('config/drivers')
   listDrivers() {
     return this.configService.listDrivers();

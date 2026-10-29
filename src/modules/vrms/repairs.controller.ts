@@ -7,14 +7,12 @@ import {
   Post,
   Query,
   Req,
-  UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { UserRole } from '../../auth/roles';
-import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../../auth/guards/roles.guard';
-import { Roles } from '../../auth/decorators/roles.decorator';
 import type { AuthUser } from '../../auth/account-check';
+import type { AppAbility } from '../../auth/permissions/ability.factory';
+import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
+import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
@@ -30,85 +28,105 @@ import {
 
 type AuthRequest = { user: AuthUser };
 
-@UseGuards(JwtAuthGuard, RolesGuard)
+// Spec 0011, Route to key mapping. Ownership and hidden fields come from the ability.
 @Controller('vrms/repairs')
 export class RepairsController {
   constructor(private readonly repairsService: RepairsService) {}
 
-  // ADMIN only — create a new repair ticket
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('ticket.create')
   @Post()
-  create(@Body() dto: CreateRepairDto, @Req() req: AuthRequest) {
-    return this.repairsService.create(dto, req.user);
+  create(
+    @Body() dto: CreateRepairDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.repairsService.create(dto, req.user, ability);
   }
 
-  // ADMIN + MECHANIC + CHIEF_MECHANIC — list active repairs (mechanic sees only assigned)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // Open tickets, scoped to what the caller may read
+  @RequirePermission('ticket.view', 'ticket.view_all')
   @Get()
-  findAll(@Query() query: FindRepairsQueryDto, @Req() req: AuthRequest) {
-    return this.repairsService.findAll(query, req.user);
+  findAll(
+    @Query() query: FindRepairsQueryDto,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.repairsService.findAll(query, ability);
   }
 
-  // ADMIN + MECHANIC + CHIEF_MECHANIC — repair history (completed + cancelled)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // Repair history (closed + cancelled), scoped the same way
+  @RequirePermission('ticket.view', 'ticket.view_all')
   @Get('history')
-  findHistory(@Query() query: HistoryQueryDto, @Req() req: AuthRequest) {
-    return this.repairsService.findHistory(query, req.user);
+  findHistory(
+    @Query() query: HistoryQueryDto,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.repairsService.findHistory(query, ability);
   }
 
-  // ADMIN only — list in-house mechanics not currently on any active ticket
-  @Roles(UserRole.ADMIN)
+  // In house mechanics not currently on any active ticket
+  @RequirePermission('ticket.create')
   @Get('available-mechanics')
   listAvailableMechanics() {
     return this.repairsService.listAvailableMechanics();
   }
 
-  // ADMIN only — audit timeline, keyset paged (declared before :id)
-  @Roles(UserRole.ADMIN)
+  // Audit timeline, keyset paged (declared before :id)
+  @RequirePermission('audit.view')
   @Get('audit-logs')
   findAuditEvents(@Query() query: AuditEventsQueryDto) {
     return this.repairsService.findAuditEvents(query);
   }
 
-  // ADMIN only — everyone who appears in the audit log, for the Person filter
-  @Roles(UserRole.ADMIN)
+  // Everyone who appears in the audit log, for the Person filter
+  @RequirePermission('audit.view')
   @Get('audit-logs/actors')
   findAuditActors() {
     return this.repairsService.findAuditActors();
   }
 
-  // ADMIN + MECHANIC + CHIEF_MECHANIC — single repair detail
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // Single repair detail; outside the caller's scope is a 403
+  @RequirePermission('ticket.view', 'ticket.view_all')
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthRequest) {
-    return this.repairsService.findOne(id, req.user);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.repairsService.findOne(id, ability);
   }
 
-  // ADMIN + MECHANIC + CHIEF_MECHANIC — update status (mechanic restricted at service layer)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // Update status (own tickets and mechanic moves restricted at the service layer)
+  @RequirePermission('ticket.work', 'ticket.administer')
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRepairStatusDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.updateStatus(id, dto, req.user);
+    return this.repairsService.updateStatus(id, dto, req.user, ability);
   }
 
-  // ADMIN + assigned MECHANIC or CHIEF_MECHANIC — link, relink or unlink a known fix (spec 0007, AC-29)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // Link, relink or unlink a known fix (spec 0007, AC-29)
+  @RequirePermission('ticket.work', 'ticket.administer')
   @Patch(':id/issues/:issueId/knowledge')
   linkKnowledge(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('issueId', ParseUUIDPipe) issueId: string,
     @Body() dto: LinkIssueKnowledgeDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.linkKnowledge(id, issueId, dto, req.user);
+    return this.repairsService.linkKnowledge(
+      id,
+      issueId,
+      dto,
+      req.user,
+      ability,
+    );
   }
 
-  // ADMIN + assigned MECHANIC or CHIEF_MECHANIC — tick a known fix step (spec 0007, AC-28)
-  @Roles(UserRole.ADMIN, UserRole.MECHANIC, UserRole.CHIEF_MECHANIC)
+  // Tick a known fix step (spec 0007, AC-28)
+  @RequirePermission('ticket.work', 'ticket.administer')
   @Patch(':id/issues/:issueId/steps/:stepId')
   checkStep(
     @Param('id', ParseUUIDPipe) id: string,
@@ -116,29 +134,39 @@ export class RepairsController {
     @Param('stepId', ParseUUIDPipe) stepId: string,
     @Body() dto: CheckIssueStepDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.checkStep(id, issueId, stepId, dto, req.user);
+    return this.repairsService.checkStep(
+      id,
+      issueId,
+      stepId,
+      dto,
+      req.user,
+      ability,
+    );
   }
 
-  // ADMIN only — update costs (lump sum or itemized parts)
-  @Roles(UserRole.ADMIN)
+  // Update costs (lump sum or itemized parts)
+  @RequirePermission('ticket.costs.edit')
   @Patch(':id/costs')
   updateCosts(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCostsDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.updateCosts(id, dto, req.user);
+    return this.repairsService.updateCosts(id, dto, req.user, ability);
   }
 
-  // ADMIN only — unlock a terminal (completed/cancelled) ticket for editing
-  @Roles(UserRole.ADMIN)
+  // Unlock a terminal (closed/cancelled) ticket for editing
+  @RequirePermission('ticket.unlock')
   @Patch(':id/unlock')
   unlockTicket(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UnlockTicketDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.unlockTicket(id, dto, req.user);
+    return this.repairsService.unlockTicket(id, dto, req.user, ability);
   }
 }

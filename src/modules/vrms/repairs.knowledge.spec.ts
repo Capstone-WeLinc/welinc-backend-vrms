@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
 import { UserRole } from '../../auth/roles';
 import { PrismaService } from '../../shared/prisma.service';
+import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
 
 // Spec 0007, AC-26 (create copies the entry's steps) and AC-29 (link, relink and unlink).
@@ -150,6 +151,7 @@ describe('RepairsService.linkKnowledge', () => {
       ISSUE,
       { knowledgeEntryId: entry.id, lastUpdatedAt: LOADED.toISOString() },
       admin,
+      defaultAbility(admin),
     );
 
     expect(tx.repairIssueStep.deleteMany).toHaveBeenCalledWith({
@@ -201,6 +203,7 @@ describe('RepairsService.linkKnowledge', () => {
       ISSUE,
       { knowledgeEntryId: null, lastUpdatedAt: LOADED.toISOString() },
       admin,
+      defaultAbility(admin),
     );
     expect(prisma.knowledgeEntry.findFirst).not.toHaveBeenCalled();
     expect(tx.repairIssue.update).toHaveBeenCalledWith({
@@ -228,6 +231,7 @@ describe('RepairsService.linkKnowledge', () => {
           lastUpdatedAt: '2020-01-01T00:00:00.000Z',
         },
         admin,
+        defaultAbility(admin),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -241,6 +245,7 @@ describe('RepairsService.linkKnowledge', () => {
         ISSUE,
         { knowledgeEntryId: entry.id, lastUpdatedAt: LOADED.toISOString() },
         admin,
+        defaultAbility(admin),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(tx.repairIssue.update).not.toHaveBeenCalled();
@@ -254,6 +259,7 @@ describe('RepairsService.linkKnowledge', () => {
         ISSUE,
         { knowledgeEntryId: entry.id, lastUpdatedAt: LOADED.toISOString() },
         admin,
+        defaultAbility(admin),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -269,6 +275,7 @@ describe('RepairsService.linkKnowledge', () => {
           lastUpdatedAt: LOADED.toISOString(),
         },
         admin,
+        defaultAbility(admin),
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.knowledgeEntry.findFirst).toHaveBeenCalledWith(
@@ -334,7 +341,7 @@ describe('RepairsService.create with a common issue', () => {
 
   it('writes the category name into the description and copies steps for the linked issue only', async () => {
     const { prisma, service } = setupCreate();
-    await service.create(dto, admin);
+    await service.create(dto, admin, defaultAbility(admin));
     const [args] = prisma.repairTicket.create.mock.calls[0] as [
       { data: { issues: { create: Record<string, unknown>[] } } },
     ];
@@ -356,7 +363,7 @@ describe('RepairsService.create with a common issue', () => {
   // Spec 0010, AC-3, AC-5 and AC-10
   it('saves the ticket as Assigned with its priority, reporter, assignments and one clock', async () => {
     const { prisma, service } = setupCreate();
-    await service.create(dto, admin);
+    await service.create(dto, admin, defaultAbility(admin));
     const [{ data }] = prisma.repairTicket.create.mock.calls[0] as [
       {
         data: {
@@ -389,9 +396,9 @@ describe('RepairsService.create with a common issue', () => {
 
   it('refuses an entry that is not Active, before any write', async () => {
     const { prisma, service } = setupCreate([]);
-    await expect(service.create(dto, admin)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.create(dto, admin, defaultAbility(admin)),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.driver.create).not.toHaveBeenCalled();
     expect(prisma.repairTicket.create).not.toHaveBeenCalled();
   });

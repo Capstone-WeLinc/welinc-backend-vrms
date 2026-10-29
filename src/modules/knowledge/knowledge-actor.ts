@@ -1,3 +1,4 @@
+import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { UserRole } from '../../auth/roles';
 
 export type JwtUser = {
@@ -8,22 +9,10 @@ export type JwtUser = {
   system: string;
 };
 
-/** Readers (spec 0007, AC-3). */
-export const KNOWLEDGE_READERS = [
-  UserRole.ADMIN,
-  UserRole.CHIEF_MECHANIC,
-  UserRole.MECHANIC,
-];
-/** Editors (spec 0007, AC-3). The permission matrix (feature 5) takes these lists over. */
-export const KNOWLEDGE_EDITORS = [UserRole.ADMIN, UserRole.CHIEF_MECHANIC];
-
-function hasRole(user: JwtUser, roles: UserRole[]) {
-  return user.roles.some(
-    (r) => roles.includes(r.role) && r.system === user.system,
-  );
-}
-
-/** Editors also see drafts, inactive entries, typical costs and recent tickets; a MECHANIC never does. */
-export function isKnowledgeEditor(user: JwtUser) {
-  return hasRole(user, KNOWLEDGE_EDITORS);
+/**
+ * knowledge.edit (spec 0011, AC-13): sees drafts, inactive entries, typical costs and recent
+ * tickets. A knowledge.view reader never does.
+ */
+export function editsKnowledge(ability: AppAbility) {
+  return ability.can('edit', 'KnowledgeEntry');
 }

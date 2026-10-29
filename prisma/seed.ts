@@ -9,6 +9,7 @@ import { seedVehicles } from './seeds/vehicles.seed';
 import { seedDrivers } from './seeds/drivers.seed';
 import { seedRepairs } from './seeds/repairs.seed';
 import { seedKnowledge } from './seeds/knowledge.seed';
+import { seedPermissions } from './seeds/permissions.seed';
 import { SEED } from './seeds/random';
 
 const pool = new pg.Pool({
@@ -48,6 +49,7 @@ async function main() {
   const drivers = await seedDrivers(prisma, now);
   const { entries, categoryId } = await seedKnowledge(prisma, now);
   await seedRepairs(prisma, { now, vehicles, drivers, entries, categoryId });
+  await seedPermissions(prisma);
 
   console.log('Database seeded successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
