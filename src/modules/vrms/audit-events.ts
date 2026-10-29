@@ -1,18 +1,179 @@
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
 
-// Spec 0003. Pure helpers for the audit timeline: keyset cursor and event shaping.
+// Spec 0003 and spec 0010. One audit row per event: who did it, the action, its field changes as a
+// JSON list, and an optional note. Pure helpers, so the shapes test without a database.
 
-export type CostSnapshot = {
+/** One changed field. Values are raw strings ("IN_PROGRESS", "1200.00", "true") or null. */
+export type AuditChange = {
+  field: string;
+  before: string | null;
+  after: string | null;
+};
+
+export const AUDIT_ACTIONS = [
+  'CREATED',
+  'STATUS_CHANGE',
+  'COST_UPDATE',
+  'UNLOCK',
+  'GARAGE_CHANGE',
+  'KNOWLEDGE_LINK',
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+/** What a builder returns: the action, its changes and its note. */
+export type AuditEventData = {
+  action: AuditAction;
+  changes: AuditChange[];
+  note: string | null;
+};
+
+/** The caller as the token describes them, after the welinc-auth account check (spec 0009). */
+export type Actor = {
+  sub: string;
+  email: string;
+  name: string;
+  roles: { role: string; system: string }[];
+  system: string;
+};
+
+export type ActorFields = {
+  actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  actorRole: string | null;
+};
+
+// When a caller holds several VRMS roles, the widest one is recorded.
+const ROLE_ORDER: string[] = [
+  UserRole.ADMIN,
+  UserRole.CHIEF_MECHANIC,
+  UserRole.MECHANIC,
+];
+
+/** A "who" name: the account name, else the email, cut to 100 characters (spec 0010, Value sourcing). */
+export function whoName(user: Pick<Actor, 'name' | 'email'>) {
+  return (user.name?.trim() || user.email).slice(0, 100);
+}
+
+/** The actor columns, copied from the verified token, never from a request body. */
+export function actorFields(user: Actor): ActorFields {
+  const held = user.roles
+    .filter((r) => r.system === user.system)
+    .map((r) => r.role);
+  return {
+    actorUserId: user.sub,
+    actorName: whoName(user),
+    actorEmail: user.email,
+    actorRole: ROLE_ORDER.find((r) => held.includes(r)) ?? held[0] ?? null,
+  };
+}
+
+/** The columns of one audit row: actor, event and the shared `now` (AC-10). */
+export function auditData(user: Actor, event: AuditEventData, now: Date) {
+  return {
+    ...actorFields(user),
+    action: event.action,
+    changes: event.changes as Prisma.InputJsonValue,
+    note: event.note,
+    createdAt: now,
+  };
+}
+
+// ── Event builders (the Audit events table in spec 0010) ────────────────────────
+
+export function createdEvent(): AuditEventData {
+  return { action: 'CREATED', changes: [], note: null };
+}
+
+/** The note is the cancel reason on a move to CANCELLED, else the optional remarks. */
+export function statusEvent(
+  from: string,
+  to: string,
+  note?: string | null,
+): AuditEventData {
+  return {
+    action: 'STATUS_CHANGE',
+    changes: [{ field: 'repairStatus', before: from, after: to }],
+    note: note?.trim() || null,
+  };
+}
+
+export type CostValues = {
   partsCost: number | null;
   laborCost: number | null;
-  total: number | null;
+  totalCost: number | null;
   isLumpSum: boolean;
 };
+
+function money(value: number | null) {
+  return value == null ? null : value.toFixed(2);
+}
+
+/** One row for the whole save, with every cost field that changed. */
+export function costEvent(
+  before: CostValues,
+  after: CostValues,
+): AuditEventData {
+  const pairs: [keyof CostValues, string | null, string | null][] = [
+    ['partsCost', money(before.partsCost), money(after.partsCost)],
+    ['laborCost', money(before.laborCost), money(after.laborCost)],
+    ['totalCost', money(before.totalCost), money(after.totalCost)],
+    ['isLumpSum', String(before.isLumpSum), String(after.isLumpSum)],
+  ];
+  return {
+    action: 'COST_UPDATE',
+    changes: pairs
+      .filter(([, b, a]) => b !== a)
+      .map(([field, b, a]) => ({ field, before: b, after: a })),
+    note: null,
+  };
+}
+
+export function unlockEvent(reason: string): AuditEventData {
+  return {
+    action: 'UNLOCK',
+    changes: [{ field: 'isUnlocked', before: 'false', after: 'true' }],
+    note: reason.trim(),
+  };
+}
+
+/** Garage names before and after. */
+export function garageEvent(
+  from: string | null,
+  to: string | null,
+): AuditEventData {
+  return {
+    action: 'GARAGE_CHANGE',
+    changes: [{ field: 'garage', before: from, after: to }],
+    note: null,
+  };
+}
+
+/** Entry names before and after (null is none), plus the issue it applies to. */
+export function knowledgeLinkEvent(
+  issueId: string,
+  from: string | null,
+  to: string | null,
+): AuditEventData {
+  return {
+    action: 'KNOWLEDGE_LINK',
+    changes: [
+      { field: 'knowledgeEntry', before: from, after: to },
+      { field: 'issueId', before: null, after: issueId },
+    ],
+    note: null,
+  };
+}
+
+// ── Reading: keyset cursor and the timeline item ────────────────────────────────
 
 export type AuditActor = {
   id: string | null;
   name: string | null;
   email: string | null;
+  role: string | null;
 };
 
 export type AuditEvent = {
@@ -21,28 +182,19 @@ export type AuditEvent = {
   at: string;
   actor: AuditActor | null;
   ticket: { id: string; repairNumber: string };
-  status?: { from: string | null; to: string };
-  cost?: { from: CostSnapshot | null; to: CostSnapshot | null } | null;
-  unlockReason?: string;
-  garage?: { from: string | null; to: string | null };
-  /** Spec 0007, AC-29: the known fix entry names before and after; null is none. */
-  knowledge?: {
-    issueId: string | null;
-    from: string | null;
-    to: string | null;
-  };
-  rawAction: string;
+  changes: AuditChange[];
+  note: string | null;
 };
 
 export type AuditRow = {
   id: string;
   action: string;
-  fieldName?: string | null;
-  userId: string | null;
-  email: string | null;
-  actorName?: string | null;
-  previousValue: string | null;
-  newValue: string | null;
+  actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  actorRole: string | null;
+  changes: Prisma.JsonValue;
+  note: string | null;
   createdAt: Date;
   repairTicket: { id: string; repairNumber: string };
 };
@@ -85,96 +237,44 @@ export function olderThan(cursor: AuditCursor) {
   };
 }
 
-function toNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+function asText(value: unknown): string | null {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
+  return value == null ? null : JSON.stringify(value);
 }
 
-function parseJsonObject(value: string | null): Record<string, unknown> | null {
-  if (!value) return null;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
+/** The stored JSON list, read defensively: anything that isn't a change is skipped. */
+export function readChanges(value: Prisma.JsonValue): AuditChange[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const { field, before, after } = item as Record<string, unknown>;
+    if (typeof field !== 'string') return [];
+    return [{ field, before: asText(before), after: asText(after) }];
+  });
 }
 
-// The cost writer stores ₱0 as null, so a missing amount reads as 0.
-// The old snapshot never stored a total or lump sum flag.
-export function parsePreviousCost(value: string | null): CostSnapshot | null {
-  const json = parseJsonObject(value);
-  if (!json) return null;
-  const partsCost = toNumber(json.partsCost) ?? 0;
-  const laborCost = toNumber(json.laborCost) ?? 0;
-  return {
-    partsCost,
-    laborCost,
-    total: partsCost + laborCost,
-    isLumpSum: false,
-  };
-}
-
-export function parseNewCost(value: string | null): CostSnapshot | null {
-  const json = parseJsonObject(value);
-  if (!json) return null;
-  const partsCost = toNumber(json.partsCost) ?? 0;
-  const laborCost = toNumber(json.laborCost) ?? 0;
-  return {
-    partsCost,
-    laborCost,
-    total: toNumber(json.totalCost) ?? partsCost + laborCost,
-    isLumpSum: json.isLumpSum === true,
-  };
-}
-
-/** The actor is stored on the row itself: welinc-auth id, email and name at write time (spec 0009, AC-10). */
+/** The actor is stored on the row itself: welinc-auth id, email, name and role at write time. */
 export function toAuditEvent(row: AuditRow): AuditEvent {
-  const event: AuditEvent = {
+  return {
     id: row.id,
     type: row.action,
     at: row.createdAt.toISOString(),
     actor:
-      row.userId || row.email
+      row.actorUserId || row.actorEmail
         ? {
-            id: row.userId,
-            name: row.actorName ?? row.email,
-            email: row.email,
+            id: row.actorUserId,
+            name: row.actorName ?? row.actorEmail,
+            email: row.actorEmail,
+            role: row.actorRole,
           }
         : null,
     ticket: {
       id: row.repairTicket.id,
       repairNumber: row.repairTicket.repairNumber,
     },
-    rawAction: row.action,
+    changes: readChanges(row.changes),
+    note: row.note,
   };
-
-  switch (row.action) {
-    case 'STATUS_CHANGE':
-      event.status = { from: row.previousValue, to: row.newValue ?? '' };
-      break;
-    case 'COST_UPDATE': {
-      const from = parsePreviousCost(row.previousValue);
-      const to = parseNewCost(row.newValue);
-      event.cost = from || to ? { from, to } : null;
-      break;
-    }
-    case 'UNLOCK':
-      event.unlockReason = row.newValue ?? '';
-      break;
-    case 'SHOP_CHANGE':
-      event.garage = { from: row.previousValue, to: row.newValue };
-      break;
-    case 'KNOWLEDGE_LINK':
-      event.knowledge = {
-        issueId: row.fieldName ?? null,
-        from: row.previousValue,
-        to: row.newValue,
-      };
-      break;
-  }
-  return event;
 }

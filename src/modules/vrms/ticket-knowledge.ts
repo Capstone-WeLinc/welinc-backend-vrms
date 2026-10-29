@@ -4,9 +4,9 @@ import { Prisma, RepairStatus } from '@prisma/client';
 // Spec 0007, AC-27 to AC-31: what a ticket's issues carry from the knowledge base, and the
 // "What fixed it" rules on the move to For verification. Pure, so the rules test without a database.
 
-/** Link, relink and unlink only while a ticket is Pending or In progress (State transitions). */
+/** Link, relink and unlink only while a ticket is Assigned or In progress (State transitions). */
 export const LINKABLE_STATUSES: RepairStatus[] = [
-  RepairStatus.PENDING,
+  RepairStatus.ASSIGNED,
   RepairStatus.IN_PROGRESS,
 ];
 

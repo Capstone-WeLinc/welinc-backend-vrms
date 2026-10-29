@@ -62,3 +62,29 @@ export const BULK_MECHANICS: SeedPerson[] = Array.from({ length: 60 }, (_, k) =>
     email: `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(/\s+/g, '')}${i}@welinc.com`,
   };
 });
+
+// The VRMS role each seeded person holds in welinc-auth's seed
+const ROLE_BY_EMAIL = new Map<string, string>([
+  [VRMS_ADMIN.email, 'ADMIN'],
+  [CHIEF.email, 'CHIEF_MECHANIC'],
+  ...[...NAMED_MECHANICS, ...BULK_MECHANICS].map(
+    (p) => [p.email, 'MECHANIC'] as [string, string],
+  ),
+]);
+const PERSON_BY_EMAIL = new Map(
+  [VRMS_ADMIN, CHIEF, ...NAMED_MECHANICS, ...BULK_MECHANICS].map((p) => [
+    p.email,
+    p,
+  ]),
+);
+
+/** The actor columns of an audit or knowledge change row, as the API writes them (spec 0010). */
+export function seedActor(email: string) {
+  const person = PERSON_BY_EMAIL.get(email);
+  return {
+    actorUserId: person?.id ?? null,
+    actorName: person?.name ?? email,
+    actorEmail: email,
+    actorRole: ROLE_BY_EMAIL.get(email) ?? null,
+  };
+}

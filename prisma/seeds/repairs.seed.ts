@@ -15,17 +15,20 @@ import {
   PROBLEMS,
   Problem,
   REMARKS,
-  SHOPS,
   UNLOCK_REASONS,
   VEHICLES,
 } from './catalog';
 import { SeededEntry } from './knowledge.seed';
+import { seedActor, VRMS_ADMIN } from './shared-ids';
 import {
-  BULK_MECHANICS,
-  CHIEF,
-  NAMED_MECHANICS,
-  VRMS_ADMIN,
-} from './shared-ids';
+  AuditEventData,
+  costEvent,
+  createdEvent,
+  garageEvent,
+  knowledgeLinkEvent,
+  statusEvent,
+  unlockEvent,
+} from '../../src/modules/vrms/audit-events';
 import {
   DAY,
   HOUR,
@@ -47,23 +50,11 @@ import {
 
 // Plays out each truck's repair history in order, so tickets never overlap on one truck, odometers
 // only go up, and a ticket's status is wherever its own timeline has reached today. Every change
-// writes the audit row the API would write, with the welinc-auth id and name from shared-ids.ts.
+// writes the audit row the API would write (spec 0010 shape), with the welinc-auth id, name and
+// role from shared-ids.ts. Due dates stay empty: feature 42 is their first writer.
 
 const HISTORY_MONTHS = 22;
 const ADMIN = VRMS_ADMIN.email;
-// Who wrote each audit row, by email: the welinc-auth id and name (spec 0009, AC-10)
-const PEOPLE = new Map(
-  [VRMS_ADMIN, CHIEF, ...NAMED_MECHANICS, ...BULK_MECHANICS].map((p) => [
-    p.email,
-    p,
-  ]),
-);
-const TARGET_HOURS: Record<RepairPriority, number> = {
-  CRITICAL: 24,
-  HIGH: 48,
-  MEDIUM: 72,
-  LOW: 120,
-};
 const PRIORITY_RANK: Record<RepairPriority, number> = {
   LOW: 0,
   MEDIUM: 1,
@@ -97,8 +88,7 @@ type Rows = {
   steps: Prisma.RepairIssueStepCreateManyInput[];
   parts: Prisma.RepairPartCreateManyInput[];
   audits: Prisma.AuditLogCreateManyInput[];
-  shopChanges: Prisma.ShopChangeLogCreateManyInput[];
-  crewLinks: { mechanicId: string; ticketId: string }[];
+  assignments: Prisma.TicketAssignmentCreateManyInput[];
 };
 
 type IssueMeta = {
@@ -129,10 +119,7 @@ export async function seedRepairs(
   );
 
   // ── Crews ────────────────────────────────────────────────────────────────
-  const inHouse = await prisma.mechanic.findMany({
-    where: { isOutsourced: false },
-    orderBy: { name: 'asc' },
-  });
+  const inHouse = await prisma.mechanic.findMany({ orderBy: { name: 'asc' } });
   const garageNames = [...garages.keys()];
   let roundRobin = 0;
   const crews: Crew[] = inHouse.map((m) => {
@@ -147,17 +134,6 @@ export async function seedRepairs(
       busyUntil: 0,
       hasOpen: false,
     };
-  });
-
-  // Outside shops, one Mechanic row per shop contact, the way create() makes them
-  const shops = SHOPS.map((s) => ({ ...s, id: uuid() }));
-  await prisma.mechanic.createMany({
-    data: shops.map((s) => ({
-      id: s.id,
-      name: s.contact,
-      isOutsourced: true,
-      shopName: s.shopName,
-    })),
   });
 
   // Each truck has a regular driver from its garage
@@ -175,8 +151,7 @@ export async function seedRepairs(
     steps: [],
     parts: [],
     audits: [],
-    shopChanges: [],
-    crewLinks: [],
+    assignments: [],
   };
   const issueMeta: IssueMeta[] = [];
   const repairNumbers = new Set<string>();
@@ -186,30 +161,24 @@ export async function seedRepairs(
     status: VehicleStatus;
     retiredAt: number | null;
   }[] = [];
-  const counts: Record<RepairStatus, number> = {
-    PENDING: 0,
-    IN_PROGRESS: 0,
-    FOR_VERIFICATION: 0,
-    COMPLETED: 0,
-    CANCELLED: 0,
-  };
+  const counts = Object.fromEntries(
+    Object.values(RepairStatus).map((s) => [s, 0]),
+  ) as Record<RepairStatus, number>;
 
   const audit = (
     ticketId: string,
     at: number,
     email: string,
-    action: string,
-    fields: Partial<Prisma.AuditLogCreateManyInput> = {},
+    event: AuditEventData,
   ) =>
     rows.audits.push({
       id: uuid(),
       repairTicketId: ticketId,
-      userId: PEOPLE.get(email)?.id ?? null,
-      email,
-      actorName: PEOPLE.get(email)?.name ?? null,
-      action,
+      ...seedActor(email),
+      action: event.action,
+      changes: event.changes,
+      note: event.note,
       createdAt: new Date(at),
-      ...fields,
     });
 
   const historyStart = now - HISTORY_MONTHS * 30 * DAY;
@@ -244,7 +213,7 @@ export async function seedRepairs(
         regular,
       });
       if (!result) continue;
-      if (result.status === RepairStatus.COMPLETED) lastClosedKm = km;
+      if (result.status === RepairStatus.CLOSED) lastClosedKm = km;
       if (!result.closedAt) {
         open = true;
         break;
@@ -267,7 +236,7 @@ export async function seedRepairs(
           ),
         );
         const result = buildTicket({ vehicle, spec, createdAt, km, regular });
-        if (result?.status === RepairStatus.COMPLETED) lastClosedKm = km;
+        if (result?.status === RepairStatus.CLOSED) lastClosedKm = km;
         open = !!result && !result.closedAt;
       }
     }
@@ -319,14 +288,13 @@ export async function seedRepairs(
     const pool = driversAt(spec.garage, createdAt);
     const driver =
       pool.includes(args.regular) && chance(0.75) ? args.regular : pick(pool);
-    const outsourced = chance(Math.max(...problems.map((p) => p.outsourced)));
 
     // ── Timeline (computed first, so the status is wherever it has reached today) ──
     const issueHours = problems.map((p) =>
       quarter(around(p.laborHours[0], p.laborHours[1])),
     );
     const crewSize =
-      !outsourced && issueHours.reduce((a, b) => a + b, 0) > 4 && chance(0.45)
+      issueHours.reduce((a, b) => a + b, 0) > 4 && chance(0.45)
         ? 2
         : 1;
     const workHours =
@@ -340,9 +308,9 @@ export async function seedRepairs(
     };
     const startAt = addWorkHours(
       createdAt,
-      between(...QUEUE[priority]) + (outsourced ? between(2, 9) : 0),
+      between(...QUEUE[priority]),
     );
-    const partsWait = chance(outsourced ? 0.5 : 0.3) ? between(1, 5) * DAY : 0;
+    const partsWait = chance(0.3) ? between(1, 5) * DAY : 0;
     const fvAt = addWorkHours(startAt + partsWait, workHours);
     const costAt = addWorkHours(fvAt, between(0.5, 8));
     const completeAt = addWorkHours(costAt, between(0.5, 12));
@@ -359,16 +327,16 @@ export async function seedRepairs(
       status =
         cancelFromProgress && now >= startAt
           ? RepairStatus.IN_PROGRESS
-          : RepairStatus.PENDING;
-    else if (now < startAt) status = RepairStatus.PENDING;
+          : RepairStatus.ASSIGNED;
+    else if (now < startAt) status = RepairStatus.ASSIGNED;
     else if (now < fvAt) status = RepairStatus.IN_PROGRESS;
     else if (now < completeAt) status = RepairStatus.FOR_VERIFICATION;
-    else status = RepairStatus.COMPLETED;
+    else status = RepairStatus.CLOSED;
 
     const isOpen =
-      status !== RepairStatus.COMPLETED && status !== RepairStatus.CANCELLED;
+      status !== RepairStatus.CLOSED && status !== RepairStatus.CANCELLED;
     const closedAt =
-      status === RepairStatus.COMPLETED
+      status === RepairStatus.CLOSED
         ? completeAt
         : status === RepairStatus.CANCELLED
           ? cancelAt
@@ -376,51 +344,41 @@ export async function seedRepairs(
     const reachedProgress =
       status === RepairStatus.CANCELLED
         ? cancelFromProgress
-        : status !== RepairStatus.PENDING;
+        : status !== RepairStatus.ASSIGNED;
     const reachedVerification =
       status === RepairStatus.FOR_VERIFICATION ||
-      status === RepairStatus.COMPLETED;
+      status === RepairStatus.CLOSED;
     const costsIn =
-      status === RepairStatus.COMPLETED ||
+      status === RepairStatus.CLOSED ||
       (status === RepairStatus.FOR_VERIFICATION && costAt <= now);
 
     // ── Crew ──
-    let crew: Crew[] = [];
-    let shop: (typeof shops)[number] | null = null;
-    if (outsourced) {
-      const local = shops.filter((s) => s.garage === garageName);
-      const fitting = local.filter((s) =>
-        problems.some((p) => s.trades.includes(p.category)),
-      );
-      shop = pick(fitting.length ? fitting : local);
-    } else {
-      const free = crews.filter(
-        (c) => c.garage === garageName && c.busyUntil <= createdAt,
-      );
-      const candidates =
-        free.length >= crewSize
-          ? free
-          : crews.filter((c) => c.garage === garageName);
-      // An open ticket goes to a demo login that has none yet, so every demo account has live work
-      const demoWanting = isOpen
-        ? candidates.filter(
-            (c) => c.demo && !c.hasOpen && c.busyUntil <= createdAt,
-          )
-        : [];
-      const lead = demoWanting.length
-        ? pick(demoWanting)
-        : weighted(candidates, (c) => (c.demo ? 5 : 1));
-      crew = [lead];
-      if (crewSize === 2) {
-        const second = candidates.filter((c) => c !== lead);
-        if (second.length) crew.push(weighted(second, (c) => (c.demo ? 3 : 1)));
-      }
-      for (const c of crew) {
-        c.busyUntil = closedAt ?? Infinity;
-        if (isOpen) c.hasOpen = true;
-      }
+    const free = crews.filter(
+      (c) => c.garage === garageName && c.busyUntil <= createdAt,
+    );
+    const candidates =
+      free.length >= crewSize
+        ? free
+        : crews.filter((c) => c.garage === garageName);
+    // An open ticket goes to a demo login that has none yet, so every demo account has live work
+    const demoWanting = isOpen
+      ? candidates.filter(
+          (c) => c.demo && !c.hasOpen && c.busyUntil <= createdAt,
+        )
+      : [];
+    const lead = demoWanting.length
+      ? pick(demoWanting)
+      : weighted(candidates, (c) => (c.demo ? 5 : 1));
+    const crew: Crew[] = [lead];
+    if (crewSize === 2) {
+      const second = candidates.filter((c) => c !== lead);
+      if (second.length) crew.push(weighted(second, (c) => (c.demo ? 3 : 1)));
     }
-    const worker = crew[0]?.email ?? ADMIN; // outside shop work is recorded by the admin
+    for (const c of crew) {
+      c.busyUntil = closedAt ?? Infinity;
+      if (isOpen) c.hasOpen = true;
+    }
+    const worker = crew[0].email ?? ADMIN;
 
     // ── Ticket ──
     const ticketId = uuid();
@@ -435,36 +393,29 @@ export async function seedRepairs(
     } while (repairNumbers.has(repairNumber));
     repairNumbers.add(repairNumber);
 
-    audit(ticketId, createdAt, ADMIN, 'CREATED');
+    // Picked up front, because the status change rows carry them as their note
+    const cancellationReason =
+      status === RepairStatus.CANCELLED ? pick(CANCEL_REASONS) : null;
+    const remarks = reachedVerification && chance(0.3) ? pick(REMARKS) : null;
+
+    audit(ticketId, createdAt, ADMIN, createdEvent());
     let lastChange = createdAt;
 
     // Logged at the wrong garage now and then, moved within the hour
     if (chance(0.02)) {
       const from = pick(garageNames.filter((g) => g !== garageName));
       const at = createdAt + between(10, 50) * 60_000;
-      rows.shopChanges.push({
-        id: uuid(),
-        repairTicketId: ticketId,
-        changedByUserId: VRMS_ADMIN.id,
-        changedByName: VRMS_ADMIN.name,
-        previousValue: from,
-        newValue: garageName,
-        changedAt: new Date(at),
-      });
-      audit(ticketId, at, ADMIN, 'SHOP_CHANGE', {
-        fieldName: 'garage',
-        previousValue: from,
-        newValue: garageName,
-      });
+      audit(ticketId, at, ADMIN, garageEvent(from, garageName));
       lastChange = at;
     }
 
     if (reachedProgress) {
-      audit(ticketId, startAt, worker, 'STATUS_CHANGE', {
-        fieldName: 'repairStatus',
-        previousValue: 'PENDING',
-        newValue: 'IN_PROGRESS',
-      });
+      audit(
+        ticketId,
+        startAt,
+        worker,
+        statusEvent(RepairStatus.ASSIGNED, RepairStatus.IN_PROGRESS),
+      );
       lastChange = startAt;
     }
 
@@ -498,11 +449,12 @@ export async function seedRepairs(
       }
       const linked = linkAt != null && linkAt <= now;
       if (linked && linkBy) {
-        audit(ticketId, linkAt!, linkBy, 'KNOWLEDGE_LINK', {
-          fieldName: issueId,
-          previousValue: null,
-          newValue: entry!.name,
-        });
+        audit(
+          ticketId,
+          linkAt!,
+          linkBy,
+          knowledgeLinkEvent(issueId, null, entry!.name),
+        );
         // A mechanic's link touches the ticket; an editor's backfill never does (AC-33)
         if (linkBy === worker) lastChange = Math.max(lastChange, linkAt!);
       }
@@ -608,11 +560,16 @@ export async function seedRepairs(
     });
 
     if (reachedVerification) {
-      audit(ticketId, fvAt, worker, 'STATUS_CHANGE', {
-        fieldName: 'repairStatus',
-        previousValue: 'IN_PROGRESS',
-        newValue: 'FOR_VERIFICATION',
-      });
+      audit(
+        ticketId,
+        fvAt,
+        worker,
+        statusEvent(
+          RepairStatus.IN_PROGRESS,
+          RepairStatus.FOR_VERIFICATION,
+          remarks,
+        ),
+      );
       lastChange = fvAt;
     }
 
@@ -647,7 +604,7 @@ export async function seedRepairs(
         });
       }
       const labourHours = issueHours.reduce((a, b) => a + b, 0);
-      isLumpSum = outsourced && chance(0.7);
+      isLumpSum = chance(0.05);
       partsCost = isLumpSum
         ? peso(
             lines.reduce((s, l) => s + l.subtotal, 0) * between(1.05, 1.2),
@@ -655,7 +612,7 @@ export async function seedRepairs(
           )
         : lines.reduce((s, l) => s + l.subtotal, 0);
       laborCost = peso(
-        labourHours * (outsourced ? between(750, 1100) : between(380, 460)),
+        labourHours * between(380, 460),
         50,
       );
       ticketParts = isLumpSum
@@ -666,33 +623,38 @@ export async function seedRepairs(
             ...l,
             createdAt: new Date(costAt + i),
           }));
-      audit(ticketId, costAt, ADMIN, 'COST_UPDATE', {
-        fieldName: 'costs',
-        previousValue: JSON.stringify({ partsCost: null, laborCost: null }),
-        newValue: JSON.stringify({
-          partsCost,
-          laborCost,
-          totalCost: partsCost + laborCost,
-          isLumpSum,
-        }),
-      });
+      audit(
+        ticketId,
+        costAt,
+        ADMIN,
+        costEvent(
+          { partsCost: null, laborCost: null, totalCost: null, isLumpSum: false },
+          { partsCost, laborCost, totalCost: partsCost + laborCost, isLumpSum },
+        ),
+      );
       lastChange = costAt;
     }
 
-    if (status === RepairStatus.COMPLETED) {
-      audit(ticketId, completeAt, ADMIN, 'STATUS_CHANGE', {
-        fieldName: 'repairStatus',
-        previousValue: 'FOR_VERIFICATION',
-        newValue: 'COMPLETED',
-      });
+    if (status === RepairStatus.CLOSED) {
+      audit(
+        ticketId,
+        completeAt,
+        ADMIN,
+        statusEvent(RepairStatus.FOR_VERIFICATION, RepairStatus.CLOSED),
+      );
       lastChange = completeAt;
     }
     if (status === RepairStatus.CANCELLED) {
-      audit(ticketId, cancelAt, ADMIN, 'STATUS_CHANGE', {
-        fieldName: 'repairStatus',
-        previousValue: cancelFromProgress ? 'IN_PROGRESS' : 'PENDING',
-        newValue: 'CANCELLED',
-      });
+      audit(
+        ticketId,
+        cancelAt,
+        ADMIN,
+        statusEvent(
+          cancelFromProgress ? RepairStatus.IN_PROGRESS : RepairStatus.ASSIGNED,
+          RepairStatus.CANCELLED,
+          cancellationReason,
+        ),
+      );
       lastChange = cancelAt;
     }
 
@@ -700,14 +662,19 @@ export async function seedRepairs(
     let unlockReason: string | null = null;
     const unlockAt = completeAt + between(1, 5) * DAY;
     if (
-      status === RepairStatus.COMPLETED &&
+      status === RepairStatus.CLOSED &&
       partsCost != null &&
       laborCost != null &&
       unlockAt < now &&
       chance(0.03)
     ) {
       unlockReason = pick(UNLOCK_REASONS);
-      const before = { partsCost, laborCost };
+      const before = {
+        partsCost,
+        laborCost,
+        totalCost: partsCost + laborCost,
+        isLumpSum,
+      };
       if (unlockReason.startsWith('Labor cost was encoded twice'))
         laborCost = peso(laborCost / 2, 50);
       else if (unlockReason.startsWith('Outside shop'))
@@ -718,24 +685,20 @@ export async function seedRepairs(
         first.subtotal = Number(first.unitCost) * first.quantity!;
         partsCost = ticketParts.reduce((s, p) => s + Number(p.subtotal), 0);
       } else partsCost = peso(partsCost * between(1.08, 1.2), 50);
-      audit(ticketId, unlockAt, ADMIN, 'UNLOCK', { newValue: unlockReason });
+      audit(ticketId, unlockAt, ADMIN, unlockEvent(unlockReason));
+      const savedAt = unlockAt + between(5, 30) * 60_000;
       audit(
         ticketId,
-        unlockAt + between(5, 30) * 60_000,
+        savedAt,
         ADMIN,
-        'COST_UPDATE',
-        {
-          fieldName: 'costs',
-          previousValue: JSON.stringify(before),
-          newValue: JSON.stringify({
-            partsCost,
-            laborCost,
-            totalCost: partsCost + laborCost,
-            isLumpSum,
-          }),
-        },
+        costEvent(before, {
+          partsCost,
+          laborCost,
+          totalCost: partsCost + laborCost,
+          isLumpSum,
+        }),
       );
-      lastChange = unlockAt + 30 * 60_000;
+      lastChange = savedAt;
     }
     rows.parts.push(...ticketParts);
 
@@ -743,47 +706,71 @@ export async function seedRepairs(
       id: ticketId,
       repairNumber,
       repairStatus: status,
+      priority,
       vehicleId: vehicle.id,
       driverId: driver.id,
       garageId: garage.id,
       odometer: km,
-      targetDueDate: new Date(createdAt + TARGET_HOURS[priority] * HOUR),
+      reportedByUserId: VRMS_ADMIN.id,
+      reportedByName: VRMS_ADMIN.name,
+      // Whoever closes a ticket verified it (Admin today)
+      ...(status === RepairStatus.CLOSED && {
+        verifiedByUserId: VRMS_ADMIN.id,
+        verifiedByName: VRMS_ADMIN.name,
+        verifiedAt: new Date(completeAt),
+      }),
       partsCost,
       laborCost,
       totalCost:
         partsCost != null && laborCost != null ? partsCost + laborCost : null,
       isLumpSum,
-      cancellationReason:
-        status === RepairStatus.CANCELLED ? pick(CANCEL_REASONS) : null,
-      remarks: reachedVerification && chance(0.3) ? pick(REMARKS) : null,
+      cancellationReason,
+      remarks,
       unlockReason,
       createdAt: new Date(createdAt),
       updatedAt: new Date(lastChange),
-      completedAt: closedAt ? new Date(closedAt) : null,
+      // Set again from the newest audit row before writing (AC-15)
+      lastActivityAt: new Date(lastChange),
+      closedAt: closedAt ? new Date(closedAt) : null,
     });
-    for (const c of crew) rows.crewLinks.push({ mechanicId: c.id, ticketId });
-    if (shop) rows.crewLinks.push({ mechanicId: shop.id, ticketId });
+    for (const c of crew) {
+      rows.assignments.push({
+        id: uuid(),
+        repairTicketId: ticketId,
+        mechanicId: c.id,
+        assignedAt: new Date(createdAt),
+        assignedByUserId: VRMS_ADMIN.id,
+        assignedByName: VRMS_ADMIN.name,
+      });
+    }
     counts[status]++;
 
     return { status, closedAt };
   }
 
-  // One completed ticket from the last few days is unlocked right now, waiting for its fix
+  // One closed ticket from the last few days is unlocked right now, waiting for its fix
   const recent = shuffle(
     rows.tickets.filter(
-      (t) => t.repairStatus === 'COMPLETED' && now - +t.completedAt! < 4 * DAY,
+      (t) =>
+        t.repairStatus === RepairStatus.CLOSED && now - +t.closedAt! < 4 * DAY,
     ),
   )[0];
   if (recent) {
-    const at = Math.min(
-      now - HOUR,
-      +recent.completedAt! + between(2, 20) * HOUR,
-    );
+    const at = Math.min(now - HOUR, +recent.closedAt! + between(2, 20) * HOUR);
     recent.isUnlocked = true;
     recent.unlockReason = UNLOCK_REASONS[0];
     recent.updatedAt = new Date(at);
-    audit(recent.id!, at, ADMIN, 'UNLOCK', { newValue: UNLOCK_REASONS[0] });
+    audit(recent.id!, at, ADMIN, unlockEvent(UNLOCK_REASONS[0]));
   }
+
+  // lastActivityAt is the newest audit row's time, as the API keeps it (spec 0010, AC-10)
+  const newest = new Map<string, number>();
+  for (const a of rows.audits) {
+    const at = +(a.createdAt as Date);
+    if (at > (newest.get(a.repairTicketId) ?? 0))
+      newest.set(a.repairTicketId, at);
+  }
+  for (const t of rows.tickets) t.lastActivityAt = new Date(newest.get(t.id!)!);
 
   // ── Mechanic suggestions still waiting for an editor ──
   const recentIssue = (match: (m: IssueMeta) => boolean) =>
@@ -848,14 +835,8 @@ export async function seedRepairs(
   await chunked(rows.tickets, 500, (data) =>
     prisma.repairTicket.createMany({ data }),
   );
-  // Implicit many to many: "A" is the Mechanic id, "B" the RepairTicket id (models in name order)
-  await chunked(
-    rows.crewLinks,
-    1000,
-    (part) =>
-      prisma.$executeRaw`INSERT INTO "_RepairTicketMechanics" ("A", "B")
-      SELECT * FROM unnest(${part.map((l) => l.mechanicId)}::uuid[], ${part.map((l) => l.ticketId)}::uuid[])
-      ON CONFLICT DO NOTHING`,
+  await chunked(rows.assignments, 1000, (data) =>
+    prisma.ticketAssignment.createMany({ data }),
   );
   await chunked(rows.issues, 500, (data) =>
     prisma.repairIssue.createMany({ data }),
@@ -865,9 +846,6 @@ export async function seedRepairs(
   );
   await chunked(rows.parts, 1000, (data) =>
     prisma.repairPart.createMany({ data }),
-  );
-  await chunked(rows.shopChanges, 500, (data) =>
-    prisma.shopChangeLog.createMany({ data }),
   );
   await chunked(rows.audits, 1000, (data) =>
     prisma.auditLog.createMany({ data }),
@@ -888,8 +866,8 @@ export async function seedRepairs(
 
   const linked = rows.issues.filter((i) => i.knowledgeEntryId).length;
   console.log(
-    `  ${rows.tickets.length} tickets: ${counts.COMPLETED} completed, ${counts.CANCELLED} cancelled, ` +
-      `${counts.PENDING} pending, ${counts.IN_PROGRESS} in progress, ${counts.FOR_VERIFICATION} for verification`,
+    `  ${rows.tickets.length} tickets: ${counts.CLOSED} closed, ${counts.CANCELLED} cancelled, ` +
+      `${counts.ASSIGNED} assigned, ${counts.IN_PROGRESS} in progress, ${counts.FOR_VERIFICATION} for verification`,
   );
   console.log(
     `  ${rows.issues.length} issues (${linked} linked to a known fix), ${rows.steps.length} checklist steps, ` +

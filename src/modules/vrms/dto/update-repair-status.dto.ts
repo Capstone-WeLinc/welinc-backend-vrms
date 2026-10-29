@@ -60,10 +60,6 @@ export class UpdateRepairStatusDto {
 
   @IsOptional()
   @IsString()
-  failedVerificationReason?: string;
-
-  @IsOptional()
-  @IsString()
   @MaxLength(500)
   remarks?: string;
 

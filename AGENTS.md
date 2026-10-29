@@ -2,7 +2,7 @@
 
 ## Overview
 
-The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set by `PORT`). It owns repair tickets, issues, parts, vehicles, garages, mechanics, drivers, bookings, checklists, maintenance schedules and audit logs. It owns no accounts: it verifies JWTs issued by `welinc-auth`, then asks `welinc-auth` who the caller is (spec 0009). It is reached through the gateway at `/vrms` and `/repairs`.
+The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set by `PORT`). It owns repair tickets, issues, parts, vehicles, garages, mechanics, drivers, the knowledge base and audit logs. It owns no accounts: it verifies JWTs issued by `welinc-auth`, then asks `welinc-auth` who the caller is (spec 0009). It is reached through the gateway at `/vrms` and `/repairs`.
 
 ## Key files
 
@@ -13,7 +13,8 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/auth/` | `JwtAuthGuard`, `RolesGuard`, `@Roles()` decorator, JWT strategy, `account-check.ts` (the live check against `welinc-auth`) and `roles.ts` (`UserRole` and `SystemType`) |
 | `src/modules/vrms/mechanic-roster.service.ts` | Keeps in house `Mechanic` rows in step with `welinc-auth` users: `POST /vrms/mechanics/sync` and the just in time row on first request |
 | `src/modules/vrms/repairs.controller.ts`, `repairs.service.ts` | Repair ticket endpoints and business rules |
-| `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline |
+| `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline; each event carries a `changes` list of field, before and after |
+| `src/modules/vrms/ticket-statuses.ts` | The one definition of open and finished ticket statuses (spec 0010); queries read it, never a list of their own |
 | `src/modules/vrms/config/` | VRMS configuration endpoints (dropdown lists and settings) |
 | `src/modules/vrms/dto/` | Request DTOs validated with `class-validator` |
 | `src/modules/knowledge/` | Knowledge base API at `/vrms/knowledge` (spec 0007): categories, entries, stats, suggestions and grouping; tunables in `knowledge.settings.ts` |
@@ -44,9 +45,9 @@ npx prisma migrate dev   # asks first, see root rules
 - Repair updates use optimistic locking. The client sends `lastUpdatedAt` and a stale write is rejected. Keep that check on any new update path (see `update-costs.dto.ts` and `update-repair-status.dto.ts`).
 - Ticket changes write audit events through `audit-events.ts`, so a new state change should add one.
 - Knowledge entry and category writes log one `KnowledgeEntryChange` row per changed field in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
-- Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp.
+- Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp. The history starts at one baseline, `20261029000000_baseline` (spec 0010); add new folders after it.
 - New variables go in `.env.example` only (today: `PORT`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`, `AUTH_SERVICE_URL` (required, the app refuses to start without it), `CORS_ORIGINS`, `AI_SERVICE_URL`).
-- Roles and systems come from `src/auth/roles.ts`, not `@prisma/client`: this database holds no users. `Mechanic.authUserId` and `AuditLog.userId` are `welinc-auth` user ids (no foreign key); look a caller up by `req.user.sub`, never by email or name.
+- Roles and systems come from `src/auth/roles.ts`, not `@prisma/client`: this database holds no users. `Mechanic.authUserId` and `AuditLog.actorUserId` are `welinc-auth` user ids (no foreign key); look a caller up by `req.user.sub`, never by email or name.
 
 ## Gotchas
 
@@ -54,7 +55,7 @@ npx prisma migrate dev   # asks first, see root rules
 - `JWT_SECRET` must match the one `welinc-auth` signs with, or every request returns 401.
 - `npm run lint` fixes files in place, so check `git diff` afterwards.
 - A change made in `welinc-auth` (deactivate, lock, role change) reaches VRMS within 30 seconds, because each token's 200 answer is cached in memory for that long. If `welinc-auth` is down, uncached requests get 503.
-- The knowledge base migration needs the `pg_trgm` extension and seeds the issue categories itself (Brakes to Transmission, plus General), so `npm run seed` must not create or delete them.
+- The baseline migration needs the `pg_trgm` extension and seeds the issue categories itself (Brakes to Transmission, plus General), so `npm run seed` must not create or delete them.
 
 ## Agent skills
 

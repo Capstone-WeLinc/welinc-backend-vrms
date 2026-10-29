@@ -70,7 +70,7 @@ export class KnowledgeCategoriesService {
             user,
             'CATEGORY_CREATED',
             { categoryId: category.id },
-            [{ fieldName: 'name', previousValue: null, newValue: dto.name }],
+            [{ field: 'name', before: null, after: dto.name }],
           ),
         });
         return category;
@@ -129,9 +129,9 @@ export class KnowledgeCategoriesService {
         ? []
         : [
             {
-              fieldName: 'isActive',
-              previousValue: String(existing.isActive),
-              newValue: String(dto.isActive),
+              field: 'isActive',
+              before: String(existing.isActive),
+              after: String(dto.isActive),
             },
           ];
 
@@ -173,9 +173,9 @@ export class KnowledgeCategoriesService {
                 { categoryId: neighbour.id },
                 [
                   {
-                    fieldName: 'sortOrder',
-                    previousValue: String(neighbour.sortOrder),
-                    newValue: String(existing.sortOrder),
+                    field: 'sortOrder',
+                    before: String(neighbour.sortOrder),
+                    after: String(existing.sortOrder),
                   },
                 ],
               ),

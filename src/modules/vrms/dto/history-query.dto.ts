@@ -10,6 +10,7 @@ import {
   Min,
 } from 'class-validator';
 import { RepairStatus } from '@prisma/client';
+import { FINISHED_STATUSES } from '../ticket-statuses';
 
 export class HistoryQueryDto {
   @IsOptional()
@@ -18,14 +19,14 @@ export class HistoryQueryDto {
   search?: string;
 
   @IsOptional()
-  @IsIn([RepairStatus.COMPLETED, RepairStatus.CANCELLED])
+  @IsIn(FINISHED_STATUSES)
   status?: RepairStatus;
 
   @IsOptional()
   @IsUUID()
   garageId?: string;
 
-  // On completedAt: `from` inclusive, `to` exclusive
+  // On closedAt: `from` inclusive, `to` exclusive
   @IsOptional()
   @IsISO8601({ strict: true })
   from?: string;

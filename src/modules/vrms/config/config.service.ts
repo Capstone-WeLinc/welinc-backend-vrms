@@ -1,12 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/prisma.service';
-import { RepairStatus } from '@prisma/client';
-
-const ACTIVE_STATUSES: RepairStatus[] = [
-  RepairStatus.PENDING,
-  RepairStatus.IN_PROGRESS,
-  RepairStatus.FOR_VERIFICATION,
-];
+import { OPEN_STATUSES } from '../ticket-statuses';
 
 @Injectable()
 export class ConfigService {
@@ -37,22 +31,17 @@ export class ConfigService {
   // ─── Available In-house Mechanics ───────────────────────────────────────────
 
   async listAvailableMechanics() {
-    // Fetch all active in-house mechanics (non-outsourced, linked to a welinc-auth user)
+    // Every Mechanic row is an in house mechanic linked to a welinc-auth user (spec 0010)
     const all = await this.prisma.mechanic.findMany({
-      where: {
-        isActive: true,
-        isOutsourced: false,
-      },
+      where: { isActive: true },
       select: {
         id: true,
         name: true,
         // The Users page matches a mechanic to an account by authUserId (spec 0009, AC-9)
         authUserId: true,
         email: true,
-        repairTickets: {
-          where: {
-            repairStatus: { in: ACTIVE_STATUSES },
-          },
+        assignments: {
+          where: { repairTicket: { repairStatus: { in: OPEN_STATUSES } } },
           select: { id: true },
         },
       },
@@ -62,7 +51,7 @@ export class ConfigService {
     return all.map((mechanic) => ({
       id: mechanic.id,
       name: mechanic.name,
-      isAvailable: mechanic.repairTickets.length === 0,
+      isAvailable: mechanic.assignments.length === 0,
       email: mechanic.email,
       authUserId: mechanic.authUserId,
     }));

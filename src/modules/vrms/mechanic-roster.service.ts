@@ -17,7 +17,7 @@ import {
 import { SystemType, UserRole } from '../../auth/roles';
 
 // Spec 0009, AC-11, AC-13 and AC-14: in house Mechanic rows follow the welinc-auth users who hold a
-// VRMS mechanic or chief mechanic role. Rows are never deleted, and outsourced rows are never touched.
+// VRMS mechanic or chief mechanic role. Rows are never deleted. Every Mechanic row is in house (spec 0010).
 
 const MECHANIC_ROLES: string[] = [UserRole.MECHANIC, UserRole.CHIEF_MECHANIC];
 
@@ -129,7 +129,6 @@ export class MechanicRoster implements OnModuleInit {
     }
 
     const rows = await this.prisma.mechanic.findMany({
-      where: { isOutsourced: false },
       select: {
         id: true,
         authUserId: true,
@@ -138,9 +137,7 @@ export class MechanicRoster implements OnModuleInit {
         isActive: true,
       },
     });
-    const byAuthId = new Map(
-      rows.flatMap((r) => (r.authUserId ? [[r.authUserId, r] as const] : [])),
-    );
+    const byAuthId = new Map(rows.map((r) => [r.authUserId, r]));
 
     let created = 0;
     let updated = 0;
@@ -154,11 +151,11 @@ export class MechanicRoster implements OnModuleInit {
 
     // A deleted user, or one with no VRMS mechanic role, leaves the picker
     const gone = rows
-      .filter((r) => r.isActive && !(r.authUserId && wanted.has(r.authUserId)))
+      .filter((r) => r.isActive && !wanted.has(r.authUserId))
       .map((r) => r.id);
     const { count: deactivated } = gone.length
       ? await this.prisma.mechanic.updateMany({
-          where: { id: { in: gone }, isActive: true, isOutsourced: false },
+          where: { id: { in: gone }, isActive: true },
           data: { isActive: false },
         })
       : { count: 0 };
@@ -192,7 +189,7 @@ export class MechanicRoster implements OnModuleInit {
       });
       await this.prisma.mechanic.upsert({
         where: { authUserId },
-        create: { authUserId, ...want, isOutsourced: false },
+        create: { authUserId, ...want },
         update: want,
       });
       return before ? 'updated' : 'created';

@@ -1,11 +1,17 @@
 import { BadRequestException } from '@nestjs/common';
 import {
+  actorFields,
+  auditData,
+  costEvent,
   decodeCursor,
   encodeCursor,
+  knowledgeLinkEvent,
   olderThan,
-  parseNewCost,
-  parsePreviousCost,
+  readChanges,
+  statusEvent,
   toAuditEvent,
+  unlockEvent,
+  whoName,
 } from './audit-events';
 
 type Row = { createdAt: Date; id: string };
@@ -83,105 +89,147 @@ describe('audit cursor', () => {
   });
 });
 
-describe('toAuditEvent actor', () => {
+describe('toAuditEvent', () => {
   const base = {
     id: uuid(1),
     action: 'UNLOCK',
-    userId: 'c439b079-0000-4000-8000-000000000000', // the welinc-auth user id
-    previousValue: null,
-    newValue: 'Fix labor cost',
+    actorUserId: 'c439b079-0000-4000-8000-000000000000', // the welinc-auth user id
+    actorEmail: 'vrms.admin@welinc.com',
+    actorName: 'Victor Ramos',
+    actorRole: 'ADMIN',
+    changes: [{ field: 'isUnlocked', before: 'false', after: 'true' }],
+    note: 'Fix labor cost',
     createdAt: new Date('2026-10-22T02:42:00Z'),
     repairTicket: { id: uuid(9), repairNumber: 'REP-1' },
   };
 
-  it('takes the id, email and name stored on the row', () => {
-    const event = toAuditEvent({
-      ...base,
-      email: 'vrms.admin@welinc.com',
-      actorName: 'Victor Ramos',
-    });
+  it('takes the actor, changes and note stored on the row', () => {
+    const event = toAuditEvent(base);
     expect(event.actor).toEqual({
-      id: base.userId,
+      id: base.actorUserId,
       name: 'Victor Ramos',
       email: 'vrms.admin@welinc.com',
+      role: 'ADMIN',
     });
-    expect(event.unlockReason).toBe('Fix labor cost');
+    expect(event.changes).toEqual(base.changes);
+    expect(event.note).toBe('Fix labor cost');
   });
 
   it('shows the email as the name when the row has no name', () => {
-    const event = toAuditEvent({
-      ...base,
-      email: 'gone@welinc.com',
-      actorName: null,
-    });
-    expect(event.actor).toEqual({
-      id: base.userId,
-      name: 'gone@welinc.com',
-      email: 'gone@welinc.com',
-    });
+    const event = toAuditEvent({ ...base, actorName: null });
+    expect(event.actor?.name).toBe('vrms.admin@welinc.com');
   });
 
-  it('has no actor when the row has neither a user id nor an email', () => {
+  it('has no actor for a system event', () => {
     expect(
-      toAuditEvent({ ...base, userId: null, email: null }).actor,
+      toAuditEvent({ ...base, actorUserId: null, actorEmail: null }).actor,
     ).toBeNull();
   });
 
-  it('shapes a status change and leaves unreadable costs as null', () => {
-    const status = toAuditEvent({
-      ...base,
-      email: null,
-      action: 'STATUS_CHANGE',
-      previousValue: 'PENDING',
-      newValue: 'IN_PROGRESS',
-    });
-    expect(status.status).toEqual({ from: 'PENDING', to: 'IN_PROGRESS' });
-    const cost = toAuditEvent({
-      ...base,
-      email: null,
-      action: 'COST_UPDATE',
-      previousValue: 'x',
-      newValue: 'y',
-    });
-    expect(cost.cost).toBeNull();
+  it('skips anything in the stored list that is not a change', () => {
+    expect(
+      readChanges([
+        { field: 'partsCost', before: null, after: '1200.00' },
+        'junk',
+        { before: 'x' },
+        null,
+      ]),
+    ).toEqual([{ field: 'partsCost', before: null, after: '1200.00' }]);
+    expect(readChanges({ not: 'a list' })).toEqual([]);
   });
 });
 
-describe('cost snapshots', () => {
-  it('reads null parts and labor on the old snapshot as 0 and derives the total', () => {
-    expect(
-      parsePreviousCost(JSON.stringify({ partsCost: null, laborCost: 1000 })),
-    ).toEqual({
-      partsCost: 0,
-      laborCost: 1000,
-      total: 1000,
-      isLumpSum: false,
+describe('event builders (spec 0010, Audit events)', () => {
+  it('writes one status change, with the reason or remarks as its note', () => {
+    expect(statusEvent('FOR_VERIFICATION', 'CANCELLED', ' Duplicate ')).toEqual(
+      {
+        action: 'STATUS_CHANGE',
+        changes: [
+          {
+            field: 'repairStatus',
+            before: 'FOR_VERIFICATION',
+            after: 'CANCELLED',
+          },
+        ],
+        note: 'Duplicate',
+      },
+    );
+    expect(statusEvent('ASSIGNED', 'IN_PROGRESS').note).toBeNull();
+  });
+
+  it('puts every changed cost field in one event, as raw strings', () => {
+    const event = costEvent(
+      { partsCost: 3000, laborCost: 1000, totalCost: 4000, isLumpSum: false },
+      { partsCost: 3500, laborCost: 1700, totalCost: 5200, isLumpSum: false },
+    );
+    expect(event.action).toBe('COST_UPDATE');
+    expect(event.changes).toEqual([
+      { field: 'partsCost', before: '3000.00', after: '3500.00' },
+      { field: 'laborCost', before: '1000.00', after: '1700.00' },
+      { field: 'totalCost', before: '4000.00', after: '5200.00' },
+    ]);
+  });
+
+  it('leaves unchanged cost fields out, and an empty amount as null', () => {
+    const event = costEvent(
+      { partsCost: null, laborCost: 500, totalCost: 500, isLumpSum: false },
+      { partsCost: 0, laborCost: 500, totalCost: 500, isLumpSum: true },
+    );
+    expect(event.changes).toEqual([
+      { field: 'partsCost', before: null, after: '0.00' },
+      { field: 'isLumpSum', before: 'false', after: 'true' },
+    ]);
+  });
+
+  it('records the unlock as a change plus the reason', () => {
+    expect(unlockEvent(' Late invoice ')).toEqual({
+      action: 'UNLOCK',
+      changes: [{ field: 'isUnlocked', before: 'false', after: 'true' }],
+      note: 'Late invoice',
     });
   });
 
-  it('takes the new total and lump sum flag from the stored JSON', () => {
+  it('names the issue on a known fix link', () => {
     expect(
-      parseNewCost(
-        JSON.stringify({
-          partsCost: 3500,
-          laborCost: 1700,
-          totalCost: 5200,
-          isLumpSum: true,
-        }),
-      ),
-    ).toEqual({
-      partsCost: 3500,
-      laborCost: 1700,
-      total: 5200,
-      isLumpSum: true,
+      knowledgeLinkEvent(uuid(3), null, 'Brake pads worn').changes,
+    ).toEqual([
+      { field: 'knowledgeEntry', before: null, after: 'Brake pads worn' },
+      { field: 'issueId', before: null, after: uuid(3) },
+    ]);
+  });
+});
+
+describe('actor fields', () => {
+  const user = {
+    sub: uuid(2),
+    email: 'vrms.chief@welinc.com',
+    name: 'Ramon Villanueva',
+    roles: [
+      { role: 'MECHANIC', system: 'VRMS' },
+      { role: 'CHIEF_MECHANIC', system: 'VRMS' },
+      { role: 'ADMIN', system: 'BMS' },
+    ],
+    system: 'VRMS',
+  };
+
+  it('copies the caller from the token, with the widest VRMS role', () => {
+    expect(actorFields(user)).toEqual({
+      actorUserId: uuid(2),
+      actorName: 'Ramon Villanueva',
+      actorEmail: 'vrms.chief@welinc.com',
+      actorRole: 'CHIEF_MECHANIC',
     });
   });
 
-  it.each([null, '', 'not json', '[1,2]', '"text"'])(
-    'returns null for unreadable JSON %p',
-    (value) => {
-      expect(parsePreviousCost(value)).toBeNull();
-      expect(parseNewCost(value)).toBeNull();
-    },
-  );
+  it('falls back to the email for an empty name, cut to 100 characters', () => {
+    expect(whoName({ name: '  ', email: 'a@welinc.com' })).toBe('a@welinc.com');
+    expect(
+      whoName({ name: 'x'.repeat(150), email: 'a@welinc.com' }),
+    ).toHaveLength(100);
+  });
+
+  it('writes one now to the row', () => {
+    const now = new Date('2026-10-29T01:00:00.000Z');
+    expect(auditData(user, statusEvent('A', 'B'), now).createdAt).toBe(now);
+  });
 });

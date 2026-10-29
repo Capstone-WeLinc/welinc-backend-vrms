@@ -10,6 +10,7 @@ import {
   pick,
   uuid,
 } from './random';
+import { seedActor } from './shared-ids';
 
 const EDITORS = ['vrms.admin@welinc.com', 'vrms.chief@welinc.com'];
 
@@ -74,23 +75,21 @@ export async function seedKnowledge(prisma: PrismaClient, now: number) {
     const estimatedHours = spec.estimatedHours ?? null;
     let updatedAt = activeFrom ?? createdAt;
     let updatedBy = author;
+    // One row per save, its field changes as a list (spec 0010)
     const log = (
       at: number,
       email: string,
       action: string,
-      fieldName: string,
-      prev: string | null,
-      next: string | null,
+      field: string,
+      before: string | null,
+      after: string | null,
     ) =>
       changeRows.push({
         id: uuid(),
         entryId: id,
-        userId: null, // the auth service's id; actors are matched by email
-        email,
+        ...seedActor(email),
         action,
-        fieldName,
-        previousValue: prev,
-        newValue: next,
+        changes: [{ field, before, after }],
         createdAt: new Date(at),
       });
 

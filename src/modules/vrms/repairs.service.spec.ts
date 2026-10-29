@@ -45,7 +45,7 @@ function ticket(status: RepairStatus, totalCost: number | null) {
     repairStatus: status,
     createdAt: new Date('2026-10-01T00:00:00Z'),
     updatedAt: new Date('2026-10-02T00:00:00Z'),
-    completedAt: new Date('2026-10-02T00:00:00Z'),
+    closedAt: new Date('2026-10-02T00:00:00Z'),
     cancellationReason: null,
     isUnlocked: false,
     totalCost,
@@ -62,12 +62,12 @@ function setup(mechanicRecord: { id: string } | null = null) {
       findMany: jest
         .fn()
         .mockResolvedValue([
-          ticket(RepairStatus.COMPLETED, 4000),
+          ticket(RepairStatus.CLOSED, 4000),
           ticket(RepairStatus.CANCELLED, null),
         ]),
       groupBy: jest.fn().mockResolvedValue([
         {
-          repairStatus: RepairStatus.COMPLETED,
+          repairStatus: RepairStatus.CLOSED,
           _count: { _all: 30 },
           _sum: { totalCost: 120000 },
         },
@@ -94,7 +94,7 @@ function whereOf(mock: jest.Mock): Prisma.RepairTicketWhereInput {
 }
 
 describe('RepairsService.findHistory', () => {
-  it('summarises every matching row with the same where as the list, spend from completed rows only', async () => {
+  it('summarises every matching row with the same where as the list, spend from closed rows only', async () => {
     const { prisma, service } = setup();
     const res = await service.findHistory(
       {
@@ -107,15 +107,15 @@ describe('RepairsService.findHistory', () => {
       admin,
     );
     expect(res.summary).toEqual({
-      closed: 35,
-      completed: 30,
+      finished: 35,
+      closed: 30,
       cancelled: 5,
       spend: 120000,
     });
     expect(res.total).toBe(35);
     const listWhere = whereOf(prisma.repairTicket.findMany);
     expect(whereOf(prisma.repairTicket.groupBy)).toBe(listWhere);
-    expect(listWhere.completedAt).toEqual({
+    expect(listWhere.closedAt).toEqual({
       gte: new Date('2026-10-01T00:00:00Z'),
       lt: new Date('2026-11-01T00:00:00Z'),
     });
@@ -129,8 +129,8 @@ describe('RepairsService.findHistory', () => {
   it('gives a mechanic only assigned tickets, with no costs and spend null', async () => {
     const { prisma, service } = setup({ id: 'mech-1' });
     const res = await service.findHistory({}, mechanic);
-    expect(whereOf(prisma.repairTicket.findMany).mechanics).toEqual({
-      some: { id: 'mech-1' },
+    expect(whereOf(prisma.repairTicket.findMany).assignments).toEqual({
+      some: { mechanicId: 'mech-1' },
     });
     expect(res.summary.spend).toBeNull();
     expect(res.data.every((row) => !('totalCost' in row))).toBe(true);
@@ -143,9 +143,17 @@ describe('RepairsService.findHistory', () => {
     expect(res).toEqual({
       data: [],
       total: 0,
-      summary: { closed: 0, completed: 0, cancelled: 0, spend: null },
+      summary: { finished: 0, closed: 0, cancelled: 0, spend: null },
     });
     expect(prisma.repairTicket.findMany).not.toHaveBeenCalled();
+  });
+
+  it('holds only finished tickets by default, never an open one like ON_HOLD (AC-4a)', async () => {
+    const { prisma, service } = setup();
+    await service.findHistory({}, admin);
+    expect(whereOf(prisma.repairTicket.findMany).repairStatus).toEqual({
+      in: [RepairStatus.CLOSED, RepairStatus.CANCELLED],
+    });
   });
 
   it('rejects a range where from is not before to', async () => {
@@ -190,20 +198,24 @@ function openTicket(costs: {
   totalCost: number | null;
 }) {
   return {
-    ...ticket(RepairStatus.PENDING, costs.totalCost),
+    ...ticket(RepairStatus.ASSIGNED, costs.totalCost),
     ...costs,
-    completedAt: null,
+    closedAt: null,
+    priority: 'MEDIUM',
     odometer: 1000,
-    targetDueDate: null,
-    failedVerificationReason: null,
+    dueAt: null,
+    dueAtSource: null,
+    reportedByName: 'Victor Ramos',
+    verifiedByName: null,
+    verifiedAt: null,
+    lastActivityAt: new Date('2026-10-02T00:00:00Z'),
     remarks: null,
     isLumpSum: true,
     unlockReason: null,
     driver: { name: 'Driver', isVerified: true },
     issues: [],
-    mechanics: [],
+    assignments: [],
     repairParts: [],
-    shopChangeLogs: [],
     auditLogs: [],
   };
 }
@@ -241,7 +253,7 @@ describe('RepairsService.findAll', () => {
     await service.findAll({ page: 2, limit: 20 }, admin);
     const args = argsOf(prisma.repairTicket.findMany);
     expect(args.orderBy).toEqual([
-      { targetDueDate: { sort: 'asc', nulls: 'last' } },
+      { dueAt: { sort: 'asc', nulls: 'last' } },
       { createdAt: 'desc' },
       { id: 'desc' },
     ]);
@@ -249,16 +261,20 @@ describe('RepairsService.findAll', () => {
     expect(whereOf(prisma.repairTicket.count)).toBe(args.where);
   });
 
-  it('holds open tickets only by default and returns every row with no paging', async () => {
+  it('holds every open status by default (ON_HOLD included) and returns every row with no paging', async () => {
     const { prisma, service } = listSetup();
     await service.findAll({}, admin);
     const args = argsOf(prisma.repairTicket.findMany);
     expect(args.where).toEqual({
       repairStatus: {
         in: [
-          RepairStatus.PENDING,
+          RepairStatus.OPEN,
+          RepairStatus.ASSIGNED,
           RepairStatus.IN_PROGRESS,
+          RepairStatus.ON_HOLD,
           RepairStatus.FOR_VERIFICATION,
+          RepairStatus.OUTSOURCED,
+          RepairStatus.PENDING_APPROVAL,
         ],
       },
     });
@@ -288,7 +304,7 @@ describe('RepairsService.findAll', () => {
     expect(whereOf(prisma.repairTicket.findMany)).toMatchObject({
       repairStatus: RepairStatus.IN_PROGRESS,
       garageId: GARAGE,
-      mechanics: { some: { id: MECHANIC } },
+      assignments: { some: { mechanicId: MECHANIC } },
     });
   });
 
@@ -296,22 +312,26 @@ describe('RepairsService.findAll', () => {
     jest.useFakeTimers().setSystemTime(NOW);
     const { prisma, service } = listSetup();
     await service.findAll(
-      { overdue: true, status: RepairStatus.COMPLETED },
+      { overdue: true, status: RepairStatus.CLOSED },
       admin,
     );
     const where = whereOf(prisma.repairTicket.findMany);
-    expect(where.repairStatus).toBe(RepairStatus.COMPLETED);
+    expect(where.repairStatus).toBe(RepairStatus.CLOSED);
     expect(where.AND).toEqual([
       {
         repairStatus: {
           in: [
-            RepairStatus.PENDING,
+            RepairStatus.OPEN,
+            RepairStatus.ASSIGNED,
             RepairStatus.IN_PROGRESS,
+            RepairStatus.ON_HOLD,
             RepairStatus.FOR_VERIFICATION,
+            RepairStatus.OUTSOURCED,
+            RepairStatus.PENDING_APPROVAL,
           ],
         },
       },
-      { targetDueDate: { lt: NOW } },
+      { dueAt: { lt: NOW } },
     ]);
     jest.useRealTimers();
   });
@@ -319,8 +339,8 @@ describe('RepairsService.findAll', () => {
   it('ignores mechanicId for a mechanic and scopes to their own tickets', async () => {
     const { prisma, service } = listSetup({ id: 'mech-1' });
     await service.findAll({ mechanicId: MECHANIC }, mechanic);
-    expect(whereOf(prisma.repairTicket.findMany).mechanics).toEqual({
-      some: { id: 'mech-1' },
+    expect(whereOf(prisma.repairTicket.findMany).assignments).toEqual({
+      some: { mechanicId: 'mech-1' },
     });
   });
 
@@ -352,18 +372,18 @@ describe('RepairsService.findAuditEvents', () => {
     expect(args.where.AND).toEqual([{ repairTicketId: GARAGE }]);
   });
 
-  it('matches the Person filter on the welinc-auth id in userId (spec 0009, AC-10)', async () => {
+  it('matches the Person filter on the welinc-auth id in actorUserId (spec 0009, AC-10)', async () => {
     const prisma = { auditLog: { findMany: jest.fn().mockResolvedValue([]) } };
     const service = new RepairsService(prisma as unknown as PrismaService);
     await service.findAuditEvents({ actorId: GARAGE });
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
       { where: Prisma.AuditLogWhereInput },
     ];
-    expect(args.where.AND).toEqual([{ userId: GARAGE }]);
+    expect(args.where.AND).toEqual([{ actorUserId: GARAGE }]);
   });
 });
 
-describe('RepairsService.create in house mechanics (AC-27)', () => {
+describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', () => {
   const MECH_ID = '00000000-0000-4000-8000-0000000000aa';
   const dto = (mechanics: object[]) =>
     ({
@@ -374,7 +394,7 @@ describe('RepairsService.create in house mechanics (AC-27)', () => {
       mechanics,
     }) as unknown as CreateRepairDto;
 
-  function createSetup(mechanicRow: { id: string } | null) {
+  function createSetup(activeCount: number) {
     const prisma = {
       vehicle: {
         findFirst: jest.fn().mockResolvedValue({ id: 'v1' }),
@@ -388,10 +408,7 @@ describe('RepairsService.create in house mechanics (AC-27)', () => {
         update: jest.fn().mockResolvedValue({ id: 'd1' }),
         create: jest.fn(),
       },
-      mechanic: {
-        findFirst: jest.fn().mockResolvedValue(mechanicRow),
-        create: jest.fn(),
-      },
+      mechanic: { count: jest.fn().mockResolvedValue(activeCount) },
     };
     return {
       prisma,
@@ -399,8 +416,8 @@ describe('RepairsService.create in house mechanics (AC-27)', () => {
     };
   }
 
-  it('answers 400 for an unknown or inactive in house id', async () => {
-    const { service, prisma } = createSetup(null);
+  it('answers 400 for an unknown or inactive id', async () => {
+    const { service, prisma } = createSetup(0);
 
     const run = service.create(dto([{ id: MECH_ID }]), admin);
 
@@ -410,55 +427,28 @@ describe('RepairsService.create in house mechanics (AC-27)', () => {
   });
 
   // Follow up from the review: a rejected ticket leaves nothing behind
-  it('writes no driver row when the in house mechanic is rejected', async () => {
-    const { service, prisma } = createSetup(null);
+  it('writes no driver row when a mechanic is rejected', async () => {
+    const { service, prisma } = createSetup(0);
 
     await service.create(dto([{ id: MECH_ID }]), admin).catch(() => {});
 
     expect(prisma.driver.findUnique).not.toHaveBeenCalled();
     expect(prisma.driver.update).not.toHaveBeenCalled();
     expect(prisma.driver.create).not.toHaveBeenCalled();
-    expect(prisma.mechanic.create).not.toHaveBeenCalled();
   });
 
-  it('writes no outsourced mechanic when a later in house mechanic is rejected', async () => {
-    const { service, prisma } = createSetup(null);
-
-    await service
-      .create(
-        dto([{ isOutsourced: true, name: 'Shop Guy' }, { id: MECH_ID }]),
-        admin,
-      )
-      .catch(() => {});
-
-    expect(prisma.mechanic.create).not.toHaveBeenCalled();
-  });
-
-  it('looks the mechanic up by id, in house and active only', async () => {
-    const { service, prisma } = createSetup(null);
+  it('looks mechanics up by id and active only, never by name', async () => {
+    const { service, prisma } = createSetup(0);
 
     await service.create(dto([{ id: MECH_ID }]), admin).catch(() => {});
 
-    expect(prisma.mechanic.findFirst).toHaveBeenCalledWith({
-      where: { id: MECH_ID, isOutsourced: false, isActive: true },
+    expect(prisma.mechanic.count).toHaveBeenCalledWith({
+      where: { id: { in: [MECH_ID] }, isActive: true },
     });
   });
 
-  it('never matches an in house mechanic by name', async () => {
-    const { service, prisma } = createSetup(null);
-
-    await service
-      .create(dto([{ id: MECH_ID, name: 'Juan dela Cruz' }]), admin)
-      .catch(() => {});
-
-    const [args] = prisma.mechanic.findFirst.mock.calls[0] as [
-      { where: Record<string, unknown> },
-    ];
-    expect(args.where).not.toHaveProperty('name');
-  });
-
-  it('goes on to the ticket when the in house id is an active row', async () => {
-    const { service, prisma } = createSetup({ id: MECH_ID });
+  it('goes on to the ticket when every id is an active row', async () => {
+    const { service, prisma } = createSetup(1);
 
     await expect(service.create(dto([{ id: MECH_ID }]), admin)).rejects.toThrow(
       'stop here',
@@ -467,41 +457,28 @@ describe('RepairsService.create in house mechanics (AC-27)', () => {
     expect(prisma.vehicle.update).toHaveBeenCalled();
   });
 
-  it('keeps outsourced mechanics on the name and shop flow', async () => {
-    const { service, prisma } = createSetup(null);
-    prisma.mechanic.findFirst.mockResolvedValue({ id: 'out-1' });
-
-    await service
-      .create(
-        dto([{ isOutsourced: true, name: 'Shop Guy', shopName: 'Fix It' }]),
-        admin,
-      )
-      .catch(() => {});
-
-    expect(prisma.mechanic.findFirst).toHaveBeenCalledWith({
-      where: { name: 'Shop Guy', isOutsourced: true },
-    });
-  });
-
   describe('the mechanic item in the request body', () => {
+    // The same options as the global ValidationPipe in main.ts
     const check = (body: object) =>
-      validate(plainToInstance(MechanicAssignmentDto, body));
+      validate(plainToInstance(MechanicAssignmentDto, body), {
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      });
 
-    it('needs a uuid id for an in house mechanic', async () => {
+    it('needs a uuid id', async () => {
       expect(await check({})).not.toHaveLength(0);
       expect(await check({ id: 'not-a-uuid' })).not.toHaveLength(0);
       expect(await check({ id: MECH_ID })).toHaveLength(0);
     });
 
-    it('needs a name, not an id, for an outsourced mechanic', async () => {
-      expect(await check({ isOutsourced: true })).not.toHaveLength(0);
+    it('rejects an outsourced mechanic (400)', async () => {
       expect(
         await check({
           isOutsourced: true,
           name: 'Shop Guy',
           shopName: 'Fix It',
         }),
-      ).toHaveLength(0);
+      ).not.toHaveLength(0);
     });
   });
 });
@@ -559,9 +536,9 @@ describe('RepairsService.findAuditActors (AC-10)', () => {
 
     const [strings] = queryRaw.mock.calls[0] as [string[]];
     const sql = strings.join(' ').replace(/\s+/g, ' ');
-    expect(sql).toContain('DISTINCT ON (user_id)');
-    expect(sql).toContain('WHERE user_id IS NOT NULL');
-    expect(sql).toContain('ORDER BY user_id, created_at DESC, id DESC');
+    expect(sql).toContain('DISTINCT ON (actor_user_id)');
+    expect(sql).toContain('WHERE actor_user_id IS NOT NULL');
+    expect(sql).toContain('ORDER BY actor_user_id, created_at DESC, id DESC');
   });
 });
 

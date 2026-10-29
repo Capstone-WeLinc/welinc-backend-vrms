@@ -1,9 +1,11 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { JwtUser } from './knowledge-actor';
+import { actorFields, type AuditChange } from '../vrms/audit-events';
 
-// Spec 0007, AC-38 and Jira WL-704: every write that changes an entry or a category writes
-// KnowledgeEntryChange rows, one per changed field, in the same transaction.
+// Spec 0007, AC-38 and Jira WL-704, in the spec 0010 shape: every write that changes an entry or a
+// category writes one KnowledgeEntryChange row per event, its changed fields as a JSON list, in the
+// same transaction.
 
 export type ChangeAction =
   | 'ENTRY_CREATED'
@@ -13,11 +15,7 @@ export type ChangeAction =
   | 'CATEGORY_UPDATED'
   | 'CATEGORY_STATUS';
 
-export type FieldChange = {
-  fieldName: string;
-  previousValue: string | null;
-  newValue: string | null;
-};
+export type FieldChange = AuditChange;
 
 /** The entry fields the change log compares, as display strings. */
 export type EntrySnapshot = {
@@ -32,7 +30,7 @@ export type EntrySnapshot = {
   parts: string | null;
 };
 
-/** One row per field whose value differs. */
+/** One change per field whose value differs. */
 export function diffFields<T extends Record<string, string | null>>(
   before: T,
   after: T,
@@ -40,9 +38,9 @@ export function diffFields<T extends Record<string, string | null>>(
   return (Object.keys(after) as (keyof T & string)[])
     .filter((key) => (before[key] ?? null) !== (after[key] ?? null))
     .map((key) => ({
-      fieldName: key,
-      previousValue: before[key] ?? null,
-      newValue: after[key] ?? null,
+      field: key,
+      before: before[key] ?? null,
+      after: after[key] ?? null,
     }));
 }
 
@@ -55,20 +53,23 @@ export function hoursText(value: Prisma.Decimal | number | null | undefined) {
   return value == null ? null : String(Number(value));
 }
 
+/** The one row for this event, or none when nothing changed. */
 export function changeRows(
   user: JwtUser,
   action: ChangeAction,
   target: { entryId?: string; categoryId?: string },
   changes: FieldChange[],
 ): Prisma.KnowledgeEntryChangeCreateManyInput[] {
-  return changes.map((change) => ({
-    entryId: target.entryId ?? null,
-    categoryId: target.categoryId ?? null,
-    userId: user.sub,
-    email: user.email,
-    action,
-    ...change,
-  }));
+  if (changes.length === 0) return [];
+  return [
+    {
+      entryId: target.entryId ?? null,
+      categoryId: target.categoryId ?? null,
+      ...actorFields(user),
+      action,
+      changes: changes,
+    },
+  ];
 }
 
 /** trim(lower(name)), the unique key for entries and categories (AC-5). */
