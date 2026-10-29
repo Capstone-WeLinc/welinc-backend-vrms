@@ -19,6 +19,7 @@ export const AUDIT_ACTIONS = [
   'UNLOCK',
   'GARAGE_CHANGE',
   'KNOWLEDGE_LINK',
+  'MECHANIC_UNASSIGNED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -164,6 +165,25 @@ export function knowledgeLinkEvent(
       { field: 'issueId', before: null, after: issueId },
     ],
     note: null,
+  };
+}
+
+/** A mechanic's assignment ended because they left VRMS (spec 0011, AC-33). The note says why. */
+export function mechanicUnassignedEvent(
+  mechanicName: string,
+  reason: 'DEACTIVATED' | 'ROLE_REMOVED',
+  reopened = false,
+): AuditEventData {
+  return {
+    action: 'MECHANIC_UNASSIGNED',
+    changes: [
+      { field: 'mechanic', before: mechanicName, after: null },
+      ...(reopened
+        ? [{ field: 'repairStatus', before: 'ASSIGNED', after: 'OPEN' }]
+        : []),
+    ],
+    note:
+      reason === 'DEACTIVATED' ? 'Account deactivated' : 'VRMS role removed',
   };
 }
 

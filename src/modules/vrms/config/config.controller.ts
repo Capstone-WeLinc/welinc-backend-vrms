@@ -4,17 +4,25 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
+  Req,
+  Body,
 } from '@nestjs/common';
 import { RequirePermission } from '../../../auth/permissions/permission.decorators';
 import { ConfigService } from './config.service';
+import type { AuthUser } from '../../../auth/account-check';
 import { MechanicRoster } from '../mechanic-roster.service';
+import { MechanicWorkService } from '../mechanic-work.service';
+import { ReleaseTicketsDto } from '../dto/release-tickets.dto';
 
 @Controller('vrms')
 export class ConfigController {
   constructor(
     private readonly configService: ConfigService,
     private readonly mechanicRoster: MechanicRoster,
+    private readonly mechanicWork: MechanicWorkService,
   ) {}
 
   // GET /vrms/config/garages
@@ -45,6 +53,31 @@ export class ConfigController {
   @HttpCode(HttpStatus.OK)
   syncMechanics(@Headers('authorization') authorization: string) {
     return this.mechanicRoster.sync(authorization.replace(/^Bearer\s+/i, ''));
+  }
+
+  // GET /vrms/mechanics/:authUserId/open-work (spec 0011, AC-32)
+  @RequirePermission('users.manage')
+  @Get('mechanics/:authUserId/open-work')
+  openWork(@Param('authUserId', ParseUUIDPipe) authUserId: string) {
+    return this.mechanicWork.openWork(authUserId);
+  }
+
+  // POST /vrms/mechanics/:authUserId/release-tickets (spec 0011, AC-33)
+  @RequirePermission('users.manage')
+  @Post('mechanics/:authUserId/release-tickets')
+  @HttpCode(HttpStatus.OK)
+  releaseTickets(
+    @Param('authUserId', ParseUUIDPipe) authUserId: string,
+    @Body() dto: ReleaseTicketsDto,
+    @Req() req: { user: AuthUser },
+    @Headers('authorization') authorization: string,
+  ) {
+    return this.mechanicWork.release(
+      authUserId,
+      dto.reason,
+      req.user,
+      authorization.replace(/^Bearer\s+/i, ''),
+    );
   }
 
   // GET /vrms/config/drivers (autocomplete suggestions)

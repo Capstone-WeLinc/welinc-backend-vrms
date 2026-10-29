@@ -171,7 +171,9 @@ const ticketInclude = {
     select: {
       mechanicId: true,
       // authUserId so the ability's ownership condition can match a loaded ticket
-      mechanic: { select: { id: true, name: true, authUserId: true } },
+      mechanic: {
+        select: { id: true, name: true, authUserId: true, isActive: true },
+      },
     },
   },
   repairParts: { orderBy: { createdAt: 'asc' } },
@@ -1202,6 +1204,10 @@ export class RepairsService {
       return costs.has(field) && value != null ? Number(value) : null;
     };
     const target = subject('RepairTicket', ticket);
+    const open = OPEN_STATUSES.includes(ticket.repairStatus);
+    const working =
+      ticket.repairStatus === RepairStatus.IN_PROGRESS ||
+      ticket.repairStatus === RepairStatus.ON_HOLD;
     const base = {
       id: ticket.id,
       repairNumber: ticket.repairNumber,
@@ -1236,6 +1242,11 @@ export class RepairsService {
       partsCost: cost('partsCost'),
       laborCost: cost('laborCost'),
       totalCost: cost('totalCost'),
+      // Spec 0011, AC-34: worked out from the loaded assignments, so a list costs no extra query
+      hasInactiveMechanic:
+        open && ticket.assignments.some((a) => !a.mechanic.isActive),
+      needsMechanic:
+        working && !ticket.assignments.some((a) => a.mechanic.isActive),
       // What the caller may do on this ticket, so the web app never guesses (spec 0011, AC-12a)
       can: {
         work: ability.can('work', target),

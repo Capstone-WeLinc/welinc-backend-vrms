@@ -125,8 +125,8 @@ describe('MechanicRoster.sync', () => {
       email: 'a@welinc.com',
       isActive: true,
     });
-    // A locked mechanic leaves the picker until unlocked
-    expect(rows.find((r) => r.authUserId === 'c')?.isActive).toBe(false);
+    // A locked mechanic stays active (spec 0011, AC-31)
+    expect(rows.find((r) => r.authUserId === 'c')?.isActive).toBe(true);
     expect(rows.find((r) => r.id === 'm2')?.isActive).toBe(false);
     expect(rows.some((r) => r.authUserId === 'd' || r.authUserId === 'e')).toBe(
       false,
