@@ -9,6 +9,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { EntryFieldsDto, UpdateEntryDto } from './dto/entry-fields.dto';
 import { UpdateEntryStatusDto } from './dto/update-entry-status.dto';
+import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { JwtUser } from './knowledge-actor';
 import {
   changeRows,
@@ -83,7 +84,7 @@ export class KnowledgeEntryEditorService {
   ) {}
 
   /** POST /vrms/knowledge/entries (AC-17 to AC-19). */
-  async create(dto: CreateEntryDto, user: JwtUser) {
+  async create(dto: CreateEntryDto, user: JwtUser, ability: AppAbility) {
     await this.activeCategory(dto.categoryId);
     await this.assertNameFree(dto.name);
 
@@ -125,7 +126,7 @@ export class KnowledgeEntryEditorService {
     }
 
     return {
-      entry: await this.entries.findOne(id, user),
+      entry: await this.entries.findOne(id, ability),
       linked,
       skipped,
     };
@@ -185,7 +186,12 @@ export class KnowledgeEntryEditorService {
   }
 
   /** PATCH /vrms/knowledge/entries/:id: every field, steps and parts replaced as a set (AC-20). */
-  async update(id: string, dto: UpdateEntryDto, user: JwtUser) {
+  async update(
+    id: string,
+    dto: UpdateEntryDto,
+    user: JwtUser,
+    ability: AppAbility,
+  ) {
     const existing = await this.prisma.knowledgeEntry.findUnique({
       where: { id },
       include: {
@@ -247,11 +253,16 @@ export class KnowledgeEntryEditorService {
       throw err;
     }
 
-    return this.entries.findOne(id, user);
+    return this.entries.findOne(id, ability);
   }
 
   /** PATCH /vrms/knowledge/entries/:id/status: Publish, Deactivate, Reactivate (AC-16). */
-  async setStatus(id: string, dto: UpdateEntryStatusDto, user: JwtUser) {
+  async setStatus(
+    id: string,
+    dto: UpdateEntryStatusDto,
+    user: JwtUser,
+    ability: AppAbility,
+  ) {
     const existing = await this.prisma.knowledgeEntry.findUnique({
       where: { id },
       include: { category: true },
@@ -289,7 +300,7 @@ export class KnowledgeEntryEditorService {
       });
     });
 
-    return this.entries.findOne(id, user);
+    return this.entries.findOne(id, ability);
   }
 
   /** GET /vrms/knowledge/entries/:id/changes, newest first (AC-16). */

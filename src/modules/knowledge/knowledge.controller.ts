@@ -9,6 +9,8 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
+import type { AppAbility } from '../../auth/permissions/ability.factory';
+import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 import { CreateEntryDto } from './dto/create-entry.dto';
@@ -45,9 +47,9 @@ export class KnowledgeController {
   @Get('categories')
   listCategories(
     @Query() query: ListCategoriesQueryDto,
-    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.categories.list(query, req.user);
+    return this.categories.list(query, ability);
   }
 
   @RequirePermission('knowledge.edit')
@@ -70,27 +72,37 @@ export class KnowledgeController {
 
   @RequirePermission('knowledge.view')
   @Get('entries')
-  listEntries(@Query() query: FindEntriesQueryDto, @Req() req: AuthRequest) {
-    return this.entries.list(query, req.user);
+  listEntries(
+    @Query() query: FindEntriesQueryDto,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.entries.list(query, ability);
   }
 
   @RequirePermission('knowledge.edit')
   @Post('entries')
-  createEntry(@Body() dto: CreateEntryDto, @Req() req: AuthRequest) {
-    return this.editor.create(dto, req.user);
+  createEntry(
+    @Body() dto: CreateEntryDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editor.create(dto, req.user, ability);
   }
 
   // Before entries/:id, so "options" never reaches the UUID pipe
   @RequirePermission('knowledge.view')
   @Get('entries/options')
-  entryOptions(@Req() req: AuthRequest) {
-    return this.entries.options(req.user);
+  entryOptions(@CurrentAbility() ability: AppAbility) {
+    return this.entries.options(ability);
   }
 
   @RequirePermission('knowledge.view')
   @Get('entries/:id')
-  findEntry(@Param('id', ParseUUIDPipe) id: string, @Req() req: AuthRequest) {
-    return this.entries.findOne(id, req.user);
+  findEntry(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.entries.findOne(id, ability);
   }
 
   @RequirePermission('knowledge.edit')
@@ -99,8 +111,9 @@ export class KnowledgeController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEntryDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.editor.update(id, dto, req.user);
+    return this.editor.update(id, dto, req.user, ability);
   }
 
   @RequirePermission('knowledge.edit')
@@ -109,8 +122,9 @@ export class KnowledgeController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateEntryStatusDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.editor.setStatus(id, dto, req.user);
+    return this.editor.setStatus(id, dto, req.user, ability);
   }
 
   @RequirePermission('knowledge.edit')
@@ -142,8 +156,12 @@ export class KnowledgeController {
 
   @RequirePermission('knowledge.suggest')
   @Post('suggestions')
-  createSuggestion(@Body() dto: CreateSuggestionDto, @Req() req: AuthRequest) {
-    return this.suggestions.create(dto, req.user);
+  createSuggestion(
+    @Body() dto: CreateSuggestionDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.suggestions.create(dto, req.user, ability);
   }
 
   @RequirePermission('knowledge.edit')

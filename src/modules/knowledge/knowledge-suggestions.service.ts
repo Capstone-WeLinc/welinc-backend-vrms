@@ -3,18 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  KnowledgeEntryStatus,
-  SuggestionKind,
-  SuggestionStatus,
-} from '@prisma/client';
+import { SuggestionKind, SuggestionStatus } from '@prisma/client';
+import { accessibleBy } from '@casl/prisma';
 import { PrismaService } from '../../shared/prisma.service';
 import {
   CreateSuggestionDto,
   DismissGroupDto,
   ResolveSuggestionDto,
 } from './dto/suggestion.dto';
-import { isKnowledgeEditor, JwtUser } from './knowledge-actor';
+import type { AppAbility } from '../../auth/permissions/ability.factory';
+import { JwtUser } from './knowledge-actor';
 import { findIssueGroups } from './knowledge-grouping';
 
 @Injectable()
@@ -77,18 +75,22 @@ export class KnowledgeSuggestionsService {
   }
 
   /** POST /vrms/knowledge/suggestions, by any reader (AC-35). */
-  async create(dto: CreateSuggestionDto, user: JwtUser) {
+  async create(dto: CreateSuggestionDto, user: JwtUser, ability: AppAbility) {
     if (dto.kind === SuggestionKind.CHANGE) {
       if (!dto.entryId) {
         throw new BadRequestException('Choose the entry to change.');
       }
-      // A mechanic can only see Active entries, so only those can be suggested on
+      // Only an entry the caller may read can be suggested on (a reader sees Active ones only).
+      // accessibleBy's no access marker fails a query, so answer before reaching Prisma.
+      if (!ability.can('read', 'KnowledgeEntry')) {
+        throw new NotFoundException("This entry isn't available.");
+      }
       const entry = await this.prisma.knowledgeEntry.findFirst({
         where: {
-          id: dto.entryId,
-          ...(isKnowledgeEditor(user)
-            ? {}
-            : { status: KnowledgeEntryStatus.ACTIVE }),
+          AND: [
+            { id: dto.entryId },
+            accessibleBy(ability, 'read').ofType('KnowledgeEntry'),
+          ],
         },
         select: { id: true },
       });

@@ -102,6 +102,14 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
+    // Gates the web app's Analytics page only until feature 3 moves analytics into this API
+    key: 'analytics.view',
+    label: 'See the Analytics page',
+    group: 'Records',
+    description: 'Open the analytics dashboards and AI insights.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
+  },
+  {
     key: 'config.read',
     label: 'Read garages, vehicles, drivers and mechanics',
     group: 'Records',

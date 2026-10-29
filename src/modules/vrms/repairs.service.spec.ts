@@ -148,7 +148,7 @@ describe('RepairsService.findHistory', () => {
     const res = await service.findHistory({}, asMechanic);
     expect(whereOf(prisma.repairTicket.findMany).AND).toEqual([MINE]);
     expect(res.summary.spend).toBeNull();
-    expect(res.data.every((row) => !('totalCost' in row))).toBe(true);
+    expect(res.data.every((row) => row.totalCost === null)).toBe(true);
     expect(res.data[0]).toHaveProperty('isUnlocked');
   });
 
@@ -447,7 +447,11 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
   it('answers 400 for an unknown or inactive id', async () => {
     const { service, prisma } = createSetup(0);
 
-    const run = service.create(dto([{ id: MECH_ID }]), admin);
+    const run = service.create(
+      dto([{ id: MECH_ID }]),
+      admin,
+      defaultAbility(admin),
+    );
 
     await expect(run).rejects.toBeInstanceOf(BadRequestException);
     await expect(run).rejects.toThrow('In house mechanic not found');
@@ -458,7 +462,9 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
   it('writes no driver row when a mechanic is rejected', async () => {
     const { service, prisma } = createSetup(0);
 
-    await service.create(dto([{ id: MECH_ID }]), admin).catch(() => {});
+    await service
+      .create(dto([{ id: MECH_ID }]), admin, defaultAbility(admin))
+      .catch(() => {});
 
     expect(prisma.driver.findUnique).not.toHaveBeenCalled();
     expect(prisma.driver.update).not.toHaveBeenCalled();
@@ -468,7 +474,9 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
   it('looks mechanics up by id and active only, never by name', async () => {
     const { service, prisma } = createSetup(0);
 
-    await service.create(dto([{ id: MECH_ID }]), admin).catch(() => {});
+    await service
+      .create(dto([{ id: MECH_ID }]), admin, defaultAbility(admin))
+      .catch(() => {});
 
     expect(prisma.mechanic.count).toHaveBeenCalledWith({
       where: { id: { in: [MECH_ID] }, isActive: true },
@@ -478,9 +486,9 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
   it('goes on to the ticket when every id is an active row', async () => {
     const { service, prisma } = createSetup(1);
 
-    await expect(service.create(dto([{ id: MECH_ID }]), admin)).rejects.toThrow(
-      'stop here',
-    );
+    await expect(
+      service.create(dto([{ id: MECH_ID }]), admin, defaultAbility(admin)),
+    ).rejects.toThrow('stop here');
 
     expect(prisma.vehicle.update).toHaveBeenCalled();
   });

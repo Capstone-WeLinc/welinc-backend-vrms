@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { subject } from '@casl/ability';
+import { permittedFieldsOf } from '@casl/ability/extra';
 import { accessibleBy } from '@casl/prisma';
 import {
   KnowledgeEntryStatus,
@@ -15,7 +16,10 @@ import {
   VehicleStatus,
 } from '@prisma/client';
 import { UserRole } from '../../auth/roles';
-import type { AppAbility } from '../../auth/permissions/ability.factory';
+import {
+  type AppAbility,
+  COST_FIELDS,
+} from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
 import {
   AuditEvent,
@@ -109,10 +113,39 @@ function readableTickets(
   return accessibleBy(ability, 'read').ofType('RepairTicket');
 }
 
-/** Without ticket.costs.view the ability forbids the cost fields (spec 0011, AC-11). */
-function canSeeCosts(ability: AppAbility): boolean {
-  return ability.can('read', 'RepairTicket', 'totalCost');
+type CostField = (typeof COST_FIELDS)[number];
+
+/** The cost fields the caller may read; without ticket.costs.view, none (spec 0011, AC-11). */
+function visibleCostFields(ability: AppAbility): ReadonlySet<CostField> {
+  const permitted = permittedFieldsOf(ability, 'read', 'RepairTicket', {
+    fieldsFrom: (rule) => rule.fields ?? [...COST_FIELDS],
+  });
+  return new Set(COST_FIELDS.filter((field) => permitted.includes(field)));
 }
+
+/**
+ * How the caller may change this ticket's status, steps and known fixes (spec 0011, AC-12).
+ * ticket.administer acts on any ticket with every valid move and wins over ticket.work, which
+ * acts on the caller's own tickets with the mechanic moves only. Anyone else gets a 403.
+ */
+function workAccess(
+  ability: AppAbility,
+  ticket: OwnedTicket,
+): 'administer' | 'work' {
+  const target = subject('RepairTicket', ticket);
+  if (ability.can('administer', target)) return 'administer';
+  if (ability.can('work', target)) return 'work';
+  throw new ForbiddenException('You are not assigned to this repair ticket');
+}
+
+/** Assignments loaded with the mechanic's welinc-auth id, so ownership conditions can match. */
+const ownerInclude = {
+  include: { mechanic: { select: { authUserId: true } } },
+} satisfies Prisma.RepairTicket$assignmentsArgs;
+
+type OwnedTicket = Prisma.RepairTicketGetPayload<{
+  include: { assignments: typeof ownerInclude };
+}>;
 
 function generateRepairNumber(): string {
   const now = new Date();
@@ -156,7 +189,7 @@ export class RepairsService {
 
   // ── Create repair ticket ─────────────────────────────────────────────────
 
-  async create(dto: CreateRepairDto, user: JwtUser) {
+  async create(dto: CreateRepairDto, user: JwtUser, ability: AppAbility) {
     const repairNumber = dto.repairNumber ?? generateRepairNumber();
 
     // Strict lookup: Vehicle
@@ -287,7 +320,7 @@ export class RepairsService {
     this.logger.log(`Repair ticket created — ${repairNumber} by ${user.email}`);
     // Auto-embed new issues into pgvector for AI Knowledge Base (fire-and-forget)
     this.autoEmbedIssues(ticket).catch(() => {});
-    return this.present(ticket, false);
+    return this.present(ticket, ability);
   }
 
   /** The categories and entries the new issues point at; 400 when one is missing or not active. */
@@ -401,9 +434,8 @@ export class RepairsService {
       }),
     ]);
 
-    const hideCosts = !canSeeCosts(ability);
     return {
-      data: tickets.map((t) => this.formatTicket(t, hideCosts)),
+      data: tickets.map((t) => this.formatTicket(t, ability)),
       total,
     };
   }
@@ -413,7 +445,7 @@ export class RepairsService {
   async findHistory(query: HistoryQueryDto, ability: AppAbility) {
     const { search, status, garageId, page, limit } = query;
     const { from, to } = parseRange(query.from, query.to);
-    const hideCosts = !canSeeCosts(ability);
+    const hideCosts = !visibleCostFields(ability).has('totalCost');
     const scope = readableTickets(ability);
     if (!scope) {
       return {
@@ -496,9 +528,11 @@ export class RepairsService {
         cancellationReason: t.cancellationReason,
         isUnlocked: t.isUnlocked,
       };
-      return hideCosts
-        ? row
-        : { ...row, totalCost: t.totalCost ? Number(t.totalCost) : null };
+      return {
+        ...row,
+        totalCost:
+          hideCosts || t.totalCost == null ? null : Number(t.totalCost),
+      };
     });
 
     return {
@@ -531,16 +565,20 @@ export class RepairsService {
       );
     }
 
-    return this.present(ticket, !canSeeCosts(ability));
+    return this.present(ticket, ability);
   }
 
   // ── Update repair status ─────────────────────────────────────────────────
 
-  async updateStatus(id: string, dto: UpdateRepairStatusDto, user: JwtUser) {
-    const isMechanic = this.isMechanic(user);
+  async updateStatus(
+    id: string,
+    dto: UpdateRepairStatusDto,
+    user: JwtUser,
+    ability: AppAbility,
+  ) {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: { assignments: true, vehicle: true, issues: true },
+      include: { assignments: ownerInclude, vehicle: true, issues: true },
     });
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
@@ -578,18 +616,8 @@ export class RepairsService {
       }
     }
 
-    // Mechanics can only update their own assigned tickets
-    if (isMechanic) {
-      const mechanicRecord = await this.getMechanicForUser(user);
-      const isAssigned = mechanicRecord
-        ? ticket.assignments.some((a) => a.mechanicId === mechanicRecord.id)
-        : false;
-      if (!isAssigned) {
-        throw new ForbiddenException(
-          'You are not assigned to this repair ticket',
-        );
-      }
-      // Closing and cancelling stay Admin only
+    // ticket.work: own tickets and the mechanic moves; closing and cancelling need administer
+    if (workAccess(ability, ticket) === 'work') {
       if (!MECHANIC_ALLOWED_TRANSITIONS.includes(dto.status)) {
         throw new ForbiddenException(
           `Mechanics cannot change status to '${STATUS_LABELS[dto.status]}'. Allowed: ${MECHANIC_ALLOWED_TRANSITIONS.map((s) => STATUS_LABELS[s]).join(', ')}.`,
@@ -631,8 +659,8 @@ export class RepairsService {
       updateData.remarks = dto.remarks.trim();
     }
 
-    // Cost encoding — only allowed by Admin, and only when FOR_VERIFICATION or later
-    if (!isMechanic) {
+    // Cost fields sent without ticket.costs.edit are ignored (AC-11)
+    if (ability.can('editCosts', subject('RepairTicket', ticket))) {
       if (dto.partsCost !== undefined) updateData.partsCost = dto.partsCost;
       if (dto.laborCost !== undefined) updateData.laborCost = dto.laborCost;
       if (dto.partsCost !== undefined || dto.laborCost !== undefined) {
@@ -732,7 +760,7 @@ export class RepairsService {
       `Repair ticket ${ticket.repairNumber} status updated to ${dto.status} by ${user.email}`,
     );
 
-    return this.present(updated, isMechanic);
+    return this.present(updated, ability);
   }
 
   // ── Known fix on an issue (spec 0007, AC-27 to AC-29) ───────────────────
@@ -747,17 +775,17 @@ export class RepairsService {
     issueId: string,
     dto: LinkIssueKnowledgeDto,
     user: JwtUser,
+    ability: AppAbility,
   ) {
-    const isMechanic = this.isMechanic(user);
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
       include: {
-        assignments: true,
+        assignments: ownerInclude,
         issues: { include: { knowledgeEntry: { select: { name: true } } } },
       },
     });
     if (!ticket) throw new NotFoundException('Repair ticket not found');
-    await this.assertCanWork(ticket, user);
+    workAccess(ability, ticket);
     const issue = ticket.issues.find((i) => i.id === issueId);
     if (!issue) throw new NotFoundException('Issue not found on this ticket');
     if (!LINKABLE_STATUSES.includes(ticket.repairStatus)) {
@@ -836,7 +864,7 @@ export class RepairsService {
     this.logger.log(
       `Known fix on ${ticket.repairNumber} issue ${issueId} set to ${entry?.name ?? 'none'} by ${user.email}`,
     );
-    return this.present(updated, isMechanic);
+    return this.present(updated, ability);
   }
 
   /** Tick or untick one copied step while In progress. Never touches the ticket's updatedAt (AC-28). */
@@ -846,13 +874,14 @@ export class RepairsService {
     stepId: string,
     dto: CheckIssueStepDto,
     user: JwtUser,
+    ability: AppAbility,
   ) {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: { assignments: true },
+      include: { assignments: ownerInclude },
     });
     if (!ticket) throw new NotFoundException('Repair ticket not found');
-    await this.assertCanWork(ticket, user);
+    workAccess(ability, ticket);
     if (ticket.repairStatus !== RepairStatus.IN_PROGRESS) {
       throw new BadRequestException(
         'Steps can only be ticked while the ticket is In progress.',
@@ -878,30 +907,15 @@ export class RepairsService {
     };
   }
 
-  /** Admins may work any ticket; a mechanic or chief only one assigned to them. */
-  private async assertCanWork(
-    ticket: { assignments: { mechanicId: string }[] },
-    user: JwtUser,
-  ) {
-    if (!this.isMechanic(user)) return;
-    const mechanicRecord = await this.getMechanicForUser(user);
-    const isAssigned = mechanicRecord
-      ? ticket.assignments.some((a) => a.mechanicId === mechanicRecord.id)
-      : false;
-    if (!isAssigned) {
-      throw new ForbiddenException(
-        'You are not assigned to this repair ticket',
-      );
-    }
-  }
-
   // ── Update costs (dedicated endpoint) ────────────────────────────────────
 
-  async updateCosts(id: string, dto: UpdateCostsDto, user: JwtUser) {
-    if (this.isMechanic(user)) {
-      throw new ForbiddenException('Mechanics cannot update costs');
-    }
-
+  // ticket.costs.edit is checked by the route's guard
+  async updateCosts(
+    id: string,
+    dto: UpdateCostsDto,
+    user: JwtUser,
+    ability: AppAbility,
+  ) {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
       include: { repairParts: true },
@@ -1015,7 +1029,7 @@ export class RepairsService {
     this.logger.log(
       `Costs updated on ticket ${ticket.repairNumber} by ${user.email}`,
     );
-    return this.present(updated!, false);
+    return this.present(updated!, ability);
   }
 
   // ── List available (unoccupied) in-house mechanics ────────────────────────
@@ -1036,11 +1050,13 @@ export class RepairsService {
 
   // ── Unlock terminal ticket ────────────────────────────────────────────────
 
-  async unlockTicket(id: string, dto: UnlockTicketDto, user: JwtUser) {
-    if (this.isMechanic(user)) {
-      throw new ForbiddenException('Only Admins can unlock tickets');
-    }
-
+  // ticket.unlock is checked by the route's guard
+  async unlockTicket(
+    id: string,
+    dto: UnlockTicketDto,
+    user: JwtUser,
+    ability: AppAbility,
+  ) {
     const ticket = await this.prisma.repairTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
@@ -1076,7 +1092,7 @@ export class RepairsService {
     this.logger.log(
       `Ticket ${ticket.repairNumber} unlocked by ${user.email}: ${dto.unlockReason}`,
     );
-    return this.present(updated, false);
+    return this.present(updated, ability);
   }
 
   // ── Audit timeline (keyset paged, newest first) ──────────────────────────
@@ -1159,24 +1175,8 @@ export class RepairsService {
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
-  // A chief mechanic follows the mechanic rules on tickets until feature 17 widens it (spec 0007, AC-2).
-  private isMechanic(user: JwtUser): boolean {
-    return user.roles.some(
-      (r) =>
-        (r.role === UserRole.MECHANIC || r.role === UserRole.CHIEF_MECHANIC) &&
-        r.system === user.system,
-    );
-  }
-
-  /** The caller's Mechanic row, by welinc-auth id only (spec 0009, AC-8). */
-  private async getMechanicForUser(user: JwtUser) {
-    return this.prisma.mechanic.findUnique({
-      where: { authUserId: user.sub },
-    });
-  }
-
   /** formatTicket plus each linked entry's typical hours, for one ticket (spec 0007, AC-27). */
-  private async present(ticket: TicketRow, hideCosts: boolean) {
+  private async present(ticket: TicketRow, ability: AppAbility) {
     const issues = ticket.issues;
     const entryIds = [
       ...new Set(
@@ -1187,14 +1187,21 @@ export class RepairsService {
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );
-    return this.formatTicket(ticket, hideCosts, hours);
+    return this.formatTicket(ticket, ability, hours);
   }
 
   private formatTicket(
     ticket: TicketRow,
-    hideCosts: boolean,
+    ability: AppAbility,
     typicalHours: Map<string, number | null> = new Map(),
   ) {
+    const costs = visibleCostFields(ability);
+    // != null so a stored 0 is sent as 0 (recorded); a field the caller may not read is null (AC-11)
+    const cost = (field: CostField) => {
+      const value = ticket[field];
+      return costs.has(field) && value != null ? Number(value) : null;
+    };
+    const target = subject('RepairTicket', ticket);
     const base = {
       id: ticket.id,
       repairNumber: ticket.repairNumber,
@@ -1226,16 +1233,23 @@ export class RepairsService {
         id: a.mechanic.id,
         name: a.mechanic.name,
       })),
+      partsCost: cost('partsCost'),
+      laborCost: cost('laborCost'),
+      totalCost: cost('totalCost'),
+      // What the caller may do on this ticket, so the web app never guesses (spec 0011, AC-12a)
+      can: {
+        work: ability.can('work', target),
+        administer: ability.can('administer', target),
+        editCosts: ability.can('editCosts', target),
+        unlock: ability.can('unlock', target),
+      },
     };
 
-    // Cost and admin-only fields. A ticket's history is read from GET /vrms/repairs/audit-logs?ticketId=
-    if (!hideCosts) {
+    // The rest of the cost record follows the same key, as before the matrix (AC-14).
+    // A ticket's history is read from GET /vrms/repairs/audit-logs?ticketId=
+    if (costs.has('totalCost')) {
       return {
         ...base,
-        // != null so a stored 0 is sent as 0 (recorded), not as missing
-        partsCost: ticket.partsCost != null ? Number(ticket.partsCost) : null,
-        laborCost: ticket.laborCost != null ? Number(ticket.laborCost) : null,
-        totalCost: ticket.totalCost != null ? Number(ticket.totalCost) : null,
         isLumpSum: ticket.isLumpSum,
         isUnlocked: ticket.isUnlocked,
         unlockReason: ticket.unlockReason,

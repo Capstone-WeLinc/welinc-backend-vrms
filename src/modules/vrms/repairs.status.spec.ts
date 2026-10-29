@@ -6,6 +6,7 @@ import {
 import { RepairStatus } from '@prisma/client';
 import { UserRole } from '../../auth/roles';
 import { PrismaService } from '../../shared/prisma.service';
+import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
 import { FINISHED_STATUSES, OPEN_STATUSES } from './ticket-statuses';
 
@@ -67,7 +68,12 @@ function fullTicket(status: RepairStatus) {
     vehicle: { plateNumber: 'ABC 123', model: 'Hilux', status: 'UNDER_REPAIR' },
     driver: { name: 'Driver', licenseNumber: 'driver', isVerified: true },
     garage: { name: 'Sta. Rosa' },
-    assignments: [{ mechanicId: MECH, mechanic: { id: MECH, name: 'Ramon' } }],
+    assignments: [
+      {
+        mechanicId: MECH,
+        mechanic: { id: MECH, name: 'Ramon', authUserId: chief.sub },
+      },
+    ],
     repairParts: [],
     issues: [],
   };
@@ -143,6 +149,7 @@ describe('RepairsService.updateStatus on the v2 names', () => {
         TICKET,
         { status: to, lastUpdatedAt: LOADED.toISOString(), resolutions: [] },
         chief,
+        defaultAbility(chief),
       );
       const data = ticketData(prisma.repairTicket.update);
       const row = auditRow(prisma.auditLog.create);
@@ -161,7 +168,12 @@ describe('RepairsService.updateStatus on the v2 names', () => {
 
   it('records the admin who closes as the verifier, with closedAt at the same instant', async () => {
     const { prisma, service } = setup(RepairStatus.FOR_VERIFICATION);
-    await service.updateStatus(TICKET, { status: RepairStatus.CLOSED }, admin);
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED },
+      admin,
+      defaultAbility(admin),
+    );
     const data = ticketData(prisma.repairTicket.update);
     expect(data).toMatchObject({
       repairStatus: RepairStatus.CLOSED,
@@ -178,6 +190,7 @@ describe('RepairsService.updateStatus on the v2 names', () => {
       TICKET,
       { status: RepairStatus.CANCELLED, cancellationReason: ' Duplicate ' },
       admin,
+      defaultAbility(admin),
     );
     const data = ticketData(prisma.repairTicket.update);
     expect(data.closedAt).toBeInstanceOf(Date);
@@ -194,6 +207,7 @@ describe('RepairsService.updateStatus on the v2 names', () => {
         TICKET,
         { status: to, cancellationReason: 'x' },
         chief,
+        defaultAbility(chief),
       );
       await expect(run).rejects.toBeInstanceOf(ForbiddenException);
       await expect(run).rejects.toThrow(
@@ -209,6 +223,7 @@ describe('RepairsService.updateStatus on the v2 names', () => {
       TICKET,
       { status: RepairStatus.CLOSED },
       admin,
+      defaultAbility(admin),
     );
     await expect(run).rejects.toBeInstanceOf(BadRequestException);
     await expect(run).rejects.toThrow(
@@ -223,6 +238,7 @@ describe('RepairsService.updateStatus on the v2 names', () => {
         TICKET,
         { status: RepairStatus.CANCELLED, cancellationReason: 'x' },
         admin,
+        defaultAbility(admin),
       ),
     ).rejects.toThrow("from 'Closed' to 'Cancelled'");
   });
@@ -237,6 +253,7 @@ describe('RepairsService.updateStatus on the v2 names', () => {
           lastUpdatedAt: '2026-10-28T00:00:00.000Z',
         },
         chief,
+        defaultAbility(chief),
       ),
     ).rejects.toBeInstanceOf(ConflictException);
   });
@@ -245,7 +262,12 @@ describe('RepairsService.updateStatus on the v2 names', () => {
     const { prisma, service } = setup(RepairStatus.CLOSED, {
       isUnlocked: true,
     });
-    await service.updateStatus(TICKET, { status: RepairStatus.CLOSED }, admin);
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED },
+      admin,
+      defaultAbility(admin),
+    );
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
     const data = ticketData(prisma.repairTicket.update);
     expect(data).not.toHaveProperty('lastActivityAt');
@@ -265,6 +287,7 @@ describe('RepairsService.updateCosts (AC-6, AC-10)', () => {
       TICKET,
       { isLumpSum: true, partsCost: 3500, laborCost: 1700 },
       admin,
+      defaultAbility(admin),
     );
     expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
     const row = auditRow(tx.auditLog.create);
@@ -295,6 +318,7 @@ describe('RepairsService.updateCosts (AC-6, AC-10)', () => {
       TICKET,
       { isLumpSum: true, partsCost: 3000, laborCost: 1000 },
       admin,
+      defaultAbility(admin),
     );
     expect(tx.auditLog.create).not.toHaveBeenCalled();
     expect(ticketData(tx.repairTicket.update)).not.toHaveProperty(

@@ -35,8 +35,12 @@ export class RepairsController {
 
   @RequirePermission('ticket.create')
   @Post()
-  create(@Body() dto: CreateRepairDto, @Req() req: AuthRequest) {
-    return this.repairsService.create(dto, req.user);
+  create(
+    @Body() dto: CreateRepairDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.repairsService.create(dto, req.user, ability);
   }
 
   // Open tickets, scoped to what the caller may read
@@ -97,8 +101,9 @@ export class RepairsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRepairStatusDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.updateStatus(id, dto, req.user);
+    return this.repairsService.updateStatus(id, dto, req.user, ability);
   }
 
   // Link, relink or unlink a known fix (spec 0007, AC-29)
@@ -109,8 +114,15 @@ export class RepairsController {
     @Param('issueId', ParseUUIDPipe) issueId: string,
     @Body() dto: LinkIssueKnowledgeDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.linkKnowledge(id, issueId, dto, req.user);
+    return this.repairsService.linkKnowledge(
+      id,
+      issueId,
+      dto,
+      req.user,
+      ability,
+    );
   }
 
   // Tick a known fix step (spec 0007, AC-28)
@@ -122,8 +134,16 @@ export class RepairsController {
     @Param('stepId', ParseUUIDPipe) stepId: string,
     @Body() dto: CheckIssueStepDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.checkStep(id, issueId, stepId, dto, req.user);
+    return this.repairsService.checkStep(
+      id,
+      issueId,
+      stepId,
+      dto,
+      req.user,
+      ability,
+    );
   }
 
   // Update costs (lump sum or itemized parts)
@@ -133,8 +153,9 @@ export class RepairsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCostsDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.updateCosts(id, dto, req.user);
+    return this.repairsService.updateCosts(id, dto, req.user, ability);
   }
 
   // Unlock a terminal (closed/cancelled) ticket for editing
@@ -144,7 +165,8 @@ export class RepairsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UnlockTicketDto,
     @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.unlockTicket(id, dto, req.user);
+    return this.repairsService.unlockTicket(id, dto, req.user, ability);
   }
 }

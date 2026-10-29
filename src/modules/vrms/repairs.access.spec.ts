@@ -1,0 +1,247 @@
+import { ForbiddenException } from '@nestjs/common';
+import { RepairStatus } from '@prisma/client';
+import { UserRole } from '../../auth/roles';
+import { defaultAbility } from '../../auth/permissions/permissions.fake';
+import { PrismaService } from '../../shared/prisma.service';
+import { RepairsService } from './repairs.service';
+
+// Spec 0011, AC-11, AC-12 and AC-12a under the default matrix: who may work or administer a
+// ticket, what costs they see, and the per ticket flags the web app shows buttons from.
+
+type Caller = {
+  sub: string;
+  email: string;
+  name: string;
+  roles: { role: UserRole; system: string }[];
+  system: string;
+};
+
+const caller = (sub: string, ...roles: UserRole[]): Caller => ({
+  sub,
+  email: `${sub}@welinc.com`,
+  name: sub,
+  roles: roles.map((role) => ({ role, system: 'VRMS' })),
+  system: 'VRMS',
+});
+
+const admin = caller('admin', UserRole.ADMIN);
+const chief = caller('chief', UserRole.CHIEF_MECHANIC);
+const mechanic = caller('mechanic', UserRole.MECHANIC);
+const adminMechanic = caller('both', UserRole.ADMIN, UserRole.MECHANIC);
+
+const TICKET = '00000000-0000-4000-8000-0000000000aa';
+const LOADED = new Date('2026-10-29T01:00:00.000Z');
+
+/** A ticket shaped like ticketInclude(), assigned to the welinc-auth user `owner`. */
+function ticketOf(owner: string, status: RepairStatus) {
+  return {
+    id: TICKET,
+    repairNumber: 'REP-1',
+    repairStatus: status,
+    priority: 'HIGH',
+    odometer: 1000,
+    dueAt: null,
+    dueAtSource: null,
+    reportedByName: 'admin',
+    verifiedByName: null,
+    verifiedAt: null,
+    createdAt: LOADED,
+    updatedAt: LOADED,
+    lastActivityAt: LOADED,
+    closedAt: null,
+    cancellationReason: null,
+    remarks: null,
+    partsCost: 3000,
+    laborCost: 1000,
+    totalCost: 4000,
+    isLumpSum: true,
+    isUnlocked: false,
+    unlockReason: null,
+    vehicleId: 'v1',
+    vehicle: { plateNumber: 'ABC 123', model: 'Hilux', status: 'UNDER_REPAIR' },
+    driver: { name: 'Driver', licenseNumber: 'driver', isVerified: true },
+    garage: { name: 'Sta. Rosa' },
+    assignments: [
+      {
+        mechanicId: `row-${owner}`,
+        mechanic: { id: `row-${owner}`, name: owner, authUserId: owner },
+      },
+    ],
+    repairParts: [],
+    issues: [],
+  };
+}
+
+function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
+  const row = ticketOf(owner, status);
+  const prisma = {
+    repairTicket: {
+      findUnique: jest.fn().mockResolvedValue(row),
+      findMany: jest.fn().mockResolvedValue([row]),
+      count: jest.fn().mockResolvedValue(1),
+      update: jest.fn().mockResolvedValue(row),
+    },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    vehicle: {
+      update: jest.fn().mockResolvedValue({}),
+      findUnique: jest.fn().mockResolvedValue({ odometer: 900 }),
+    },
+    // Typical hours for linked entries; this ticket has none
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn((queries: Promise<unknown>[]) =>
+      Promise.all(queries),
+    ),
+  };
+  return {
+    prisma,
+    service: new RepairsService(prisma as unknown as PrismaService),
+  };
+}
+
+const updateData = (mock: jest.Mock) =>
+  (mock.mock.calls[0] as [{ data: Record<string, unknown> }])[0].data;
+
+describe('ticket can flags (AC-12a)', () => {
+  it("gives a chief work on their own ticket and nothing on another mechanic's", async () => {
+    const own = await setup('chief').service.findOne(
+      TICKET,
+      defaultAbility(chief),
+    );
+    const other = await setup('mechanic').service.findOne(
+      TICKET,
+      defaultAbility(chief),
+    );
+    const none = {
+      work: false,
+      administer: false,
+      editCosts: false,
+      unlock: false,
+    };
+    expect(own.can).toEqual({ ...none, work: true });
+    expect(other.can).toEqual(none);
+  });
+
+  it('gives an admin administer, cost editing and unlock on any ticket, and no work', async () => {
+    const res = await setup('mechanic').service.findOne(
+      TICKET,
+      defaultAbility(admin),
+    );
+    expect(res.can).toEqual({
+      work: false,
+      administer: true,
+      editCosts: true,
+      unlock: true,
+    });
+  });
+
+  it('puts the flags on every list row too', async () => {
+    const { data } = await setup('mechanic').service.findAll(
+      {},
+      defaultAbility(mechanic),
+    );
+    expect(data[0].can.work).toBe(true);
+  });
+});
+
+describe('cost fields (AC-11)', () => {
+  it('nulls costs for a chief reading every ticket, and keeps them for an admin', async () => {
+    const asChief = await setup('mechanic').service.findOne(
+      TICKET,
+      defaultAbility(chief),
+    );
+    const asAdmin = await setup('mechanic').service.findOne(
+      TICKET,
+      defaultAbility(admin),
+    );
+    expect(asChief).toMatchObject({
+      partsCost: null,
+      laborCost: null,
+      totalCost: null,
+    });
+    expect(asChief).not.toHaveProperty('repairParts');
+    expect(asAdmin).toMatchObject({
+      partsCost: 3000,
+      laborCost: 1000,
+      totalCost: 4000,
+    });
+  });
+
+  it('ignores cost fields a chief sends with a status move', async () => {
+    const { prisma, service } = setup('chief', RepairStatus.ASSIGNED);
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.IN_PROGRESS, partsCost: 1, laborCost: 1 },
+      chief,
+      defaultAbility(chief),
+    );
+    const data = updateData(prisma.repairTicket.update);
+    expect(data).not.toHaveProperty('partsCost');
+    expect(data).not.toHaveProperty('totalCost');
+  });
+});
+
+describe('work and administer (AC-12)', () => {
+  it("refuses a chief moving another mechanic's ticket, though they may read it", async () => {
+    const { prisma, service } = setup('mechanic', RepairStatus.ASSIGNED);
+    const run = service.updateStatus(
+      TICKET,
+      { status: RepairStatus.IN_PROGRESS },
+      chief,
+      defaultAbility(chief),
+    );
+    await expect(run).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(run).rejects.toThrow(
+      'You are not assigned to this repair ticket',
+    );
+    expect(prisma.repairTicket.update).not.toHaveBeenCalled();
+  });
+
+  it("refuses a mechanic reading another mechanic's ticket", async () => {
+    await expect(
+      setup('chief').service.findOne(TICKET, defaultAbility(mechanic)),
+    ).rejects.toThrow('You are not assigned to this repair ticket');
+  });
+
+  it('lets an admin close a ticket assigned to someone else', async () => {
+    const { prisma, service } = setup(
+      'mechanic',
+      RepairStatus.FOR_VERIFICATION,
+    );
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(updateData(prisma.repairTicket.update).repairStatus).toBe(
+      RepairStatus.CLOSED,
+    );
+  });
+
+  it('treats a caller with work and administer as administer, even on their own ticket', async () => {
+    const { prisma, service } = setup('both', RepairStatus.FOR_VERIFICATION);
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED },
+      adminMechanic,
+      defaultAbility(adminMechanic),
+    );
+    expect(updateData(prisma.repairTicket.update).repairStatus).toBe(
+      RepairStatus.CLOSED,
+    );
+  });
+
+  it('refuses ticket steps on a ticket the caller does not own', async () => {
+    const { service } = setup('chief', RepairStatus.IN_PROGRESS);
+    await expect(
+      service.checkStep(
+        TICKET,
+        TICKET,
+        TICKET,
+        { checked: true },
+        mechanic,
+        defaultAbility(mechanic),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});

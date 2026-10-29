@@ -5,6 +5,7 @@ import SharedModule from '../shared/shared.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AccountCheck } from './account-check';
+import { PermissionMatrixService } from './permissions/permission-matrix.service';
 import { PermissionsController } from './permissions/permissions.controller';
 import { PermissionsGuard } from './permissions/permissions.guard';
 import { PermissionsService } from './permissions/permissions.service';
@@ -19,6 +20,7 @@ import { PermissionsService } from './permissions/permissions.service';
     JwtStrategy,
     AccountCheck,
     PermissionsService,
+    PermissionMatrixService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
