@@ -10,7 +10,9 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 |---|---|
 | `src/main.ts` | Bootstrap, global `ValidationPipe`, listen on `PORT` |
 | `src/app.module.ts` | Root module wiring |
-| `src/auth/` | `JwtAuthGuard`, `RolesGuard`, `@Roles()` decorator, JWT strategy, `account-check.ts` (the live check against `welinc-auth`) and `roles.ts` (`UserRole` and `SystemType`) |
+| `src/auth/` | `JwtAuthGuard`, JWT strategy, `account-check.ts` (the live check against `welinc-auth`) and `roles.ts` (`UserRole` and `SystemType`) |
+| `src/auth/permissions/` | The permission matrix (spec 0011): `catalog.ts` (the one definition of keys, defaults and locks), `permissions.service.ts` (stored grants, startup backfill, version cache), `ability.factory.ts` (CASL ability per request), `permissions.guard.ts` and `permission.decorators.ts` (`@RequirePermission`, `@Authenticated`, `@Public`), `permission-matrix.service.ts` and `permissions.controller.ts` (the `/vrms/permissions` API) |
+| `src/modules/vrms/mechanic-work.service.ts` | Open work for a person who leaves VRMS: `GET /vrms/mechanics/:authUserId/open-work` and `POST .../release-tickets` |
 | `src/modules/vrms/mechanic-roster.service.ts` | Keeps in house `Mechanic` rows in step with `welinc-auth` users: `POST /vrms/mechanics/sync` and the just in time row on first request |
 | `src/modules/vrms/repairs.controller.ts`, `repairs.service.ts` | Repair ticket endpoints and business rules |
 | `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline; each event carries a `changes` list of field, before and after |
@@ -31,7 +33,8 @@ npm run lint         # runs eslint with --fix, so it edits files
 npm run build
 npm run test         # Jest unit tests
 npm run test:e2e
-npm run seed         # wipes and rebuilds the data; SEED=<n> npm run seed repeats a run
+npm run seed         # wipes and rebuilds the data (and resets the permission matrix to the catalog defaults); SEED=<n> npm run seed repeats a run
+npm run permissions:prune   # deletes matrix rows whose key left the catalog; startup never deletes them
 npm run studio       # Prisma Studio on 5555
 npx prisma generate
 npx prisma migrate dev   # asks first, see root rules
@@ -39,7 +42,7 @@ npx prisma migrate dev   # asks first, see root rules
 
 ## Conventions
 
-- Routes are protected with `JwtAuthGuard` and `RolesGuard`. Role names match the web app: `ADMIN`, `CHIEF_MECHANIC` and `MECHANIC`. A chief mechanic follows the mechanic rules on tickets (`RepairsService.isMechanic`) and is an editor in the knowledge base, so every ticket route that lists `MECHANIC` also lists `CHIEF_MECHANIC`.
+- Every route carries exactly one of `@RequirePermission(key)`, `@Authenticated()` or `@Public()`; a route with none answers 403, and `route-permissions.spec.ts` fails on it. Role names are `ADMIN`, `CHIEF_MECHANIC` and `MECHANIC`, but code never checks a role: it asks the CASL ability (`PermissionsService.abilityFor(user)`). Ownership ("assigned to me") is a rule condition, and the ability is built per request because it carries the caller's id. A new action adds its key to `catalog.ts` (Admin on, others off unless its spec says otherwise) plus its CASL rule and decorator (spec 0011).
 - Every request body is a DTO class with `class-validator` decorators. The global `ValidationPipe` rejects anything else.
 - Database access goes through `PrismaService`, never a new `PrismaClient`.
 - Repair updates use optimistic locking. The client sends `lastUpdatedAt` and a stale write is rejected. Keep that check on any new update path (see `update-costs.dto.ts` and `update-repair-status.dto.ts`).
@@ -55,6 +58,7 @@ npx prisma migrate dev   # asks first, see root rules
 - `JWT_SECRET` must match the one `welinc-auth` signs with, or every request returns 401.
 - `npm run lint` fixes files in place, so check `git diff` afterwards.
 - A change made in `welinc-auth` (deactivate, lock, role change) reaches VRMS within 30 seconds, because each token's 200 answer is cached in memory for that long. If `welinc-auth` is down, uncached requests get 503.
+- An Admin's matrix edits live in `role_permissions` and apply on the next request on every replica, because each checked request reads `permission_matrix.version`. A hand edit in the database applies only after you bump that version. A replica that has never loaded the matrix answers 503 on `GET /` until a request loads it.
 - The baseline migration needs the `pg_trgm` extension and seeds the issue categories itself (Brakes to Transmission, plus General), so `npm run seed` must not create or delete them.
 
 ## Agent skills
