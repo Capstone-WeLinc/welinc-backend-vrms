@@ -9,7 +9,7 @@ import {
 } from '../modules/vrms/audit-events';
 import { catalogEntry, ROLE_LABELS } from '../auth/permissions/catalog';
 import { SETTINGS_CATALOG, settingEntry } from './catalog';
-import type { ListChangesQueryDto } from './dto/list-changes.dto';
+import { parseKeys, type ListChangesQueryDto } from './dto/list-changes.dto';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import { effectiveValue, planSave } from './settings-rules';
 
@@ -170,13 +170,14 @@ export class SettingsAdminService {
   }
   /**
    * Setting and permission changes merged, newest first (spec 0012, AC-26). One UNION ALL
-   * projects the same columns from both tables, filters by kind before the limit and pages on
+   * projects the same columns from both tables, filters by kind and by keys (AC-31) before the limit and pages on
    * (createdAt, id). Permission rows show only to a caller who also holds `permissions.manage`.
    */
   async changes(query: ListChangesQueryDto, canSeePermissions: boolean) {
     const limit = query.limit ?? CHANGES_PAGE_SIZE;
     const kind = query.kind ?? 'all';
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
+    const keys = query.keys === undefined ? null : parseKeys(query.keys);
 
     const kinds: ('setting' | 'permission')[] = [];
     if (kind !== 'permission') kinds.push('setting');
@@ -194,6 +195,7 @@ export class SettingsAdminService {
         FROM permission_changes
       ) c
       WHERE c.kind IN (${Prisma.join(kinds)})
+      ${keys ? Prisma.sql`AND c.key IN (${Prisma.join(keys)})` : Prisma.empty}
       ${
         cursor
           ? Prisma.sql`AND (c.created_at, c.id) < (${cursor.createdAt}, ${cursor.id}::uuid)`
