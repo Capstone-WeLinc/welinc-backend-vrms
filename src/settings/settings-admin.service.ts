@@ -1,14 +1,36 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../shared/prisma.service';
 import type { AuthUser } from '../auth/account-check';
-import { whoName } from '../modules/vrms/audit-events';
-import { SETTINGS_CATALOG } from './catalog';
+import {
+  decodeCursor,
+  encodeCursor,
+  whoName,
+} from '../modules/vrms/audit-events';
+import { catalogEntry, ROLE_LABELS } from '../auth/permissions/catalog';
+import { SETTINGS_CATALOG, settingEntry } from './catalog';
+import type { ListChangesQueryDto } from './dto/list-changes.dto';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import { effectiveValue, planSave } from './settings-rules';
 
 export const STALE_SETTINGS =
   'Settings changed since you loaded them. Reload and try again.';
+
+const CHANGES_PAGE_SIZE = 20;
+
+type ChangeRow = {
+  kind: 'setting' | 'permission';
+  id: string;
+  key: string;
+  role: string | null;
+  before: unknown;
+  after: unknown;
+  action: string | null;
+  actor_name: string | null;
+  actor_email: string | null;
+  note: string | null;
+  created_at: Date;
+};
 
 /**
  * The settings API (spec 0012, AC-5 to AC-9). It reads and writes the stored rows directly; each
@@ -145,5 +167,75 @@ export class SettingsAdminService {
       this.logger.log(`Settings: ${applied} values changed by ${actor.email}`);
     }
     return this.view();
+  }
+  /**
+   * Setting and permission changes merged, newest first (spec 0012, AC-26). One UNION ALL
+   * projects the same columns from both tables, filters by kind before the limit and pages on
+   * (createdAt, id). Permission rows show only to a caller who also holds `permissions.manage`.
+   */
+  async changes(query: ListChangesQueryDto, canSeePermissions: boolean) {
+    const limit = query.limit ?? CHANGES_PAGE_SIZE;
+    const kind = query.kind ?? 'all';
+    const cursor = query.cursor ? decodeCursor(query.cursor) : null;
+
+    const kinds: ('setting' | 'permission')[] = [];
+    if (kind !== 'permission') kinds.push('setting');
+    if (kind !== 'setting' && canSeePermissions) kinds.push('permission');
+    if (kinds.length === 0) return { data: [], nextCursor: null };
+
+    const rows = await this.prisma.$queryRaw<ChangeRow[]>`
+      SELECT * FROM (
+        SELECT 'setting'::text AS kind, id, key, NULL::text AS role, before, after,
+               action::text AS action, actor_name, actor_email, note, created_at
+        FROM setting_changes
+        UNION ALL
+        SELECT 'permission'::text, id, permission, role, to_jsonb(before), to_jsonb(after),
+               NULL::text, actor_name, actor_email, note, created_at
+        FROM permission_changes
+      ) c
+      WHERE c.kind IN (${Prisma.join(kinds)})
+      ${
+        cursor
+          ? Prisma.sql`AND (c.created_at, c.id) < (${cursor.createdAt}, ${cursor.id}::uuid)`
+          : Prisma.empty
+      }
+      ORDER BY c.created_at DESC, c.id DESC
+      LIMIT ${limit + 1}
+    `;
+
+    const page = rows.slice(0, limit);
+    return {
+      data: page.map((row) => ({
+        id: row.id,
+        kind: row.kind,
+        key: row.key,
+        // The label from the catalog the key belongs to, else the raw key (Value sourcing)
+        label:
+          (row.kind === 'setting'
+            ? settingEntry(row.key)?.label
+            : catalogEntry(row.key)?.label) ?? row.key,
+        role: row.role,
+        roleLabel:
+          row.role === null
+            ? null
+            : ((ROLE_LABELS as Record<string, string>)[row.role] ?? row.role),
+        before: row.before,
+        after: row.after,
+        action: row.action,
+        actor:
+          row.actor_name || row.actor_email
+            ? { name: row.actor_name, email: row.actor_email }
+            : null,
+        note: row.note,
+        createdAt: row.created_at,
+      })),
+      nextCursor:
+        rows.length > limit
+          ? encodeCursor({
+              createdAt: page[page.length - 1].created_at,
+              id: page[page.length - 1].id,
+            })
+          : null,
+    };
   }
 }
