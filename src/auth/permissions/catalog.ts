@@ -1,3 +1,4 @@
+import type { ModuleName } from '../../settings/catalog';
 import { UserRole } from '../roles';
 
 // Spec 0011, AC-1: the one definition of permission keys. Each role's on or off lives in
@@ -28,6 +29,8 @@ export type PermissionEntry = {
   defaults: Record<MatrixRole, boolean>;
   /** A locked role always has its default; no edit or database row changes it. */
   locked?: Partial<Record<MatrixRole, true>>;
+  /** Spec 0012, AC-10: while this module is off, the key is removed from every user. */
+  module?: ModuleName;
 };
 
 const ALL_LOCKED = {
@@ -95,6 +98,16 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
+    // Enforced only in the web app until feature 3 locks the AI service by role (spec 0012)
+    key: 'ai.use',
+    label: 'Use AI diagnosis',
+    group: 'Tickets',
+    description:
+      'Shows the AI panel; the AI service itself is not yet locked by role.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
+    module: 'ai',
+  },
+  {
     key: 'audit.view',
     label: 'See the audit log',
     group: 'Records',
@@ -108,6 +121,7 @@ export const PERMISSION_CATALOG = [
     group: 'Records',
     description: 'Open the analytics dashboards and AI insights.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
+    module: 'analytics',
   },
   {
     key: 'config.read',
@@ -122,6 +136,7 @@ export const PERMISSION_CATALOG = [
     group: 'Knowledge',
     description: 'Read the active entries of the fix library.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
+    module: 'knowledge',
   },
   {
     key: 'knowledge.suggest',
@@ -129,14 +144,15 @@ export const PERMISSION_CATALOG = [
     group: 'Knowledge',
     description: 'Send a suggestion for a new or changed entry.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
+    module: 'knowledge',
   },
   {
     key: 'knowledge.edit',
     label: 'Edit the fix library and review suggestions',
     group: 'Knowledge',
-    description:
-      'Write entries and categories, see drafts and costs, and review suggestions.',
+    description: 'Write entries, see drafts and costs, and review suggestions.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
+    module: 'knowledge',
   },
   {
     key: 'users.manage',
@@ -153,6 +169,23 @@ export const PERMISSION_CATALOG = [
     description: 'See and change what each role may do.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
     locked: ALL_LOCKED,
+  },
+  {
+    key: 'settings.manage',
+    label: 'Change settings and modules',
+    group: 'Admin',
+    description:
+      'Change thresholds, turn modules on or off, and read the change history.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
+    // Admin always keeps it, so no matrix edit locks everyone out of Settings
+    locked: { ADMIN: true },
+  },
+  {
+    key: 'lookups.manage',
+    label: 'Edit lookup lists',
+    group: 'Admin',
+    description: 'Add, rename and deactivate issue categories.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
   },
 ] as const satisfies readonly PermissionEntry[];
 

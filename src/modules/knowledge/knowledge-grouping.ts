@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
-import { KNOWLEDGE_SETTINGS } from './knowledge.settings';
+import { KNOWLEDGE_TUNING } from './knowledge.tuning';
 
 // Spec 0007, Grouping. Candidates are the newest unlinked, not dismissed issues on tickets that are
 // not cancelled. One self join finds similar pairs inside a category; the pure function below joins
@@ -16,7 +16,7 @@ export type Candidate = { id: string; createdAt: Date };
 export function groupPairs(
   candidates: Candidate[],
   pairs: Pair[],
-  minSize: number = KNOWLEDGE_SETTINGS.GROUP_MIN_SIZE,
+  minSize: number,
 ): string[][] {
   const parent = new Map<string, string>();
   const find = (x: string): string => {
@@ -56,8 +56,12 @@ export function groupPairs(
 }
 
 /** The groups of similar unlinked issues, at most `limit`, each newest first (AC-32). */
-export async function findIssueGroups(prisma: PrismaService, limit = 20) {
-  const s = KNOWLEDGE_SETTINGS;
+export async function findIssueGroups(
+  prisma: PrismaService,
+  minSize: number,
+  limit = 20,
+) {
+  const s = KNOWLEDGE_TUNING;
   const candidates = await prisma.$queryRaw<
     { id: string; created_at: Date }[]
   >(Prisma.sql`
@@ -70,7 +74,7 @@ export async function findIssueGroups(prisma: PrismaService, limit = 20) {
     ORDER BY ri.created_at DESC
     LIMIT ${s.GROUP_CANDIDATE_LIMIT}
   `);
-  if (candidates.length < s.GROUP_MIN_SIZE) return [];
+  if (candidates.length < minSize) return [];
 
   const ids = candidates.map((c) => c.id);
   // The text is the description without its "[System] " prefix, plus "What fixed it"
@@ -92,6 +96,7 @@ export async function findIssueGroups(prisma: PrismaService, limit = 20) {
   return groupPairs(
     candidates.map((c) => ({ id: c.id, createdAt: c.created_at })),
     pairs,
+    minSize,
   ).slice(0, limit);
 }
 

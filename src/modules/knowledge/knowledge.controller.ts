@@ -42,8 +42,10 @@ export class KnowledgeController {
   ) {}
 
   // ── Categories ──────────────────────────────────────────────────────────
+  // A lookup list since spec 0012 (AC-19): readable with config.read, so the repair form's System
+  // list works while the knowledge base is off, and edited with lookups.manage.
 
-  @RequirePermission('knowledge.view')
+  @RequirePermission('config.read')
   @Get('categories')
   listCategories(
     @Query() query: ListCategoriesQueryDto,
@@ -52,13 +54,13 @@ export class KnowledgeController {
     return this.categories.list(query, ability);
   }
 
-  @RequirePermission('knowledge.edit')
+  @RequirePermission('lookups.manage')
   @Post('categories')
   createCategory(@Body() dto: CreateCategoryDto, @Req() req: AuthRequest) {
     return this.categories.create(dto, req.user);
   }
 
-  @RequirePermission('knowledge.edit')
+  @RequirePermission('lookups.manage')
   @Patch('categories/:id')
   updateCategory(
     @Param('id', ParseUUIDPipe) id: string,

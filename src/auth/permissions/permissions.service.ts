@@ -5,9 +5,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma.service';
+import { SettingsService } from '../../settings/settings.service';
 import type { AuthUser } from '../account-check';
 import { AppAbility, buildAbility } from './ability.factory';
 import {
+  catalogEntry,
   isLocked,
   isMatrixRole,
   MATRIX_ROLES,
@@ -30,26 +32,29 @@ export class PermissionsService implements OnApplicationBootstrap {
   private readonly logger = new Logger(PermissionsService.name);
   private grants: Grants | null = null;
   private version: number | null = null;
-  // Granted keys per sorted role set; emptied on every reload (AC-9)
+  // Granted keys per sorted role set; emptied on every matrix or settings reload (AC-9, spec 0012)
   private readonly keyCache = new Map<string, ReadonlySet<PermissionKey>>();
   private loading: Promise<void> | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
   async onApplicationBootstrap() {
     try {
-      await this.load(true);
+      await this.loadCold();
     } catch (err) {
       // A cold replica answers 503 and fails readiness until a later request loads it (AC-21)
       this.logger.warn(
-        `Permission matrix not loaded at startup: ${reason(err)}`,
+        `Permission matrix or settings not loaded at startup: ${reason(err)}`,
       );
     }
   }
 
-  /** True once a matrix has loaded; the readiness probe reads it (AC-21). */
+  /** True once the matrix and settings have loaded; the readiness probe reads it (AC-21). */
   get isReady() {
-    return this.grants !== null;
+    return this.grants !== null && this.settings.isReady;
   }
 
   get currentVersion() {
@@ -57,29 +62,37 @@ export class PermissionsService implements OnApplicationBootstrap {
   }
 
   /**
-   * One primary key read per checked request. A moved version reloads the grants first (AC-20).
-   * When the read or reload fails, a warm replica keeps its last matrix; a cold one answers 503.
+   * One query per checked request reads the matrix and settings versions; whichever moved
+   * reloads first (AC-20, spec 0012 AC-4). When the read or reload fails, a warm replica keeps
+   * what it has; a cold one answers 503.
    */
   async ensureFresh(): Promise<void> {
     try {
-      if (!this.grants) {
-        await this.load(true);
+      if (!this.isReady) {
+        await this.loadCold();
         return;
       }
-      const version = await this.readVersion();
-      if (version !== this.version) await this.load(false);
+      const versions = await this.readVersions();
+      if (versions.matrix !== this.version) await this.load(false);
+      if (versions.settings !== this.settings.currentVersion) {
+        await this.settings.load();
+        this.keyCache.clear();
+      }
     } catch (err) {
-      if (!this.grants) {
+      if (!this.isReady) {
         this.logger.warn(`Permission matrix unavailable: ${reason(err)}`);
         throw new ServiceUnavailableException(MATRIX_UNAVAILABLE);
       }
       this.logger.warn(
-        `Permission matrix check failed, keeping version ${this.version}: ${reason(err)}`,
+        `Permission matrix or settings check failed, keeping matrix ${this.version} and settings ${this.settings.currentVersion}: ${reason(err)}`,
       );
     }
   }
 
-  /** The union of the grants of every matrix role held; any other role grants nothing (AC-5). */
+  /**
+   * The union of the grants of every matrix role held; any other role grants nothing (AC-5).
+   * A key whose module is off is left out, whatever the matrix says (spec 0012, AC-10).
+   */
   keysFor(roles: readonly string[]): ReadonlySet<PermissionKey> {
     const held = [...new Set(roles.filter(isMatrixRole))].sort();
     const cacheKey = held.join(',');
@@ -88,7 +101,11 @@ export class PermissionsService implements OnApplicationBootstrap {
 
     const keys = new Set<PermissionKey>();
     for (const role of held) {
-      for (const key of this.grants?.get(role) ?? []) keys.add(key);
+      for (const key of this.grants?.get(role) ?? []) {
+        const owner = catalogEntry(key)?.module;
+        if (owner && !this.settings.isModuleOn(owner)) continue;
+        keys.add(key);
+      }
     }
     this.keyCache.set(cacheKey, keys);
     return keys;
@@ -97,6 +114,15 @@ export class PermissionsService implements OnApplicationBootstrap {
   /** Built per request and never cached, because its conditions carry the caller's id (AC-9). */
   abilityFor(user: Pick<AuthUser, 'sub' | 'roles'>): AppAbility {
     return buildAbility(user.sub, this.keysFor(user.roles.map((r) => r.role)));
+  }
+
+  /** The first load: the matrix with its backfill, and the settings. */
+  private async loadCold() {
+    if (!this.grants) await this.load(true);
+    if (!this.settings.isReady) {
+      await this.settings.load();
+      this.keyCache.clear();
+    }
   }
 
   /** Runs one load at a time; concurrent requests wait for the same one. */
@@ -110,6 +136,20 @@ export class PermissionsService implements OnApplicationBootstrap {
       }
     })();
     return this.loading;
+  }
+
+  // Spec 0012, Implementation contract: both versions in one round trip
+  private async readVersions(): Promise<{ matrix: number; settings: number }> {
+    const [row] = await this.prisma.$queryRaw<
+      { matrix: number | null; settings: number | null }[]
+    >`
+      SELECT (SELECT version FROM permission_matrix WHERE id = 1) AS matrix,
+             (SELECT version FROM settings_state WHERE id = 1) AS settings
+    `;
+    if (row?.matrix == null)
+      throw new Error('permission_matrix row is missing');
+    if (row.settings == null) throw new Error('settings_state row is missing');
+    return { matrix: row.matrix, settings: row.settings };
   }
 
   private async readVersion(): Promise<number> {

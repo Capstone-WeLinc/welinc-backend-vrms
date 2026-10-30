@@ -53,6 +53,8 @@ import {
   LinkIssueKnowledgeDto,
 } from './dto/link-issue-knowledge.dto';
 import { loadStats } from '../knowledge/knowledge-stats';
+import { ModuleDisabledException } from '../../settings/module-disabled';
+import { SettingsService } from '../../settings/settings.service';
 import {
   checkResolutions,
   formatIssue,
@@ -187,7 +189,10 @@ type TicketRow = Prisma.RepairTicketGetPayload<{
 export class RepairsService {
   private readonly logger = new Logger(RepairsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
   // ── Create repair ticket ─────────────────────────────────────────────────
 
@@ -320,8 +325,11 @@ export class RepairsService {
     });
 
     this.logger.log(`Repair ticket created — ${repairNumber} by ${user.email}`);
-    // Auto-embed new issues into pgvector for AI Knowledge Base (fire-and-forget)
-    this.autoEmbedIssues(ticket).catch(() => {});
+    // Auto-embed new issues into pgvector for AI Knowledge Base (fire-and-forget); skipped while
+    // the AI module is off (spec 0012, AC-13)
+    if (this.settings.isModuleOn('ai')) {
+      this.autoEmbedIssues(ticket).catch(() => {});
+    }
     return this.present(ticket, ability);
   }
 
@@ -636,10 +644,12 @@ export class RepairsService {
     }
 
     // Spec 0007, AC-31: "What fixed it" for every issue on the way to For verification.
-    // Other moves ignore resolutions.
+    // Other moves ignore resolutions, and so does this one while the knowledge base is off
+    // (spec 0012, AC-15).
     const sendsForVerification =
       currentStatus === RepairStatus.IN_PROGRESS &&
-      nextStatus === RepairStatus.FOR_VERIFICATION;
+      nextStatus === RepairStatus.FOR_VERIFICATION &&
+      this.settings.isModuleOn('knowledge');
     const resolutions = sendsForVerification
       ? checkResolutions(ticket.issues, dto.resolutions)
       : null;
@@ -779,6 +789,10 @@ export class RepairsService {
     user: JwtUser,
     ability: AppAbility,
   ) {
+    // The route's keys belong to no module, so the knowledge switch is checked here (AC-11)
+    if (!this.settings.isModuleOn('knowledge')) {
+      throw new ModuleDisabledException('knowledge');
+    }
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
       include: {
@@ -1185,7 +1199,11 @@ export class RepairsService {
         issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
       ),
     ];
-    const stats = await loadStats(this.prisma, entryIds);
+    const stats = await loadStats(
+      this.prisma,
+      entryIds,
+      this.settings.get('knowledge.min_samples'),
+    );
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );

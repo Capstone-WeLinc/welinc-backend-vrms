@@ -9,6 +9,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
 import { FINISHED_STATUSES, OPEN_STATUSES } from './ticket-statuses';
+import { FakeSettings } from '../../settings/settings.fake';
 
 // Spec 0010, AC-3, AC-4, AC-4a, AC-6 and AC-10: today's forward moves on the v2 names, the
 // verifier on close, one audit row per event, and lastActivityAt moving with it.
@@ -115,7 +116,10 @@ function setup(status: RepairStatus, over: Record<string, unknown> = {}) {
   return {
     prisma,
     tx,
-    service: new RepairsService(prisma as unknown as PrismaService),
+    service: new RepairsService(
+      prisma as unknown as PrismaService,
+      new FakeSettings(),
+    ),
   };
 }
 

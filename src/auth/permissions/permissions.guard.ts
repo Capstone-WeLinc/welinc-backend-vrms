@@ -7,9 +7,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import { ModuleDisabledException } from '../../settings/module-disabled';
+import { SettingsService } from '../../settings/settings.service';
 import type { AuthUser } from '../account-check';
 import type { AppAbility } from './ability.factory';
-import type { PermissionKey } from './catalog';
+import { catalogEntry, type PermissionKey } from './catalog';
 import {
   AUTHENTICATED_KEY,
   PERMISSION_KEY,
@@ -35,6 +37,7 @@ export class PermissionsGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly permissions: PermissionsService,
+    private readonly settings: SettingsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -65,6 +68,15 @@ export class PermissionsGuard implements CanActivate {
     request.ability = ability;
 
     if (!keys) return true;
+
+    // Spec 0012, AC-11: the module before the role, so every role gets the same answer. A route
+    // is off when every key it accepts belongs to a module that is off.
+    const modules = keys.map((key) => catalogEntry(key)?.module);
+    const offModule = modules[0];
+    if (offModule && modules.every((m) => m && !this.settings.isModuleOn(m))) {
+      throw new ModuleDisabledException(offModule);
+    }
+
     if (keys.some((key) => ability.can(key, 'Permission'))) return true;
 
     // A log line, never a database row (AC-8)

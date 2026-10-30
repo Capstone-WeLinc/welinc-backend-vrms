@@ -4,6 +4,7 @@ import { UserRole } from '../../auth/roles';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsService } from './repairs.service';
+import { FakeSettings } from '../../settings/settings.fake';
 
 // Spec 0011, AC-11, AC-12 and AC-12a under the default matrix: who may work or administer a
 // ticket, what costs they see, and the per ticket flags the web app shows buttons from.
@@ -94,7 +95,10 @@ function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
   };
   return {
     prisma,
-    service: new RepairsService(prisma as unknown as PrismaService),
+    service: new RepairsService(
+      prisma as unknown as PrismaService,
+      new FakeSettings(),
+    ),
   };
 }
 

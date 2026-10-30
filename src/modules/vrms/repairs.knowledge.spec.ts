@@ -4,6 +4,7 @@ import { UserRole } from '../../auth/roles';
 import { PrismaService } from '../../shared/prisma.service';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
+import { FakeSettings } from '../../settings/settings.fake';
 
 // Spec 0007, AC-26 (create copies the entry's steps) and AC-29 (link, relink and unlink).
 
@@ -139,7 +140,10 @@ function setupLink(
   return {
     tx,
     prisma,
-    service: new RepairsService(prisma as unknown as PrismaService),
+    service: new RepairsService(
+      prisma as unknown as PrismaService,
+      new FakeSettings(),
+    ),
   };
 }
 
@@ -315,7 +319,10 @@ describe('RepairsService.create with a common issue', () => {
     };
     return {
       prisma,
-      service: new RepairsService(prisma as unknown as PrismaService),
+      service: new RepairsService(
+        prisma as unknown as PrismaService,
+        new FakeSettings(),
+      ),
     };
   }
 

@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Patch, Query, Req } from '@nestjs/common';
+import { SettingsService } from '../../settings/settings.service';
 import {
   ListPermissionChangesQueryDto,
   UpdatePermissionsDto,
@@ -13,15 +14,18 @@ export class PermissionsController {
   constructor(
     private readonly permissions: PermissionsService,
     private readonly matrix: PermissionMatrixService,
+    private readonly settings: SettingsService,
   ) {}
 
-  // Spec 0011, AC-16: keys only. Rules with conditions stay on the server.
+  // Spec 0011, AC-16: keys only. Rules with conditions stay on the server. Spec 0012, AC-12:
+  // keys of an off module are already removed, and `modules` says which are on.
   @Authenticated()
   @Get('me')
   me(@Req() req: PermittedRequest) {
     return {
       keys: [...this.permissions.keysFor(req.user.roles.map((r) => r.role))],
       version: this.permissions.currentVersion,
+      modules: this.settings.modules(),
     };
   }
 

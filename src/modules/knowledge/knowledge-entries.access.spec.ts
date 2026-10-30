@@ -5,6 +5,7 @@ import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { PrismaService } from '../../shared/prisma.service';
 import { KnowledgeEntriesService } from './knowledge-entries.service';
 import * as stats from './knowledge-stats';
+import { FakeSettings } from '../../settings/settings.fake';
 
 // Spec 0011, AC-13: a knowledge.view reader sees Active entries only and gets 404 for any other;
 // knowledge.edit sees every status, plus typical costs and recent tickets.
@@ -43,7 +44,10 @@ function setup(status: KnowledgeEntryStatus) {
     },
     repairTicket: { findMany: jest.fn().mockResolvedValue([]) },
   };
-  return new KnowledgeEntriesService(prisma as unknown as PrismaService);
+  return new KnowledgeEntriesService(
+    prisma as unknown as PrismaService,
+    new FakeSettings(),
+  );
 }
 
 afterEach(() => jest.restoreAllMocks());

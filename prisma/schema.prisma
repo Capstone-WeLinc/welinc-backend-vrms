@@ -430,3 +430,41 @@ model PermissionChange {
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("permission_changes")
 }
+
+// Spec 0012: a value an Admin set. No row means the catalog default (src/settings/catalog.ts).
+model AppSetting {
+  key             String   @id @db.VarChar(60)
+  value           Json // a number or a boolean, checked against the catalog on save
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid // welinc-auth User.id; null for System
+
+  @@map("app_settings")
+}
+
+// One row (id 1, kept by a check constraint). Read with the matrix version on every checked
+// request; a moved version reloads the settings cache.
+model SettingsState {
+  id        Int      @id @db.SmallInt
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("settings_state")
+}
+
+// Every effective value change, kept forever. A null actor is System.
+model SettingChange {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @db.VarChar(60)
+  before      Json // the effective value before, never null
+  after       Json // the effective value after, never null
+  action      String   @db.VarChar(10) // SET or RESET
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  actorName   String?  @map("actor_name") @db.VarChar(100)
+  actorEmail  String?  @map("actor_email") @db.VarChar(255)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([key])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@map("setting_changes")
+}

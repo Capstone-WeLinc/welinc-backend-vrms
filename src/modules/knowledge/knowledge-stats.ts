@@ -1,10 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
-import { KNOWLEDGE_SETTINGS } from './knowledge.settings';
+import { KNOWLEDGE_TUNING } from './knowledge.tuning';
 
 // Spec 0007, Value sourcing. A "linked issue" is a RepairIssue with knowledgeEntryId = entry.id on a
 // ticket that is not CANCELLED. The SQL returns medians with their sample counts; the pure functions
-// below apply MIN_SAMPLES and the repeat rules, so they can be tested without a database.
+// below apply the minimum samples and the repeat rules (settings since spec 0012, passed in by the
+// caller), so they can be tested without a database.
 
 export type StatsRow = {
   entry_id: string;
@@ -21,12 +22,12 @@ export type StatsRow = {
 export type EntryStats = {
   seenCount: number;
   lastSeenAt: Date | null;
-  /** Median hoursSpent, null under MIN_SAMPLES; the client falls back to estimatedHours. */
+  /** Median hoursSpent, null under the minimum samples; the client falls back to estimatedHours. */
   typicalHours: number | null;
   hoursSamples: number;
-  /** Median days from created to completed, one decimal, null under MIN_SAMPLES. */
+  /** Median days from created to completed, one decimal, null under the minimum samples. */
   typicalDays: number | null;
-  /** Median totalCost of single issue tickets, null under MIN_SAMPLES. Editors only. */
+  /** Median totalCost of single issue tickets, null under the minimum samples. Editors only. */
   typicalCost: number | null;
 };
 
@@ -40,7 +41,7 @@ const round = (value: number, places: number) => {
 
 export function resolveStats(
   row: StatsRow | undefined,
-  minSamples: number = KNOWLEDGE_SETTINGS.MIN_SAMPLES,
+  minSamples: number,
 ): EntryStats {
   if (!row) {
     return {
@@ -67,10 +68,10 @@ export function resolveStats(
   };
 }
 
-/** At least REPEAT_THRESHOLD linked issues in the window, most repeats first, at most 5 (AC-14). */
+/** At least `threshold` linked issues in the window, most repeats first, at most 5 (AC-14). */
 export function pickRepeatVehicles(
   rows: RepeatVehicleRow[],
-  threshold: number = KNOWLEDGE_SETTINGS.REPEAT_THRESHOLD,
+  threshold: number,
 ): RepeatVehicle[] {
   return rows
     .filter((r) => r.count >= threshold)
@@ -85,6 +86,7 @@ export function pickRepeatVehicles(
 export async function loadStats(
   prisma: PrismaService,
   entryIds: string[],
+  minSamples: number,
 ): Promise<Map<string, EntryStats>> {
   if (entryIds.length === 0) return new Map();
   const rows = await prisma.$queryRaw<StatsRow[]>(Prisma.sql`
@@ -133,17 +135,18 @@ export async function loadStats(
     LEFT JOIN cost c USING (entry_id)
   `);
   const byId = new Map(rows.map((r) => [r.entry_id, r]));
-  return new Map(entryIds.map((id) => [id, resolveStats(byId.get(id))]));
+  return new Map(
+    entryIds.map((id) => [id, resolveStats(byId.get(id), minSamples)]),
+  );
 }
 
 export async function loadRepeatVehicles(
   prisma: PrismaService,
   entryId: string,
+  repeat: { threshold: number; windowDays: number },
   now = new Date(),
 ) {
-  const since = new Date(
-    now.getTime() - KNOWLEDGE_SETTINGS.REPEAT_WINDOW_DAYS * 86_400_000,
-  );
+  const since = new Date(now.getTime() - repeat.windowDays * 86_400_000);
   const rows = await prisma.$queryRaw<RepeatVehicleRow[]>(Prisma.sql`
     SELECT v.plate_number AS plate, count(*)::int AS count, max(t.created_at) AS last_at
     FROM repair_issues ri
@@ -154,7 +157,7 @@ export async function loadRepeatVehicles(
       AND t.created_at >= ${since}
     GROUP BY v.id, v.plate_number
   `);
-  return pickRepeatVehicles(rows);
+  return pickRepeatVehicles(rows, repeat.threshold);
 }
 
 /** Escapes LIKE wildcards so a typed % or _ matches itself. */
@@ -174,7 +177,7 @@ export async function searchEntryIds(
     WHERE e.name ILIKE ${pattern}
        OR e.symptoms ILIKE ${pattern}
        OR EXISTS (SELECT 1 FROM knowledge_entry_parts p WHERE p.entry_id = e.id AND p.name ILIKE ${pattern})
-       OR word_similarity(${q}, e.name || ' ' || e.symptoms) >= ${KNOWLEDGE_SETTINGS.SEARCH_SIMILARITY}
+       OR word_similarity(${q}, e.name || ' ' || e.symptoms) >= ${KNOWLEDGE_TUNING.SEARCH_SIMILARITY}
   `);
   return rows.map((r) => r.id);
 }

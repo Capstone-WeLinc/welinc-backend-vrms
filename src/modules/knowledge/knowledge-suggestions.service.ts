@@ -6,6 +6,7 @@ import {
 import { SuggestionKind, SuggestionStatus } from '@prisma/client';
 import { accessibleBy } from '@casl/prisma';
 import { PrismaService } from '../../shared/prisma.service';
+import { SettingsService } from '../../settings/settings.service';
 import {
   CreateSuggestionDto,
   DismissGroupDto,
@@ -17,12 +18,18 @@ import { findIssueGroups } from './knowledge-grouping';
 
 @Injectable()
 export class KnowledgeSuggestionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
 
   /** GET /vrms/knowledge/suggestions: recurring problems and open mechanic suggestions (AC-32, AC-35). */
   async list() {
     const [groupIds, suggestions] = await Promise.all([
-      findIssueGroups(this.prisma),
+      findIssueGroups(
+        this.prisma,
+        this.settings.get('knowledge.group_min_size'),
+      ),
       this.openSuggestions(),
     ]);
 
