@@ -171,6 +171,50 @@ describe('PermissionMatrixService.update (AC-4, AC-18, AC-19)', () => {
     });
   });
 
+  it.each([[undefined], ['   '], ['long']])(
+    'refuses a removal with the note %j: 400, nothing written (AC-24)',
+    async (note) => {
+      const { tx, service } = setup([knowledgeEdit(true)]);
+      const run = service.update(
+        { changes: [knowledgeEdit(false)], note, version: 4 },
+        admin,
+      );
+      await expect(run).rejects.toBeInstanceOf(BadRequestException);
+      await expect(run).rejects.toThrow('needs a reason of 5 to 500');
+      expect(tx.rolePermission.upsert).not.toHaveBeenCalled();
+      expect(tx.permissionChange.createMany).not.toHaveBeenCalled();
+      expect(tx.permissionMatrix.update).not.toHaveBeenCalled();
+    },
+  );
+
+  it('lets an addition, or a change to a cell with no row, through with no note (AC-24)', async () => {
+    const { tx, service } = setup([]);
+    await service.update({ changes: [knowledgeEdit(true)], version: 4 }, admin);
+    expect(tx.permissionChange.createMany).toHaveBeenCalledTimes(1);
+    const none = setup([]);
+    await none.service.update(
+      { changes: [knowledgeEdit(false)], version: 4 },
+      admin,
+    );
+    expect(none.tx.permissionChange.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets a removal through once it has a reason of 5 characters or more (AC-24)', async () => {
+    const { tx, service } = setup([knowledgeEdit(true)]);
+    await service.update(
+      { changes: [knowledgeEdit(false)], note: '  ok!!!  ', version: 4 },
+      admin,
+    );
+    expect(tx.permissionChange.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('still answers 409 before the reason check when the version moved', async () => {
+    const { service } = setup([knowledgeEdit(true)], 5);
+    await expect(
+      service.update({ changes: [knowledgeEdit(false)], version: 4 }, admin),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
   it('skips a change to the value a cell already has: no row, no log, same version', async () => {
     const { tx, service } = setup([knowledgeEdit(true)]);
     await service.update(

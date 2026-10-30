@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma.service';
 import { decodeCursor, encodeCursor } from '../../modules/vrms/audit-events';
+import { NOTE_MIN, NOTE_MAX } from '../../settings/settings-rules';
 import type { AuthUser } from '../account-check';
 import {
   catalogEntry,
@@ -139,6 +140,17 @@ export class PermissionMatrixService {
       const toApply = dto.changes.filter(
         (c) => before.get(cell(c.role, c.permission)) !== c.allowed,
       );
+      // Spec 0012, AC-24: taking a right away needs a reason, like a module switch. Adding one
+      // does not. Checked here, after the version check, so a stale save still answers 409.
+      const removes = toApply.some(
+        (c) => !c.allowed && before.get(cell(c.role, c.permission)) === true,
+      );
+      if (removes && (!note || note.length < NOTE_MIN)) {
+        throw new BadRequestException(
+          `Taking a right away needs a reason of ${NOTE_MIN} to ${NOTE_MAX} characters.`,
+        );
+      }
+
       for (const change of toApply) {
         await tx.rolePermission.upsert({
           where: {
