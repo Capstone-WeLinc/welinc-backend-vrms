@@ -19,7 +19,8 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/modules/vrms/ticket-statuses.ts` | The one definition of open and finished ticket statuses (spec 0010); queries read it, never a list of their own |
 | `src/modules/vrms/config/` | VRMS configuration endpoints (dropdown lists and settings) |
 | `src/modules/vrms/dto/` | Request DTOs validated with `class-validator` |
-| `src/modules/knowledge/` | Knowledge base API at `/vrms/knowledge` (spec 0007): categories, entries, stats, suggestions and grouping; tunables in `knowledge.settings.ts` |
+| `src/modules/knowledge/` | Knowledge base API at `/vrms/knowledge` (spec 0007): categories, entries, stats, suggestions and grouping; its four business values come from `SettingsService`, the fixed tuning constants stay in `knowledge.tuning.ts` |
+| `src/settings/` | Settings and module switches (spec 0012): `catalog.ts` is the one definition of every setting, `SettingsService.get(key)` reads them, `GET` and `PATCH /vrms/settings` and `GET /vrms/settings/changes` save and log them, and `module-disabled.ts` is the 403 `MODULE_DISABLED` answer |
 | `src/modules/vrms/ticket-knowledge.ts` | What a ticket's issues carry from the knowledge base, and the "What fixed it" rules on the move to For verification |
 | `src/shared/` | `PrismaService`, `SharedModule` |
 | `prisma/schema.prisma`, `prisma/migrations/` | Data model and migration history |
@@ -35,6 +36,7 @@ npm run test         # Jest unit tests
 npm run test:e2e
 npm run seed         # wipes and rebuilds the data (and resets the permission matrix to the catalog defaults); SEED=<n> npm run seed repeats a run
 npm run permissions:prune   # deletes matrix rows whose key left the catalog; startup never deletes them
+npm run settings:prune      # deletes stored settings whose key left the catalog, logged as a reset by System
 npm run studio       # Prisma Studio on 5555
 npx prisma generate
 npx prisma migrate dev   # asks first, see root rules
@@ -58,7 +60,8 @@ npx prisma migrate dev   # asks first, see root rules
 - `JWT_SECRET` must match the one `welinc-auth` signs with, or every request returns 401.
 - `npm run lint` fixes files in place, so check `git diff` afterwards.
 - A change made in `welinc-auth` (deactivate, lock, role change) reaches VRMS within 30 seconds, because each token's 200 answer is cached in memory for that long. If `welinc-auth` is down, uncached requests get 503.
-- An Admin's matrix edits live in `role_permissions` and apply on the next request on every replica, because each checked request reads `permission_matrix.version`. A hand edit in the database applies only after you bump that version. A replica that has never loaded the matrix answers 503 on `GET /` until a request loads it.
+- An Admin's matrix edits live in `role_permissions` and apply on the next request on every replica, because each checked request reads `permission_matrix.version`. A hand edit in the database applies only after you bump that version. A replica that has never loaded the matrix answers 503 on `GET /` until a request loads it. A `PATCH /vrms/permissions` that takes a right away needs a `note` of 5 to 500 characters (400 otherwise); adding rights needs none.
+- Settings work the same way through `settings_state.version`, read together with the matrix version. A module switched off removes its permission keys and answers 403 `MODULE_DISABLED`, and the Python service reads the AI and Analytics switches from `app_settings` itself.
 - The baseline migration needs the `pg_trgm` extension and seeds the issue categories itself (Brakes to Transmission, plus General), so `npm run seed` must not create or delete them.
 
 ## Agent skills
