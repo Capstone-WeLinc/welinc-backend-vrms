@@ -24,6 +24,7 @@ import {
   MechanicAssignmentDto,
 } from './dto/create-repair.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
+import { FakeSettings } from '../../settings/settings.fake';
 
 type JwtUser = {
   sub: string;
@@ -98,7 +99,10 @@ function setup() {
   };
   return {
     prisma,
-    service: new RepairsService(prisma as unknown as PrismaService),
+    service: new RepairsService(
+      prisma as unknown as PrismaService,
+      new FakeSettings(),
+    ),
   };
 }
 
@@ -186,6 +190,7 @@ describe('audit routes', () => {
   const guard = new PermissionsGuard(
     new Reflector(),
     new FakePermissions() as unknown as PermissionsService,
+    new FakeSettings(),
   );
   const context = (handler: (...args: never[]) => unknown, user: JwtUser) =>
     ({
@@ -256,7 +261,10 @@ function listSetup() {
   };
   return {
     prisma,
-    service: new RepairsService(prisma as unknown as PrismaService),
+    service: new RepairsService(
+      prisma as unknown as PrismaService,
+      new FakeSettings(),
+    ),
   };
 }
 
@@ -392,7 +400,10 @@ describe('RepairsService.findAll', () => {
 describe('RepairsService.findAuditEvents', () => {
   it("keeps one ticket's events for ticketId", async () => {
     const prisma = { auditLog: { findMany: jest.fn().mockResolvedValue([]) } };
-    const service = new RepairsService(prisma as unknown as PrismaService);
+    const service = new RepairsService(
+      prisma as unknown as PrismaService,
+      new FakeSettings(),
+    );
     await service.findAuditEvents({ ticketId: GARAGE });
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
       { where: Prisma.AuditLogWhereInput },
@@ -402,7 +413,10 @@ describe('RepairsService.findAuditEvents', () => {
 
   it('matches the Person filter on the welinc-auth id in actorUserId (spec 0009, AC-10)', async () => {
     const prisma = { auditLog: { findMany: jest.fn().mockResolvedValue([]) } };
-    const service = new RepairsService(prisma as unknown as PrismaService);
+    const service = new RepairsService(
+      prisma as unknown as PrismaService,
+      new FakeSettings(),
+    );
     await service.findAuditEvents({ actorId: GARAGE });
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
       { where: Prisma.AuditLogWhereInput },
@@ -440,7 +454,10 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
     };
     return {
       prisma,
-      service: new RepairsService(prisma as unknown as PrismaService),
+      service: new RepairsService(
+        prisma as unknown as PrismaService,
+        new FakeSettings(),
+      ),
     };
   }
 
@@ -527,7 +544,10 @@ describe('RepairsService.findAuditActors (AC-10)', () => {
     const prisma = { $queryRaw: queryRaw };
     return {
       queryRaw,
-      service: new RepairsService(prisma as unknown as PrismaService),
+      service: new RepairsService(
+        prisma as unknown as PrismaService,
+        new FakeSettings(),
+      ),
     };
   }
 

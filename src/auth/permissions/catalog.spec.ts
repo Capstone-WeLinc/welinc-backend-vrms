@@ -1,6 +1,12 @@
-import { MATRIX_ROLES, PERMISSION_CATALOG, ROLE_LABELS } from './catalog';
+import {
+  catalogEntry,
+  MATRIX_ROLES,
+  PERMISSION_CATALOG,
+  ROLE_LABELS,
+} from './catalog';
 
-// The table of spec 0011, "Permission catalog": A = Admin, C = Chief Mechanic, M = Mechanic.
+// The table of spec 0011, "Permission catalog", plus spec 0012's three keys (AC-18):
+// A = Admin, C = Chief Mechanic, M = Mechanic.
 // Written out here on purpose, so a changed default or lock fails this test and gets noticed.
 const EXPECTED: Array<
   [key: string, group: string, A: boolean, C: boolean, M: boolean]
@@ -13,6 +19,7 @@ const EXPECTED: Array<
   ['ticket.costs.view', 'Tickets', true, false, false],
   ['ticket.costs.edit', 'Tickets', true, false, false],
   ['ticket.unlock', 'Tickets', true, false, false],
+  ['ai.use', 'Tickets', true, true, true],
   ['audit.view', 'Records', true, false, false],
   ['analytics.view', 'Records', true, false, false],
   ['config.read', 'Records', true, true, true],
@@ -21,13 +28,24 @@ const EXPECTED: Array<
   ['knowledge.edit', 'Knowledge', true, true, false],
   ['users.manage', 'Admin', true, false, false],
   ['permissions.manage', 'Admin', true, false, false],
+  ['settings.manage', 'Admin', true, false, false],
+  ['lookups.manage', 'Admin', true, true, false],
 ];
 
 const LOCKED_KEYS = ['users.manage', 'permissions.manage'];
 
+// Spec 0012, AC-10: the keys a module switch removes
+const MODULE_KEYS = {
+  'ai.use': 'ai',
+  'analytics.view': 'analytics',
+  'knowledge.view': 'knowledge',
+  'knowledge.suggest': 'knowledge',
+  'knowledge.edit': 'knowledge',
+};
+
 describe('permission catalog', () => {
   // covers: AC-1
-  it('holds exactly the 16 keys of the spec, in the spec order', () => {
+  it('holds exactly the 19 keys of the specs, in the spec order', () => {
     expect(PERMISSION_CATALOG.map((e) => e.key)).toEqual(
       EXPECTED.map(([key]) => key),
     );
@@ -64,19 +82,21 @@ describe('permission catalog', () => {
   });
 
   // covers: AC-1, AC-2
-  it('seeds one row per matrix role and key, 48 today', () => {
+  it('seeds one row per matrix role and key, 57 today', () => {
     expect(MATRIX_ROLES).toEqual(['ADMIN', 'CHIEF_MECHANIC', 'MECHANIC']);
-    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(48);
+    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(57);
   });
 
   // covers: AC-4
-  it('locks users.manage and permissions.manage for every role, and nothing else', () => {
-    const locked = PERMISSION_CATALOG.filter((e) => e.locked).map((e) => e.key);
+  it('locks users.manage and permissions.manage for every role, and settings.manage for Admin only', () => {
+    const locked = PERMISSION_CATALOG.filter((e) => 'locked' in e).map(
+      (e) => e.key,
+    );
 
-    expect(locked).toEqual(LOCKED_KEYS);
+    expect(locked).toEqual([...LOCKED_KEYS, 'settings.manage']);
+    expect(catalogEntry('settings.manage')?.locked).toEqual({ ADMIN: true });
     for (const key of LOCKED_KEYS) {
-      const entry = PERMISSION_CATALOG.find((e) => e.key === key);
-      expect(entry?.locked).toEqual({
+      expect(catalogEntry(key)?.locked).toEqual({
         ADMIN: true,
         CHIEF_MECHANIC: true,
         MECHANIC: true,
@@ -113,19 +133,33 @@ describe('permission catalog', () => {
       'ticket.view',
       'ticket.view_all',
       'ticket.work',
+      'ai.use',
       'config.read',
       'knowledge.view',
       'knowledge.suggest',
       'knowledge.edit',
+      'lookups.manage',
     ]);
     expect(allowed('MECHANIC')).toEqual([
       'ticket.view',
       'ticket.work',
+      'ai.use',
       'config.read',
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(allowed('ADMIN')).toHaveLength(15);
+    expect(allowed('ADMIN')).toHaveLength(18);
     expect(allowed('ADMIN')).not.toContain('ticket.work');
+  });
+
+  // Spec 0012, AC-10
+  it('tags exactly the module keys with their module', () => {
+    const tagged = Object.fromEntries(
+      PERMISSION_CATALOG.flatMap((e) => {
+        const module = catalogEntry(e.key)?.module;
+        return module ? [[e.key, module]] : [];
+      }),
+    );
+    expect(tagged).toEqual(MODULE_KEYS);
   });
 });

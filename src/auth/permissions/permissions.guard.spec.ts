@@ -10,6 +10,7 @@ import {
 import { FakePermissions } from './permissions.fake';
 import { DENIED, PermissionsGuard } from './permissions.guard';
 import type { PermissionsService } from './permissions.service';
+import { FakeSettings } from '../../settings/settings.fake';
 
 const mechanic: AuthUser = {
   sub: 'm',
@@ -32,10 +33,17 @@ class Routes {
   @RequirePermission('audit.view', 'ticket.create')
   adminOnly() {}
 
+  @RequirePermission('knowledge.edit')
+  knowledgeEdit() {}
+
   undecorated() {}
 }
 
-function run(handler: keyof Routes, user: AuthUser | undefined = mechanic) {
+function run(
+  handler: keyof Routes,
+  user: AuthUser | undefined = mechanic,
+  settings = new FakeSettings(),
+) {
   const request: Record<string, unknown> = {
     user,
     method: 'GET',
@@ -49,6 +57,7 @@ function run(handler: keyof Routes, user: AuthUser | undefined = mechanic) {
   const guard = new PermissionsGuard(
     new Reflector(),
     new FakePermissions() as unknown as PermissionsService,
+    settings,
   );
   return { result: guard.canActivate(context), request };
 }
@@ -84,5 +93,27 @@ describe('PermissionsGuard', () => {
     await expect(run('undecorated').result).rejects.toBeInstanceOf(
       ForbiddenException,
     );
+  });
+
+  // Spec 0012, AC-11
+  it('answers MODULE_DISABLED before the role check, the same for every role', async () => {
+    const settings = new FakeSettings({ 'module.knowledge': false });
+    // A mechanic does not hold knowledge.edit, yet gets the module answer, not the key answer
+    const error = await run('knowledgeEdit', mechanic, settings).result.catch(
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect((error as ForbiddenException).getResponse()).toEqual({
+      statusCode: 403,
+      code: 'MODULE_DISABLED',
+      module: 'knowledge',
+      message: 'This module is turned off by your Admin.',
+    });
+  });
+
+  it('leaves routes of other modules and of no module alone', async () => {
+    const settings = new FakeSettings({ 'module.ai': false });
+    await expect(run('garages', mechanic, settings).result).resolves.toBe(true);
   });
 });

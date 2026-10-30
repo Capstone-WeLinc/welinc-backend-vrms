@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { subject } from '@casl/ability';
 import { KnowledgeEntryStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
+import { SettingsService } from '../../settings/settings.service';
 import { FindEntriesQueryDto } from './dto/find-entries-query.dto';
 import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { editsKnowledge } from './knowledge-actor';
@@ -11,7 +12,7 @@ import {
   loadStats,
   searchEntryIds,
 } from './knowledge-stats';
-import { ENTRIES_PAGE_SIZE } from './knowledge.settings';
+import { ENTRIES_PAGE_SIZE } from './knowledge.tuning';
 
 const toNumber = (value: Prisma.Decimal | null) =>
   value == null ? null : Number(value);
@@ -30,7 +31,14 @@ function statsFor(stats: EntryStats, editor: boolean) {
 
 @Injectable()
 export class KnowledgeEntriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
+  ) {}
+
+  private minSamples() {
+    return this.settings.get('knowledge.min_samples');
+  }
 
   /** GET /vrms/knowledge/entries (spec 0007, AC-8 to AC-10, Value sourcing). */
   async list(query: FindEntriesQueryDto, ability: AppAbility) {
@@ -68,6 +76,7 @@ export class KnowledgeEntriesService {
     const stats = await loadStats(
       this.prisma,
       entries.map((e) => e.id),
+      this.minSamples(),
     );
     const rows = entries.map((e) => ({ entry: e, stats: stats.get(e.id)! }));
 
@@ -124,6 +133,7 @@ export class KnowledgeEntriesService {
     const stats = await loadStats(
       this.prisma,
       entries.map((e) => e.id),
+      this.minSamples(),
     );
     return entries
       .map((e) => ({ entry: e, stats: stats.get(e.id)! }))
@@ -172,8 +182,11 @@ export class KnowledgeEntriesService {
     }
 
     const [stats, repeatVehicles, recentTickets] = await Promise.all([
-      loadStats(this.prisma, [id]),
-      loadRepeatVehicles(this.prisma, id),
+      loadStats(this.prisma, [id], this.minSamples()),
+      loadRepeatVehicles(this.prisma, id, {
+        threshold: this.settings.get('knowledge.repeat_threshold'),
+        windowDays: this.settings.get('knowledge.repeat_window_days'),
+      }),
       editor ? this.recentTickets(id) : Promise.resolve(null),
     ]);
     const s = stats.get(id)!;

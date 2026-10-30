@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { PassportModule } from '@nestjs/passport';
 import SharedModule from '../shared/shared.module';
+import SettingsModule from '../settings/settings.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AccountCheck } from './account-check';
@@ -14,7 +15,7 @@ import { PermissionsService } from './permissions/permissions.service';
 // then what their roles may do (spec 0011). Both guards are global and run in this order.
 @Global()
 @Module({
-  imports: [PassportModule, SharedModule],
+  imports: [PassportModule, SharedModule, SettingsModule],
   controllers: [PermissionsController],
   providers: [
     JwtStrategy,

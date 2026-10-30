@@ -69,6 +69,8 @@ export class PermissionMatrixService {
         key: entry.key,
         label: entry.label,
         description: entry.description,
+        // Spec 0012, AC-24: the Roles section marks keys of an off module
+        module: catalogEntry(entry.key)?.module ?? null,
         grants,
       });
       groups.set(entry.group, keys);

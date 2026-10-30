@@ -2,6 +2,7 @@ import { ServiceUnavailableException } from '@nestjs/common';
 import type { PrismaService } from '../../shared/prisma.service';
 import { MATRIX_ROLES, PERMISSION_CATALOG } from './catalog';
 import { PermissionsService } from './permissions.service';
+import { FakeSettings } from '../../settings/settings.fake';
 
 type Row = { role: string; permission: string; allowed: boolean };
 
@@ -16,8 +17,12 @@ function defaultRows(): Row[] {
   );
 }
 
-function setup(rows: Row[] = defaultRows(), version = 1) {
-  const state = { rows, version };
+function setup(
+  rows: Row[] = defaultRows(),
+  version = 1,
+  settings = new FakeSettings(),
+) {
+  const state = { rows, version, settingsVersion: 1 };
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
     rolePermission: {
@@ -41,10 +46,19 @@ function setup(rows: Row[] = defaultRows(), version = 1) {
       ...tx.permissionMatrix,
       findUnique: jest.fn(() => Promise.resolve({ version: state.version })),
     },
+    // ensureFresh reads both versions in one query (spec 0012, AC-4)
+    $queryRaw: jest.fn(() =>
+      Promise.resolve([
+        { matrix: state.version, settings: state.settingsVersion },
+      ]),
+    ),
     $transaction: jest.fn((run: (t: typeof tx) => Promise<unknown>) => run(tx)),
   };
-  const service = new PermissionsService(prisma as unknown as PrismaService);
-  return { service, prisma, tx, state };
+  const service = new PermissionsService(
+    prisma as unknown as PrismaService,
+    settings,
+  );
+  return { service, prisma, tx, state, settings };
 }
 
 const vrms = (...roles: string[]) =>
@@ -127,7 +141,7 @@ describe('PermissionsService', () => {
   it('keeps the last matrix when the version read fails on a warm replica (AC-21)', async () => {
     const { service, prisma } = setup();
     await service.onApplicationBootstrap();
-    prisma.permissionMatrix.findUnique.mockRejectedValueOnce(new Error('down'));
+    prisma.$queryRaw.mockRejectedValueOnce(new Error('down'));
 
     await expect(service.ensureFresh()).resolves.toBeUndefined();
     expect(service.keysFor(['ADMIN']).has('ticket.create')).toBe(true);
@@ -216,5 +230,46 @@ describe('PermissionsService', () => {
 
     expect(a).not.toBe(b);
     expect(service.keysFor(['MECHANIC'])).toBe(service.keysFor(['MECHANIC']));
+  });
+
+  describe('module switches (spec 0012)', () => {
+    // covers: AC-10
+    it('removes the keys of an off module from every role, whatever the matrix says', async () => {
+      const settings = new FakeSettings();
+      const { service, state } = setup(defaultRows(), 1, settings);
+      await service.onApplicationBootstrap();
+      expect(service.keysFor(['ADMIN']).has('knowledge.edit')).toBe(true);
+
+      settings.turnOff('knowledge');
+      state.settingsVersion += 1;
+      await service.ensureFresh();
+
+      const admin = service.keysFor(['ADMIN']);
+      expect(admin.has('knowledge.view')).toBe(false);
+      expect(admin.has('knowledge.suggest')).toBe(false);
+      expect(admin.has('knowledge.edit')).toBe(false);
+      // Keys of other modules and of no module stay
+      expect(admin.has('lookups.manage')).toBe(true);
+      expect(admin.has('ai.use')).toBe(true);
+      expect(
+        service
+          .abilityFor({ sub: 'u1', roles: vrms('ADMIN') })
+          .can('knowledge.view', 'Permission'),
+      ).toBe(false);
+    });
+
+    // covers: AC-16
+    it('restores the same grants when the module comes back on', async () => {
+      const settings = new FakeSettings({ 'module.ai': false });
+      const { service, state } = setup(defaultRows(), 1, settings);
+      await service.onApplicationBootstrap();
+      expect(service.keysFor(['MECHANIC']).has('ai.use')).toBe(false);
+
+      settings.set('module.ai', true);
+      state.settingsVersion += 1;
+      await service.ensureFresh();
+
+      expect(service.keysFor(['MECHANIC']).has('ai.use')).toBe(true);
+    });
   });
 });

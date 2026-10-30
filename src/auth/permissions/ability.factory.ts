@@ -78,8 +78,10 @@ export function buildAbility(
       case 'knowledge.edit':
         can('read', 'KnowledgeEntry');
         can('edit', 'KnowledgeEntry');
-        can('edit', 'IssueCategory');
         can('review', 'KnowledgeSuggestion');
+        break;
+      case 'lookups.manage':
+        can('edit', 'IssueCategory');
         break;
       case 'knowledge.suggest':
         can('create', 'KnowledgeSuggestion');
