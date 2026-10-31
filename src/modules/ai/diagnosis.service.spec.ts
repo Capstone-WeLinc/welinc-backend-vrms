@@ -24,7 +24,7 @@ const admin: AuthUser = {
 const chief: AuthUser = {
   ...admin,
   sub: 'chief',
-  roles: [{ role: UserRole.CHIEF_MECHANIC, system: 'VRMS' }],
+  roles: [{ role: UserRole.MECHANIC, system: 'VRMS' }],
 };
 
 const goodReply = {

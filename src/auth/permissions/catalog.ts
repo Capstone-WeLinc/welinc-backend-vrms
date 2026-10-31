@@ -91,7 +91,7 @@ export const PERMISSION_CATALOG = [
     label: 'See costs',
     group: 'Tickets',
     description: 'See parts, labor and total costs on tickets and in history.',
-    defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
   },
   {
     key: 'ticket.costs.edit',

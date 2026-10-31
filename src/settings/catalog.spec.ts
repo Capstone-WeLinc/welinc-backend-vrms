@@ -10,7 +10,7 @@ import {
 // Spec 0012, AC-1: the one definition of settings
 
 describe('SETTINGS_CATALOG', () => {
-  it('holds exactly the 8 entries of the specs, in order (0012 AC-1, 0013 AC-18)', () => {
+  it('holds exactly the 9 entries of the specs, in order (0012 AC-1, 0013 AC-18, 0015 AC-4)', () => {
     expect(SETTINGS_CATALOG.map((entry) => entry.key)).toEqual([
       'module.ai',
       'module.analytics',
@@ -20,6 +20,7 @@ describe('SETTINGS_CATALOG', () => {
       'knowledge.repeat_window_days',
       'knowledge.group_min_size',
       'ai.embed_catchup_days',
+      'tickets.require_costs_to_close',
     ]);
   });
 
@@ -45,7 +46,7 @@ describe('SETTINGS_CATALOG', () => {
 
   it('keeps every value default inside its own range and whole', () => {
     for (const entry of SETTINGS_CATALOG) {
-      if (entry.kind !== 'value') continue;
+      if (entry.kind !== 'value' || entry.type !== 'int') continue;
       expect(entry.min).toBeLessThan(entry.max);
       expect(entry.default).toBeGreaterThanOrEqual(entry.min);
       expect(entry.default).toBeLessThanOrEqual(entry.max);

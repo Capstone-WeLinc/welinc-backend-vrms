@@ -239,6 +239,7 @@ function openTicket(costs: {
     verifiedByName: null,
     verifiedAt: null,
     lastActivityAt: new Date('2026-10-02T00:00:00Z'),
+    statusChangedAt: new Date('2026-10-02T00:00:00Z'),
     remarks: null,
     isLumpSum: true,
     unlockReason: null,
@@ -292,6 +293,18 @@ describe('RepairsService.findAll', () => {
     ]);
     expect(args).toMatchObject({ skip: 20, take: 20 });
     expect(whereOf(prisma.repairTicket.count)).toBe(args.where);
+  });
+
+  it('orders For verification by the time it last changed status, oldest first, then id (spec 0015, AC-9)', async () => {
+    const { prisma, service } = listSetup();
+    await service.findAll(
+      { status: RepairStatus.FOR_VERIFICATION, garageId: GARAGE },
+      asAdmin,
+    );
+    expect(argsOf(prisma.repairTicket.findMany).orderBy).toEqual([
+      { statusChangedAt: 'asc' },
+      { id: 'asc' },
+    ]);
   });
 
   it('holds every open status by default (ON_HOLD included) and returns every row with no paging', async () => {

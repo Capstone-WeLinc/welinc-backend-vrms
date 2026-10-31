@@ -15,10 +15,10 @@ const admin = defaultAbility({
   sub: 'admin',
   roles: [{ role: UserRole.ADMIN, system: 'VRMS' }],
 });
-// The default matrix gives a Chief Mechanic no ticket.costs.view
+// The default matrix gives a Mechanic no ticket.costs.view (the Chief has it since spec 0015)
 const chief = defaultAbility({
   sub: 'chief',
-  roles: [{ role: UserRole.CHIEF_MECHANIC, system: 'VRMS' }],
+  roles: [{ role: UserRole.MECHANIC, system: 'VRMS' }],
 });
 
 type SqlFragment = { strings: readonly string[]; values: unknown[] };

@@ -59,6 +59,7 @@ function fullTicket(status: RepairStatus) {
     createdAt: LOADED,
     updatedAt: LOADED,
     lastActivityAt: LOADED,
+    statusChangedAt: LOADED,
     closedAt: null,
     cancellationReason: null,
     remarks: null,
@@ -91,7 +92,7 @@ function fullTicket(status: RepairStatus) {
 function setup(
   status: RepairStatus,
   over: Record<string, unknown> = {},
-  opts: { stale?: boolean } = {},
+  opts: { stale?: boolean; requireCosts?: boolean } = {},
 ) {
   const loaded = { ...fullTicket(status), ...over };
   const tx = {
@@ -127,7 +128,9 @@ function setup(
     tx,
     service: new RepairsService(
       prisma as unknown as PrismaService,
-      new FakeSettings(),
+      new FakeSettings(
+        opts.requireCosts ? { 'tickets.require_costs_to_close': true } : {},
+      ),
       new FakeEmbeddings().asService(),
     ),
   };
@@ -212,6 +215,70 @@ describe('RepairsService.updateStatus moves (AC-1, AC-7, AC-10, AC-12)', () => {
       status: 'AVAILABLE',
       odometer: 1000,
     });
+  });
+
+  it('writes statusChangedAt with the move, from the same clock reading as the audit row (spec 0015, AC-7)', async () => {
+    const { tx, service } = setup(RepairStatus.FOR_VERIFICATION);
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+      admin,
+      defaultAbility(admin),
+    );
+    const data = firstData(tx.repairTicket.updateMany);
+    expect(data.statusChangedAt).toBe(data.updatedAt);
+    expect(data.statusChangedAt).toBe(firstData(tx.auditLog.create).createdAt);
+  });
+
+  it('refuses the close with 422 COSTS_REQUIRED while the setting is on and no costs exist (spec 0015, AC-5)', async () => {
+    const { tx, service } = setup(
+      RepairStatus.FOR_VERIFICATION,
+      {},
+      { requireCosts: true },
+    );
+    await expect(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        statusCode: 422,
+        code: 'COSTS_REQUIRED',
+        message: 'Add the costs before closing this ticket.',
+      },
+    });
+    expect(tx.repairTicket.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('lets the close through when a cost, a part or costs in the same request exist, or the setting is off (spec 0015, AC-5)', async () => {
+    const cases: [Record<string, unknown>, Record<string, unknown>][] = [
+      [{ totalCost: 10 }, {}],
+      [{ repairParts: [{ id: 'p1' }] }, {}],
+      [{}, { partsCost: 5 }],
+    ];
+    for (const [over, dto] of cases) {
+      const { tx, service } = setup(RepairStatus.FOR_VERIFICATION, over, {
+        requireCosts: true,
+      });
+      await service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT, ...dto },
+        admin,
+        defaultAbility(admin),
+      );
+      expect(tx.repairTicket.updateMany).toHaveBeenCalled();
+    }
+    const off = setup(RepairStatus.FOR_VERIFICATION);
+    await off.service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(off.tx.repairTicket.updateMany).toHaveBeenCalled();
   });
 
   it('cancels from any open status with the reason, no verifier, and the truck freed', async () => {

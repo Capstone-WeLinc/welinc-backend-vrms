@@ -55,6 +55,7 @@ function ticketOf(owner: string, status: RepairStatus) {
     createdAt: LOADED,
     updatedAt: LOADED,
     lastActivityAt: LOADED,
+    statusChangedAt: LOADED,
     closedAt: null,
     cancellationReason: null,
     remarks: null,
@@ -211,21 +212,30 @@ describe('ticket can flags (AC-12a)', () => {
 });
 
 describe('cost fields (AC-11)', () => {
-  it('nulls costs for a chief reading every ticket, and keeps them for an admin', async () => {
+  it('shows a chief the costs read only since spec 0015, and nulls them for a mechanic', async () => {
     const asChief = await setup('mechanic').service.findOne(
       TICKET,
       defaultAbility(chief),
+    );
+    const asMechanic = await setup('mechanic').service.findOne(
+      TICKET,
+      defaultAbility(mechanic),
     );
     const asAdmin = await setup('mechanic').service.findOne(
       TICKET,
       defaultAbility(admin),
     );
     expect(asChief).toMatchObject({
+      partsCost: 3000,
+      laborCost: 1000,
+      totalCost: 4000,
+    });
+    expect(asMechanic).toMatchObject({
       partsCost: null,
       laborCost: null,
       totalCost: null,
     });
-    expect(asChief).not.toHaveProperty('repairParts');
+    expect(asMechanic).not.toHaveProperty('repairParts');
     expect(asAdmin).toMatchObject({
       partsCost: 3000,
       laborCost: 1000,

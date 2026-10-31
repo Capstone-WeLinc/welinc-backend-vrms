@@ -55,6 +55,7 @@ function fullTicket() {
     createdAt: LOADED,
     updatedAt: new Date('2026-10-25T02:00:00.000Z'),
     lastActivityAt: new Date('2026-10-25T02:00:00.000Z'),
+    statusChangedAt: new Date('2026-10-25T02:00:00.000Z'),
     closedAt: null,
     cancellationReason: null,
     remarks: null,

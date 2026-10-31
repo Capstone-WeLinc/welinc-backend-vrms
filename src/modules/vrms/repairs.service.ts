@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { subject } from '@casl/ability';
 import { permittedFieldsOf } from '@casl/ability/extra';
@@ -152,6 +153,23 @@ function mayMake(
     default:
       return false;
   }
+}
+
+/**
+ * Spec 0015, AC-5: a ticket has costs when any cost column is set or a part is listed. Reads the
+ * stored values, not what the caller may see.
+ */
+function hasCosts(
+  ticket: Pick<RepairTicket, 'partsCost' | 'laborCost' | 'totalCost'> & {
+    repairParts?: unknown[];
+  },
+): boolean {
+  return (
+    ticket.partsCost != null ||
+    ticket.laborCost != null ||
+    ticket.totalCost != null ||
+    (ticket.repairParts?.length ?? 0) > 0
+  );
 }
 
 /** The status endpoint moves this caller may make on this ticket right now (AC-13). */
@@ -328,6 +346,7 @@ export class RepairsService {
         reportedByUserId: reporter.userId,
         reportedByName: reporter.name,
         lastActivityAt: now,
+        statusChangedAt: now,
         // Linked issues get a copy of the entry's steps (the CREATED row covers the link, no KNOWLEDGE_LINK)
         issues: {
           create: dto.issues.map((issue) => {
@@ -454,11 +473,15 @@ export class RepairsService {
         where,
         include: ticketInclude,
         // Most urgent first; id last so pages never repeat or skip a row
-        orderBy: [
-          { dueAt: { sort: 'asc', nulls: 'last' } },
-          { createdAt: 'desc' },
-          { id: 'desc' },
-        ],
+        orderBy:
+          status === RepairStatus.FOR_VERIFICATION
+            ? // Spec 0015, AC-9: oldest waiting first
+              [{ statusChangedAt: 'asc' }, { id: 'asc' }]
+            : [
+                { dueAt: { sort: 'asc', nulls: 'last' } },
+                { createdAt: 'desc' },
+                { id: 'desc' },
+              ],
         ...(paged && { skip: (page - 1) * limit, take: limit }),
       }),
     ]);
@@ -607,7 +630,11 @@ export class RepairsService {
   ) {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: { assignments: ownerInclude, issues: true },
+      include: {
+        assignments: ownerInclude,
+        issues: true,
+        repairParts: { select: { id: true }, take: 1 },
+      },
     });
 
     // AC-3a: the first failing check answers, in this order
@@ -651,6 +678,22 @@ export class RepairsService {
     }
     if (move.needs?.includes('cancellationReason') && !reason) {
       throw new BadRequestException('A cancellation reason is required');
+    }
+    // Spec 0015, AC-5: the close can require costs, counting any sent with this request
+    if (
+      move.to === RepairStatus.CLOSED &&
+      this.settings.get('tickets.require_costs_to_close') &&
+      !hasCosts(ticket) &&
+      !(
+        ability.can('editCosts', subject('RepairTicket', ticket)) &&
+        (dto.partsCost != null || dto.laborCost != null)
+      )
+    ) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        code: 'COSTS_REQUIRED',
+        message: 'Add the costs before closing this ticket.',
+      });
     }
     // Spec 0007, AC-31 kept exactly (AC-11): "What fixed it" for every issue, while the
     // knowledge base is on (spec 0012, AC-15)
@@ -1228,11 +1271,20 @@ export class RepairsService {
     const knowledgeOn = this.settings.isModuleOn('knowledge');
     return movesFor(ticket, ability).map((m) => {
       const need = m.needs?.[0] ?? null;
+      // Spec 0015, AC-5: the close needs costs while the setting is on and none are recorded
+      const costsNeeded =
+        m.to === RepairStatus.CLOSED &&
+        this.settings.get('tickets.require_costs_to_close') &&
+        !hasCosts(ticket);
       return {
         to: m.to,
         label: m.label!,
         kind: m.kind,
-        needs: need === 'resolutions' && !knowledgeOn ? null : need,
+        needs: costsNeeded
+          ? 'costs'
+          : need === 'resolutions' && !knowledgeOn
+            ? null
+            : need,
       };
     });
   }
@@ -1275,6 +1327,7 @@ export class RepairsService {
       createdAt: ticket.createdAt.toISOString(),
       updatedAt: ticket.updatedAt.toISOString(),
       lastActivityAt: ticket.lastActivityAt.toISOString(),
+      statusChangedAt: ticket.statusChangedAt.toISOString(),
       closedAt: ticket.closedAt?.toISOString() ?? null,
       cancellationReason: ticket.cancellationReason,
       remarks: ticket.remarks,
