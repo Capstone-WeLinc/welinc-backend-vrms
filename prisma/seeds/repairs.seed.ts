@@ -772,6 +772,21 @@ export async function seedRepairs(
   }
   for (const t of rows.tickets) t.lastActivityAt = new Date(newest.get(t.id!)!);
 
+  // statusChangedAt is the newest audit row that changed repairStatus, else the creation time (spec 0015, AC-7)
+  const statusAt = new Map<string, number>();
+  for (const a of rows.audits) {
+    const changesStatus = (a.changes as { field: string }[]).some(
+      (c) => c.field === 'repairStatus',
+    );
+    const at = +(a.createdAt as Date);
+    if (changesStatus && at > (statusAt.get(a.repairTicketId) ?? 0))
+      statusAt.set(a.repairTicketId, at);
+  }
+  for (const t of rows.tickets)
+    t.statusChangedAt = statusAt.has(t.id!)
+      ? new Date(statusAt.get(t.id!)!)
+      : new Date(t.createdAt as Date);
+
   // ── Mechanic suggestions still waiting for an editor ──
   const recentIssue = (match: (m: IssueMeta) => boolean) =>
     shuffle(

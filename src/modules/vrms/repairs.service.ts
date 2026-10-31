@@ -328,6 +328,7 @@ export class RepairsService {
         reportedByUserId: reporter.userId,
         reportedByName: reporter.name,
         lastActivityAt: now,
+        statusChangedAt: now,
         // Linked issues get a copy of the entry's steps (the CREATED row covers the link, no KNOWLEDGE_LINK)
         issues: {
           create: dto.issues.map((issue) => {
@@ -454,11 +455,15 @@ export class RepairsService {
         where,
         include: ticketInclude,
         // Most urgent first; id last so pages never repeat or skip a row
-        orderBy: [
-          { dueAt: { sort: 'asc', nulls: 'last' } },
-          { createdAt: 'desc' },
-          { id: 'desc' },
-        ],
+        orderBy:
+          status === RepairStatus.FOR_VERIFICATION
+            ? // Spec 0015, AC-9: oldest waiting first
+              [{ statusChangedAt: 'asc' }, { id: 'asc' }]
+            : [
+                { dueAt: { sort: 'asc', nulls: 'last' } },
+                { createdAt: 'desc' },
+                { id: 'desc' },
+              ],
         ...(paged && { skip: (page - 1) * limit, take: limit }),
       }),
     ]);
@@ -1275,6 +1280,7 @@ export class RepairsService {
       createdAt: ticket.createdAt.toISOString(),
       updatedAt: ticket.updatedAt.toISOString(),
       lastActivityAt: ticket.lastActivityAt.toISOString(),
+      statusChangedAt: ticket.statusChangedAt.toISOString(),
       closedAt: ticket.closedAt?.toISOString() ?? null,
       cancellationReason: ticket.cancellationReason,
       remarks: ticket.remarks,

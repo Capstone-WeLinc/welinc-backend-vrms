@@ -59,6 +59,7 @@ function fullTicket(status: RepairStatus) {
     createdAt: LOADED,
     updatedAt: LOADED,
     lastActivityAt: LOADED,
+    statusChangedAt: LOADED,
     closedAt: null,
     cancellationReason: null,
     remarks: null,
@@ -127,7 +128,9 @@ function setup(
     tx,
     service: new RepairsService(
       prisma as unknown as PrismaService,
-      new FakeSettings(),
+      new FakeSettings(
+        opts.requireCosts ? { 'tickets.require_costs_to_close': true } : {},
+      ),
       new FakeEmbeddings().asService(),
     ),
   };
@@ -212,6 +215,19 @@ describe('RepairsService.updateStatus moves (AC-1, AC-7, AC-10, AC-12)', () => {
       status: 'AVAILABLE',
       odometer: 1000,
     });
+  });
+
+  it('writes statusChangedAt with the move, from the same clock reading as the audit row (spec 0015, AC-7)', async () => {
+    const { tx, service } = setup(RepairStatus.FOR_VERIFICATION);
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+      admin,
+      defaultAbility(admin),
+    );
+    const data = firstData(tx.repairTicket.updateMany);
+    expect(data.statusChangedAt).toBe(data.updatedAt);
+    expect(data.statusChangedAt).toBe(firstData(tx.auditLog.create).createdAt);
   });
 
   it('cancels from any open status with the reason, no verifier, and the truck freed', async () => {

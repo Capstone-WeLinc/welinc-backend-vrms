@@ -59,6 +59,7 @@ export async function applyStatusMove(
       repairStatus: move.to,
       updatedAt: now,
       lastActivityAt: now,
+      statusChangedAt: now, // spec 0015, AC-7: written with every status move
       isUnlocked: false,
       ...(isFinished(move.to) && { closedAt: now }),
       // Whoever closes the ticket verified it; cancelling records no verifier (AC-7, AC-10)

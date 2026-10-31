@@ -55,6 +55,7 @@ function ticketOf(owner: string, status: RepairStatus) {
     createdAt: LOADED,
     updatedAt: LOADED,
     lastActivityAt: LOADED,
+    statusChangedAt: LOADED,
     closedAt: null,
     cancellationReason: null,
     remarks: null,

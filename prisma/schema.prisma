@@ -156,6 +156,7 @@ model RepairTicket {
   isUnlocked         Boolean        @default(false) @map("is_unlocked")
   unlockReason       String?        @map("unlock_reason") @db.Text
   lastActivityAt     DateTime       @default(now()) @map("last_activity_at") @db.Timestamptz(6) // moved only by a person's audited action
+  statusChangedAt    DateTime       @default(now()) @map("status_changed_at") @db.Timestamptz(6) // time of the last status change (spec 0015)
   createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   closedAt           DateTime?      @map("closed_at") @db.Timestamptz(6) // set on the move to CLOSED or CANCELLED
@@ -171,6 +172,7 @@ model RepairTicket {
 
   @@index([repairStatus, createdAt])
   @@index([repairStatus, lastActivityAt])
+  @@index([repairStatus, statusChangedAt])
   @@index([dueAt])
   @@index([vehicleId])
   @@map("repair_tickets")
