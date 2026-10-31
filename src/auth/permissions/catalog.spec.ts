@@ -5,7 +5,8 @@ import {
   ROLE_LABELS,
 } from './catalog';
 
-// The table of spec 0011, "Permission catalog", plus spec 0012's three keys (AC-18):
+// The table of spec 0011, "Permission catalog", plus spec 0012's three keys (AC-18) and
+// spec 0014's ticket.verify (AC-5):
 // A = Admin, C = Chief Mechanic, M = Mechanic.
 // Written out here on purpose, so a changed default or lock fails this test and gets noticed.
 const EXPECTED: Array<
@@ -16,6 +17,7 @@ const EXPECTED: Array<
   ['ticket.create', 'Tickets', true, false, false],
   ['ticket.work', 'Tickets', false, true, true],
   ['ticket.administer', 'Tickets', true, false, false],
+  ['ticket.verify', 'Tickets', true, true, false],
   ['ticket.costs.view', 'Tickets', true, false, false],
   ['ticket.costs.edit', 'Tickets', true, false, false],
   ['ticket.unlock', 'Tickets', true, false, false],
@@ -45,7 +47,7 @@ const MODULE_KEYS = {
 
 describe('permission catalog', () => {
   // covers: AC-1
-  it('holds exactly the 19 keys of the specs, in the spec order', () => {
+  it('holds exactly the 20 keys of the specs, in the spec order', () => {
     expect(PERMISSION_CATALOG.map((e) => e.key)).toEqual(
       EXPECTED.map(([key]) => key),
     );
@@ -82,9 +84,9 @@ describe('permission catalog', () => {
   });
 
   // covers: AC-1, AC-2
-  it('seeds one row per matrix role and key, 57 today', () => {
+  it('seeds one row per matrix role and key, 60 today', () => {
     expect(MATRIX_ROLES).toEqual(['ADMIN', 'CHIEF_MECHANIC', 'MECHANIC']);
-    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(57);
+    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(60);
   });
 
   // covers: AC-4
@@ -124,8 +126,8 @@ describe('permission catalog', () => {
     });
   });
 
-  // covers: AC-14
-  it('keeps the old behavior for every role, with Chief seeing every ticket as the one change', () => {
+  // covers: AC-14. Spec 0014, AC-5 adds ticket.verify for Admin and Chief Mechanic
+  it('keeps the old behavior for every role, with Chief seeing every ticket and verifying as the changes', () => {
     const allowed = (role: 'ADMIN' | 'CHIEF_MECHANIC' | 'MECHANIC') =>
       PERMISSION_CATALOG.filter((e) => e.defaults[role]).map((e) => e.key);
 
@@ -133,6 +135,7 @@ describe('permission catalog', () => {
       'ticket.view',
       'ticket.view_all',
       'ticket.work',
+      'ticket.verify',
       'ai.use',
       'config.read',
       'knowledge.view',
@@ -148,7 +151,7 @@ describe('permission catalog', () => {
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(allowed('ADMIN')).toHaveLength(18);
+    expect(allowed('ADMIN')).toHaveLength(19);
     expect(allowed('ADMIN')).not.toContain('ticket.work');
   });
 

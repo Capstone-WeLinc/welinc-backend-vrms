@@ -94,8 +94,8 @@ export class RepairsController {
     return this.repairsService.findOne(id, ability);
   }
 
-  // Update status (own tickets and mechanic moves restricted at the service layer)
-  @RequirePermission('ticket.work', 'ticket.administer')
+  // Status moves; each move's own right is checked in the service (spec 0014, AC-5, AC-6)
+  @RequirePermission('ticket.work', 'ticket.administer', 'ticket.verify')
   @Patch(':id/status')
   updateStatus(
     @Param('id', ParseUUIDPipe) id: string,

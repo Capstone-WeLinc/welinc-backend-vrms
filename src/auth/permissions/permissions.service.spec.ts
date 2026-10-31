@@ -75,6 +75,30 @@ describe('PermissionsService', () => {
     expect(keys.has('ticket.administer')).toBe(true); // Admin only
   });
 
+  // Spec 0014, AC-5: what /vrms/permissions/me sends each role equals the catalog defaults with
+  // every module on, so a new key such as ticket.verify reaches the right roles
+  it.each(MATRIX_ROLES)(
+    'grants %s exactly its catalog defaults under the default matrix',
+    async (role) => {
+      const { service } = setup();
+      await service.onApplicationBootstrap();
+
+      const expected = PERMISSION_CATALOG.filter((e) => e.defaults[role]).map(
+        (e) => e.key,
+      );
+      expect([...service.keysFor([role])].sort()).toEqual(expected.sort());
+    },
+  );
+
+  it('grants ticket.verify to Admin and Chief Mechanic, not Mechanic (spec 0014, AC-5)', async () => {
+    const { service } = setup();
+    await service.onApplicationBootstrap();
+
+    expect(service.keysFor(['ADMIN']).has('ticket.verify')).toBe(true);
+    expect(service.keysFor(['CHIEF_MECHANIC']).has('ticket.verify')).toBe(true);
+    expect(service.keysFor(['MECHANIC']).has('ticket.verify')).toBe(false);
+  });
+
   it('grants nothing for a role outside the matrix (AC-5, AC-6)', async () => {
     const { service } = setup();
     await service.onApplicationBootstrap();

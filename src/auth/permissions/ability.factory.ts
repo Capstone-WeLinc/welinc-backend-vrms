@@ -14,6 +14,7 @@ export type TicketAction =
   | 'create'
   | 'work'
   | 'administer'
+  | 'verify'
   | 'editCosts'
   | 'unlock';
 export type AppAction = TicketAction | 'edit' | 'review' | PermissionKey;
@@ -71,6 +72,9 @@ export function buildAbility(
       case 'ticket.administer':
         can('administer', 'RepairTicket');
         break;
+      case 'ticket.verify':
+        can('verify', 'RepairTicket');
+        break;
       case 'ticket.costs.edit':
         can('editCosts', 'RepairTicket');
         break;
@@ -94,7 +98,10 @@ export function buildAbility(
     }
   }
 
-  // After every can rule, since in CASL a later rule wins
+  // After every can rule, since in CASL a later rule wins.
+  // Spec 0014, AC-6: nobody verifies a ticket they are assigned to, with the same ownership
+  // condition as ticket.work
+  cannot('verify', 'RepairTicket', mine);
   if (!keys.has('ticket.costs.view')) {
     cannot('read', 'RepairTicket', [...COST_FIELDS]);
   }

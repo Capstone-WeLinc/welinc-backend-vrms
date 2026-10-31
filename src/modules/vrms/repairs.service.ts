@@ -142,8 +142,9 @@ function mayMake(
     case 'administer':
       return ability.can('administer', target);
     case 'verify':
-      // Until the ticket.verify key lands (build step 3), closing stays with administer
-      return ability.can('administer', target);
+      // ticket.verify on a ticket the caller may read and is not assigned to (the ability's
+      // cannot rule); ticket.administer alone no longer closes
+      return ability.can('verify', target) && ability.can('read', target);
     default:
       return false;
   }
@@ -624,7 +625,15 @@ export class RepairsService {
     }
 
     if (!mayMake(move, ability, ticket)) {
-      throw new ForbiddenException("You can't make this move on this ticket.");
+      const selfVerify =
+        move.right === 'verify' &&
+        ability.can('ticket.verify', 'Permission') &&
+        ticket.assignments.some((a) => a.mechanic.authUserId === user.sub);
+      throw new ForbiddenException(
+        selfVerify
+          ? "Someone else must verify work on a ticket you're assigned to."
+          : "You can't make this move on this ticket.",
+      );
     }
 
     // The values the move needs, last (AC-3a)
@@ -1254,6 +1263,8 @@ export class RepairsService {
       can: {
         work: ability.can('work', target),
         administer: ability.can('administer', target),
+        // Spec 0014, AC-13: false on a ticket the caller is assigned to
+        verify: ability.can('verify', target),
         editCosts: ability.can('editCosts', target),
         unlock: ability.can('unlock', target),
       },

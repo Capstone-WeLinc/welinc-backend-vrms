@@ -71,10 +71,20 @@ export const PERMISSION_CATALOG = [
   },
   {
     key: 'ticket.administer',
-    label: 'Move any ticket to any valid status, including close and cancel',
+    label: 'Cancel tickets and make work moves on any ticket',
     group: 'Tickets',
-    description: 'Change the status, steps and known fixes of any ticket.',
+    description:
+      'Cancel any open ticket, start work and send for verification on any ticket, and change its steps and known fixes.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
+  },
+  {
+    // Spec 0014, AC-5: Verify and Send back, never on a ticket the caller is assigned to
+    key: 'ticket.verify',
+    label: 'Verify or send back finished work',
+    group: 'Tickets',
+    description:
+      'Close a ticket that is waiting for verification, or send it back with a comment. Never on a ticket you are assigned to.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
   },
   {
     key: 'ticket.costs.view',

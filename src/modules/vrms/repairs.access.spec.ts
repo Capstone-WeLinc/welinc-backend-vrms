@@ -1,7 +1,11 @@
 import { ForbiddenException } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
 import { UserRole } from '../../auth/roles';
-import { defaultAbility } from '../../auth/permissions/permissions.fake';
+import {
+  defaultAbility,
+  defaultKeys,
+} from '../../auth/permissions/permissions.fake';
+import { buildAbility } from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsService } from './repairs.service';
 import { FakeSettings } from '../../settings/settings.fake';
@@ -130,14 +134,16 @@ describe('ticket can flags (AC-12a)', () => {
     const none = {
       work: false,
       administer: false,
+      verify: false,
       editCosts: false,
       unlock: false,
     };
+    // Spec 0014, AC-6: verify on any readable ticket except their own
     expect(own.can).toEqual({ ...none, work: true });
-    expect(other.can).toEqual(none);
+    expect(other.can).toEqual({ ...none, verify: true });
   });
 
-  it('gives an admin administer, cost editing and unlock on any ticket, and no work', async () => {
+  it('gives an admin administer, verify, cost editing and unlock on any ticket, and no work', async () => {
     const res = await setup('mechanic').service.findOne(
       TICKET,
       defaultAbility(admin),
@@ -145,6 +151,7 @@ describe('ticket can flags (AC-12a)', () => {
     expect(res.can).toEqual({
       work: false,
       administer: true,
+      verify: true,
       editCosts: true,
       unlock: true,
     });
@@ -280,17 +287,83 @@ describe('work and administer (AC-12)', () => {
     );
   });
 
-  it('treats a caller with work and administer as administer, even on their own ticket', async () => {
-    const { tx, service } = setup('both', RepairStatus.FOR_VERIFICATION);
-    await service.updateStatus(
+  // Spec 0014, AC-6: being assigned blocks verifying, whatever else the caller holds
+  it('refuses an assigned admin verifying their own ticket, and offers them no Verify', async () => {
+    const { prisma, service } = setup('both', RepairStatus.FOR_VERIFICATION);
+    const run = service.updateStatus(
       TICKET,
       { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
       adminMechanic,
       defaultAbility(adminMechanic),
     );
-    expect(updateData(tx.repairTicket.updateMany).repairStatus).toBe(
-      RepairStatus.CLOSED,
+    await expect(run).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(run).rejects.toThrow(
+      "Someone else must verify work on a ticket you're assigned to.",
     );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+
+    const read = await setup(
+      'both',
+      RepairStatus.FOR_VERIFICATION,
+    ).service.findOne(TICKET, defaultAbility(adminMechanic));
+    expect(read.moves.map((m) => m.to)).toEqual([RepairStatus.CANCELLED]);
+  });
+
+  it('lets a chief verify a ticket they are not assigned to, recording them as verifier', async () => {
+    const { tx, service } = setup('mechanic', RepairStatus.FOR_VERIFICATION);
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+      chief,
+      defaultAbility(chief),
+    );
+    expect(updateData(tx.repairTicket.updateMany)).toMatchObject({
+      repairStatus: RepairStatus.CLOSED,
+      verifiedByUserId: 'chief',
+    });
+  });
+
+  it('lets an admin without ticket.verify cancel but not close', async () => {
+    const keys = defaultKeys(['ADMIN']);
+    keys.delete('ticket.verify');
+    const ability = buildAbility(admin.sub, keys);
+
+    const close = setup('mechanic', RepairStatus.FOR_VERIFICATION);
+    await expect(
+      close.service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        admin,
+        ability,
+      ),
+    ).rejects.toThrow("You can't make this move on this ticket.");
+
+    const cancel = setup('mechanic', RepairStatus.FOR_VERIFICATION);
+    await cancel.service.updateStatus(
+      TICKET,
+      {
+        status: RepairStatus.CANCELLED,
+        cancellationReason: 'Duplicate',
+        lastUpdatedAt: AT,
+      },
+      admin,
+      ability,
+    );
+    expect(updateData(cancel.tx.repairTicket.updateMany).repairStatus).toBe(
+      RepairStatus.CANCELLED,
+    );
+  });
+
+  it('refuses a mechanic verifying, though the ticket is theirs to work', async () => {
+    const { service } = setup('mechanic', RepairStatus.FOR_VERIFICATION);
+    await expect(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        mechanic,
+        defaultAbility(mechanic),
+      ),
+    ).rejects.toThrow("You can't make this move on this ticket.");
   });
 
   it('refuses ticket steps on a ticket the caller does not own', async () => {
