@@ -47,7 +47,9 @@ export class GeminiProvider implements AiProvider {
     const response = await this.call(() =>
       this.requireClient().models.embedContent({
         model: this.embedModel,
-        contents: texts,
+        // One content per text: a plain string array is read as parts of ONE content, and
+        // gemini-embedding-2 then returns a single combined vector (checked 2026-10-31)
+        contents: texts.map((text) => ({ parts: [{ text }] })),
         config: {
           taskType: task,
           outputDimensionality: EMBED_DIMENSIONS,
