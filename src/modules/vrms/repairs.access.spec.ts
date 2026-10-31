@@ -5,6 +5,7 @@ import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsService } from './repairs.service';
 import { FakeSettings } from '../../settings/settings.fake';
+import { FakeEmbeddings } from '../ai/embedding.fake';
 
 // Spec 0011, AC-11, AC-12 and AC-12a under the default matrix: who may work or administer a
 // ticket, what costs they see, and the per ticket flags the web app shows buttons from.
@@ -98,6 +99,7 @@ function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
     service: new RepairsService(
       prisma as unknown as PrismaService,
       new FakeSettings(),
+      new FakeEmbeddings().asService(),
     ),
   };
 }

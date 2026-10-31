@@ -25,6 +25,7 @@ import {
 } from './dto/create-repair.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { FakeSettings } from '../../settings/settings.fake';
+import { FakeEmbeddings } from '../ai/embedding.fake';
 
 type JwtUser = {
   sub: string;
@@ -102,6 +103,7 @@ function setup() {
     service: new RepairsService(
       prisma as unknown as PrismaService,
       new FakeSettings(),
+      new FakeEmbeddings().asService(),
     ),
   };
 }
@@ -264,6 +266,7 @@ function listSetup() {
     service: new RepairsService(
       prisma as unknown as PrismaService,
       new FakeSettings(),
+      new FakeEmbeddings().asService(),
     ),
   };
 }
@@ -403,6 +406,7 @@ describe('RepairsService.findAuditEvents', () => {
     const service = new RepairsService(
       prisma as unknown as PrismaService,
       new FakeSettings(),
+      new FakeEmbeddings().asService(),
     );
     await service.findAuditEvents({ ticketId: GARAGE });
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
@@ -416,6 +420,7 @@ describe('RepairsService.findAuditEvents', () => {
     const service = new RepairsService(
       prisma as unknown as PrismaService,
       new FakeSettings(),
+      new FakeEmbeddings().asService(),
     );
     await service.findAuditEvents({ actorId: GARAGE });
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
@@ -457,6 +462,7 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
       service: new RepairsService(
         prisma as unknown as PrismaService,
         new FakeSettings(),
+        new FakeEmbeddings().asService(),
       ),
     };
   }
@@ -547,6 +553,7 @@ describe('RepairsService.findAuditActors (AC-10)', () => {
       service: new RepairsService(
         prisma as unknown as PrismaService,
         new FakeSettings(),
+        new FakeEmbeddings().asService(),
       ),
     };
   }

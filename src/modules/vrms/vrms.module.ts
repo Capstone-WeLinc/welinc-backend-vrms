@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import SharedModule from '../../shared/shared.module';
+import { AiModule } from '../ai/ai.module';
 import { RepairsController } from './repairs.controller';
 import { RepairsService } from './repairs.service';
 import { ConfigController } from './config/config.controller';
@@ -8,7 +9,7 @@ import { MechanicRoster } from './mechanic-roster.service';
 import { MechanicWorkService } from './mechanic-work.service';
 
 @Module({
-  imports: [SharedModule],
+  imports: [SharedModule, AiModule],
   controllers: [RepairsController, ConfigController],
   providers: [
     RepairsService,

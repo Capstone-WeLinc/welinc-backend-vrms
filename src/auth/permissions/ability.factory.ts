@@ -31,6 +31,11 @@ export type AppAbility = Ability<[AppAction, AppSubjects], PrismaQuery>;
 
 export const COST_FIELDS = ['partsCost', 'laborCost', 'totalCost'] as const;
 
+/** Whether the caller holds ticket.costs.view, for money outside a ticket (spec 0013, AC-5). */
+export function canViewCosts(ability: AppAbility): boolean {
+  return ability.can('ticket.costs.view', 'Permission');
+}
+
 /**
  * Builds one caller's ability from their granted keys. Built per request and never shared,
  * because the ownership conditions carry the caller's own id (AC-9).
