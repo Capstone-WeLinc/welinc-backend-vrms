@@ -5,6 +5,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
 import { FakeSettings } from '../../settings/settings.fake';
+import { FakeEmbeddings } from '../ai/embedding.fake';
 
 // Spec 0007, AC-26 (create copies the entry's steps) and AC-29 (link, relink and unlink).
 
@@ -143,6 +144,7 @@ function setupLink(
     service: new RepairsService(
       prisma as unknown as PrismaService,
       new FakeSettings(),
+      new FakeEmbeddings().asService(),
     ),
   };
 }
@@ -322,6 +324,7 @@ describe('RepairsService.create with a common issue', () => {
       service: new RepairsService(
         prisma as unknown as PrismaService,
         new FakeSettings(),
+        new FakeEmbeddings().asService(),
       ),
     };
   }

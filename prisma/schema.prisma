@@ -167,6 +167,7 @@ model RepairTicket {
   assignments TicketAssignment[]
   repairParts RepairPart[]
   auditLogs   AuditLog[]
+  aiDiagnoses AiDiagnosis[]
 
   @@index([repairStatus, createdAt])
   @@index([repairStatus, lastActivityAt])
@@ -211,6 +212,7 @@ model RepairIssue {
   knowledgeEntry KnowledgeEntry?       @relation(fields: [knowledgeEntryId], references: [id])
   steps          RepairIssueStep[]
   suggestions    KnowledgeSuggestion[]
+  embedding      IssueEmbedding?
 
   @@index([knowledgeEntryId])
   @@index([knowledgeEntryId, suggestionDismissedAt])
@@ -467,4 +469,60 @@ model SettingChange {
   @@index([key])
   @@index([createdAt(sort: Desc), id(sort: Desc)])
   @@map("setting_changes")
+}
+
+// ==========================================
+// AI (spec 0013)
+// ==========================================
+
+// One vector per issue. Prisma can't write the vector column, so rows are upserted with raw SQL;
+// a row whose model or text_hash no longer matches is stale and gets embedded again.
+model IssueEmbedding {
+  issueId   String                     @id @map("issue_id") @db.Uuid
+  embedding Unsupported("vector(768)")
+  model     String                     @db.VarChar(60)
+  textHash  String                     @map("text_hash") @db.Char(64) // SHA 256 hex of the embedded text
+  createdAt DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  issue RepairIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@map("issue_embeddings")
+}
+
+// One successful diagnosis run, a frozen snapshot of what the AI saw and answered.
+model AiDiagnosis {
+  id                String   @id @default(uuid()) @db.Uuid
+  repairTicketId    String   @map("repair_ticket_id") @db.Uuid
+  requestedByUserId String   @map("requested_by_user_id") @db.Uuid // welinc-auth User.id, no FK
+  input             Json // { symptom, issues, vehiclePlate, vehicleModel, vehicleHistory }
+  similar           Json // [{ issueId, ticketId, repairNumber, description, similarity }]
+  result            Json // part prices always stored, nulled on read without ticket.costs.view
+  model             String   @db.VarChar(60)
+  confidence        String   @db.VarChar(10) // High, Moderate or Low
+  latencyMs         Int      @map("latency_ms")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  repairTicket RepairTicket          @relation(fields: [repairTicketId], references: [id], onDelete: Cascade)
+  feedback     AiDiagnosisFeedback[]
+
+  @@index([repairTicketId, createdAt(sort: Desc)])
+  @@index([requestedByUserId, createdAt])
+  @@map("ai_diagnoses")
+}
+
+model AiDiagnosisFeedback {
+  id          String   @id @default(uuid()) @db.Uuid
+  diagnosisId String   @map("diagnosis_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid // welinc-auth User.id, no FK
+  helpful     Boolean
+  rating      Int?     @db.SmallInt // 1 to 5, checked in the DTO
+  comment     String?  @db.Text // up to 500 characters
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  diagnosis AiDiagnosis @relation(fields: [diagnosisId], references: [id], onDelete: Cascade)
+
+  @@unique([diagnosisId, userId])
+  @@map("ai_diagnosis_feedback")
 }

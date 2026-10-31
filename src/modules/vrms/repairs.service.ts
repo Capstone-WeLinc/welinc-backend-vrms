@@ -8,7 +8,6 @@ import {
 } from '@nestjs/common';
 import { subject } from '@casl/ability';
 import { permittedFieldsOf } from '@casl/ability/extra';
-import { accessibleBy } from '@casl/prisma';
 import {
   KnowledgeEntryStatus,
   Prisma,
@@ -41,6 +40,7 @@ import {
   OPEN_STATUSES,
   STATUS_LABELS,
 } from './ticket-statuses';
+import { readableTickets } from './ticket-access';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -55,6 +55,7 @@ import {
 import { loadStats } from '../knowledge/knowledge-stats';
 import { ModuleDisabledException } from '../../settings/module-disabled';
 import { SettingsService } from '../../settings/settings.service';
+import { EmbeddingService } from '../ai/embedding.service';
 import {
   checkResolutions,
   formatIssue,
@@ -104,15 +105,6 @@ function parseRange(from: string | undefined, to: string | undefined) {
     throw new BadRequestException('"from" must be before "to"');
   }
   return range;
-}
-
-/** The tickets the caller may read, as a where; null when they may read none (spec 0011, AC-10). */
-function readableTickets(
-  ability: AppAbility,
-): Prisma.RepairTicketWhereInput | null {
-  // accessibleBy's no access marker fails a query, so answer empty before reaching Prisma
-  if (!ability.can('read', 'RepairTicket')) return null;
-  return accessibleBy(ability, 'read').ofType('RepairTicket');
 }
 
 type CostField = (typeof COST_FIELDS)[number];
@@ -192,6 +184,7 @@ export class RepairsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
+    private readonly embeddings: EmbeddingService,
   ) {}
 
   // ── Create repair ticket ─────────────────────────────────────────────────
@@ -325,11 +318,10 @@ export class RepairsService {
     });
 
     this.logger.log(`Repair ticket created — ${repairNumber} by ${user.email}`);
-    // Auto-embed new issues into pgvector for AI Knowledge Base (fire-and-forget); skipped while
-    // the AI module is off (spec 0012, AC-13)
-    if (this.settings.isModuleOn('ai')) {
-      this.autoEmbedIssues(ticket).catch(() => {});
-    }
+    // Never awaited: embedding must not fail or slow the save (spec 0013, AC-14)
+    void this.embeddings.embedIssuesInBackground(
+      ticket.issues.map((i) => i.id),
+    );
     return this.present(ticket, ability);
   }
 
@@ -366,27 +358,6 @@ export class RepairsService {
       categories: new Map(categoryRows.map((c) => [c.id, c])),
       entries: new Map(entryRows.map((e) => [e.id, e])),
     };
-  }
-
-  private async autoEmbedIssues(ticket: TicketRow): Promise<void> {
-    const AI_SERVICE =
-      process.env.AI_SERVICE_URL || 'http://vrms-analytics-ai:8020';
-    for (const issue of ticket.issues ?? []) {
-      try {
-        await fetch(`${AI_SERVICE}/ai/embed-issue`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            issue_id: issue.id,
-            ticket_id: ticket.id,
-            description: issue.description,
-          }),
-          signal: AbortSignal.timeout(5000),
-        });
-      } catch (e) {
-        this.logger.warn(`Auto-embed failed for issue ${issue.id}: ${e}`);
-      }
-    }
   }
 
   // ── List repair tickets ──────────────────────────────────────────────────

@@ -139,6 +139,21 @@ export const SETTINGS_CATALOG = [
     unit: 'issues',
     module: 'knowledge',
   },
+  {
+    // Spec 0013, AC-18
+    key: 'ai.embed_catchup_days',
+    kind: 'value',
+    group: 'AI',
+    label: 'Embedding catch up window',
+    description:
+      'How far back the catch up job looks for issues that have no embedding yet.',
+    type: 'int',
+    default: 30,
+    min: 1,
+    max: 365,
+    unit: 'days',
+    module: 'ai',
+  },
 ] as const satisfies readonly SettingEntry[];
 
 export type SettingKey = (typeof SETTINGS_CATALOG)[number]['key'];

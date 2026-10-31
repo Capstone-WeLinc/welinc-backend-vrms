@@ -94,7 +94,7 @@ describe('SettingsAdminService.update', () => {
     const view = await service.update(dto(), actor);
 
     expect(view.version).toBe(9);
-    expect(view.settings).toHaveLength(7);
+    expect(view.settings).toHaveLength(8);
   });
 
   it('deletes the row and logs a RESET when a value goes back to its default (AC-5)', async () => {
@@ -127,7 +127,7 @@ describe('SettingsAdminService.update', () => {
     expect(tx.appSetting.upsert).not.toHaveBeenCalled();
     expect(tx.settingChange.createMany).not.toHaveBeenCalled();
     expect(tx.settingsState.update).not.toHaveBeenCalled();
-    expect(view.settings).toHaveLength(7);
+    expect(view.settings).toHaveLength(8);
   });
 
   it('refuses a stale version with 409 and the current version, before it reads any rows (AC-7)', async () => {

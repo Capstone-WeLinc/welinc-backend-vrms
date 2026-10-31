@@ -98,12 +98,10 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
-    // Enforced only in the web app until feature 3 locks the AI service by role (spec 0012)
     key: 'ai.use',
     label: 'Use AI diagnosis',
     group: 'Tickets',
-    description:
-      'Shows the AI panel; the AI service itself is not yet locked by role.',
+    description: 'Run AI diagnoses on tickets you can read, and rate them.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
     module: 'ai',
   },
@@ -115,7 +113,6 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
-    // Gates the web app's Analytics page only until feature 3 moves analytics into this API
     key: 'analytics.view',
     label: 'See the Analytics page',
     group: 'Records',

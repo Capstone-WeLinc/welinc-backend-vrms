@@ -10,7 +10,7 @@ import {
 // Spec 0012, AC-1: the one definition of settings
 
 describe('SETTINGS_CATALOG', () => {
-  it('holds exactly the 7 entries of the spec, in order (AC-1)', () => {
+  it('holds exactly the 8 entries of the specs, in order (0012 AC-1, 0013 AC-18)', () => {
     expect(SETTINGS_CATALOG.map((entry) => entry.key)).toEqual([
       'module.ai',
       'module.analytics',
@@ -19,6 +19,7 @@ describe('SETTINGS_CATALOG', () => {
       'knowledge.repeat_threshold',
       'knowledge.repeat_window_days',
       'knowledge.group_min_size',
+      'ai.embed_catchup_days',
     ]);
   });
 

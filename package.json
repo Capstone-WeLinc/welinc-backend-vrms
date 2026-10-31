@@ -25,11 +25,13 @@
     "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
     "permissions:prune": "ts-node -r tsconfig-paths/register prisma/permissions-prune.ts",
     "settings:prune": "ts-node -r tsconfig-paths/register prisma/settings-prune.ts",
+    "ai:embed-all": "ts-node -r tsconfig-paths/register prisma/ai-embed-all.ts",
     "studio": "prisma studio --port 5555 --browser none"
   },
   "dependencies": {
     "@casl/ability": "7.0.1",
     "@casl/prisma": "2.0.2",
+    "@google/genai": "^2.32.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
