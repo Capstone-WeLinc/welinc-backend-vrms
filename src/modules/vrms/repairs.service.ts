@@ -1174,7 +1174,25 @@ export class RepairsService {
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );
-    return this.formatTicket(ticket, ability, hours);
+    return {
+      ...this.formatTicket(ticket, ability, hours),
+      // Single ticket responses only; list rows carry neither (spec 0014, AC-13)
+      moves: this.movesOut(ticket, ability),
+    };
+  }
+
+  /** The moves the web app offers: the status endpoint moves this caller may make now (AC-13). */
+  private movesOut(ticket: TicketRow, ability: AppAbility) {
+    const knowledgeOn = this.settings.isModuleOn('knowledge');
+    return movesFor(ticket, ability).map((m) => {
+      const need = m.needs?.[0] ?? null;
+      return {
+        to: m.to,
+        label: m.label!,
+        kind: m.kind,
+        needs: need === 'resolutions' && !knowledgeOn ? null : need,
+      };
+    });
   }
 
   private formatTicket(

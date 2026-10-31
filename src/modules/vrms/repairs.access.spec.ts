@@ -150,6 +150,50 @@ describe('ticket can flags (AC-12a)', () => {
     });
   });
 
+  // Spec 0014, AC-13: the moves this caller may make now, on single ticket responses only
+  it('sends a chief only Start work on their own Assigned ticket, and nothing on another', async () => {
+    const own = await setup('chief').service.findOne(
+      TICKET,
+      defaultAbility(chief),
+    );
+    const other = await setup('mechanic').service.findOne(
+      TICKET,
+      defaultAbility(chief),
+    );
+    expect(own.moves).toEqual([
+      { to: 'IN_PROGRESS', label: 'Start work', kind: 'forward', needs: null },
+    ]);
+    expect(other.moves).toEqual([]);
+  });
+
+  it('sends resolutions as the need of Send for verification while the knowledge base is on', async () => {
+    const res = await setup('chief', RepairStatus.IN_PROGRESS).service.findOne(
+      TICKET,
+      defaultAbility(chief),
+    );
+    expect(res.moves).toEqual([
+      {
+        to: 'FOR_VERIFICATION',
+        label: 'Send for verification',
+        kind: 'forward',
+        needs: 'resolutions',
+      },
+    ]);
+  });
+
+  it('sends no moves on a finished ticket, and none on list rows', async () => {
+    const closed = await setup('mechanic', RepairStatus.CLOSED).service.findOne(
+      TICKET,
+      defaultAbility(admin),
+    );
+    expect(closed.moves).toEqual([]);
+    const { data } = await setup('mechanic').service.findAll(
+      {},
+      defaultAbility(admin),
+    );
+    expect(data[0]).not.toHaveProperty('moves');
+  });
+
   it('puts the flags on every list row too', async () => {
     const { data } = await setup('mechanic').service.findAll(
       {},
