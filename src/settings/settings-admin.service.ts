@@ -75,9 +75,9 @@ export class SettingsAdminService {
         label: entry.label,
         description: entry.description,
         type: entry.type,
-        unit: entry.kind === 'value' ? entry.unit : null,
-        min: entry.kind === 'value' ? entry.min : null,
-        max: entry.kind === 'value' ? entry.max : null,
+        unit: entry.type === 'int' ? entry.unit : null,
+        min: entry.type === 'int' ? entry.min : null,
+        max: entry.type === 'int' ? entry.max : null,
         default: entry.default,
         value,
         isDefault: raw === undefined || !valid,
@@ -86,7 +86,7 @@ export class SettingsAdminService {
           entry.kind === 'module' && 'requires' in entry
             ? (entry.requires as readonly string[])
             : [],
-        module: entry.kind === 'value' ? entry.module : null,
+        module: 'module' in entry ? entry.module : null,
         updatedAt: change?.createdAt ?? null,
         updatedBy:
           change && (change.actorName || change.actorEmail)

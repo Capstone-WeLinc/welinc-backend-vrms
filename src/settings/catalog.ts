@@ -41,7 +41,15 @@ export type ValueEntry = BaseEntry & {
   module?: ModuleName;
 };
 
-export type SettingEntry = ModuleEntry | ValueEntry;
+/** A yes or no value that is not a module switch (spec 0015). */
+export type ToggleEntry = BaseEntry & {
+  kind: 'value';
+  type: 'boolean';
+  default: boolean;
+  module?: ModuleName;
+};
+
+export type SettingEntry = ModuleEntry | ValueEntry | ToggleEntry;
 export type SettingValue = number | boolean;
 
 export const SETTINGS_CATALOG = [
@@ -153,6 +161,17 @@ export const SETTINGS_CATALOG = [
     max: 365,
     unit: 'days',
     module: 'ai',
+  },
+  {
+    // Spec 0015, AC-4
+    key: 'tickets.require_costs_to_close',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Require costs before closing',
+    description:
+      'A ticket cannot be verified and closed until it has costs recorded.',
+    type: 'boolean',
+    default: false,
   },
 ] as const satisfies readonly SettingEntry[];
 
