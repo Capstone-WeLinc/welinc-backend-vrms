@@ -5,8 +5,8 @@ export const AI_PROVIDER = Symbol('AI_PROVIDER');
 /** Every vector is this long, so similarity only ever compares like with like. */
 export const EMBED_DIMENSIONS = 768;
 
-/** Up to this many texts go in one embed call. */
-export const EMBED_BATCH_SIZE = 100;
+/** Up to this many texts go in one embed call (100 hit the free tier per minute limit, spec 0013). */
+export const EMBED_BATCH_SIZE = 50;
 
 export type EmbedTask = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
 
