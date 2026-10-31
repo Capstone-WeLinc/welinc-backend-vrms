@@ -33,6 +33,7 @@ const adminMechanic = caller('both', UserRole.ADMIN, UserRole.MECHANIC);
 
 const TICKET = '00000000-0000-4000-8000-0000000000aa';
 const LOADED = new Date('2026-10-29T01:00:00.000Z');
+const AT = LOADED.toISOString();
 
 /** A ticket shaped like ticketInclude(), assigned to the welinc-auth user `owner`. */
 function ticketOf(owner: string, status: RepairStatus) {
@@ -76,26 +77,35 @@ function ticketOf(owner: string, status: RepairStatus) {
 
 function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
   const row = ticketOf(owner, status);
+  const tx = {
+    repairTicket: {
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(row),
+    },
+    repairIssue: {
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    vehicle: {
+      update: jest.fn().mockResolvedValue({}),
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 900 }),
+    },
+  };
   const prisma = {
     repairTicket: {
       findUnique: jest.fn().mockResolvedValue(row),
       findMany: jest.fn().mockResolvedValue([row]),
       count: jest.fn().mockResolvedValue(1),
-      update: jest.fn().mockResolvedValue(row),
     },
-    auditLog: { create: jest.fn().mockResolvedValue({}) },
-    vehicle: {
-      update: jest.fn().mockResolvedValue({}),
-      findUnique: jest.fn().mockResolvedValue({ odometer: 900 }),
-    },
+    auditLog: { findMany: jest.fn().mockResolvedValue([]) },
     // Typical hours for linked entries; this ticket has none
     $queryRaw: jest.fn().mockResolvedValue([]),
-    $transaction: jest.fn((queries: Promise<unknown>[]) =>
-      Promise.all(queries),
-    ),
+    $transaction: jest.fn((run: (client: typeof tx) => unknown) => run(tx)),
   };
   return {
     prisma,
+    tx,
     service: new RepairsService(
       prisma as unknown as PrismaService,
       new FakeSettings(),
@@ -173,14 +183,19 @@ describe('cost fields (AC-11)', () => {
   });
 
   it('ignores cost fields a chief sends with a status move', async () => {
-    const { prisma, service } = setup('chief', RepairStatus.ASSIGNED);
+    const { tx, service } = setup('chief', RepairStatus.ASSIGNED);
     await service.updateStatus(
       TICKET,
-      { status: RepairStatus.IN_PROGRESS, partsCost: 1, laborCost: 1 },
+      {
+        status: RepairStatus.IN_PROGRESS,
+        partsCost: 1,
+        laborCost: 1,
+        lastUpdatedAt: AT,
+      },
       chief,
       defaultAbility(chief),
     );
-    const data = updateData(prisma.repairTicket.update);
+    const data = updateData(tx.repairTicket.updateMany);
     expect(data).not.toHaveProperty('partsCost');
     expect(data).not.toHaveProperty('totalCost');
   });
@@ -191,15 +206,15 @@ describe('work and administer (AC-12)', () => {
     const { prisma, service } = setup('mechanic', RepairStatus.ASSIGNED);
     const run = service.updateStatus(
       TICKET,
-      { status: RepairStatus.IN_PROGRESS },
+      { status: RepairStatus.IN_PROGRESS, lastUpdatedAt: AT },
       chief,
       defaultAbility(chief),
     );
     await expect(run).rejects.toBeInstanceOf(ForbiddenException);
     await expect(run).rejects.toThrow(
-      'You are not assigned to this repair ticket',
+      "You can't make this move on this ticket.",
     );
-    expect(prisma.repairTicket.update).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("refuses a mechanic reading another mechanic's ticket", async () => {
@@ -209,30 +224,27 @@ describe('work and administer (AC-12)', () => {
   });
 
   it('lets an admin close a ticket assigned to someone else', async () => {
-    const { prisma, service } = setup(
-      'mechanic',
-      RepairStatus.FOR_VERIFICATION,
-    );
+    const { tx, service } = setup('mechanic', RepairStatus.FOR_VERIFICATION);
     await service.updateStatus(
       TICKET,
-      { status: RepairStatus.CLOSED },
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
       admin,
       defaultAbility(admin),
     );
-    expect(updateData(prisma.repairTicket.update).repairStatus).toBe(
+    expect(updateData(tx.repairTicket.updateMany).repairStatus).toBe(
       RepairStatus.CLOSED,
     );
   });
 
   it('treats a caller with work and administer as administer, even on their own ticket', async () => {
-    const { prisma, service } = setup('both', RepairStatus.FOR_VERIFICATION);
+    const { tx, service } = setup('both', RepairStatus.FOR_VERIFICATION);
     await service.updateStatus(
       TICKET,
-      { status: RepairStatus.CLOSED },
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
       adminMechanic,
       defaultAbility(adminMechanic),
     );
-    expect(updateData(prisma.repairTicket.update).repairStatus).toBe(
+    expect(updateData(tx.repairTicket.updateMany).repairStatus).toBe(
       RepairStatus.CLOSED,
     );
   });

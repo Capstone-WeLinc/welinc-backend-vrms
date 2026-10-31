@@ -6,6 +6,9 @@ import { MechanicRoster } from './mechanic-roster.service';
 import { MechanicWorkService } from './mechanic-work.service';
 
 // Spec 0011, AC-32 and AC-33: open work and release, against an in memory ticket list.
+// Spec 0014, AC-1: the release to Open goes through applyStatusMove with its one audit row.
+
+const LOADED = new Date('2026-10-29T01:00:00.000Z');
 
 type Ticket = {
   id: string;
@@ -52,9 +55,26 @@ function setup(
             .map((t) => ({
               id: t.id,
               repairStatus: t.repairStatus,
+              updatedAt: LOADED,
+              vehicleId: 'v1',
+              odometer: 1000,
               _count: { assignments: t.others + 1 },
             })),
         ),
+      ),
+      // The M2 release goes through applyStatusMove's conditional update
+      updateMany: jest.fn(
+        ({
+          where,
+          data,
+        }: {
+          where: { id: string };
+          data: { repairStatus: RepairStatus };
+        }) => {
+          tickets.find((x) => x.id === where.id)!.repairStatus =
+            data.repairStatus;
+          return Promise.resolve({ count: 1 });
+        },
       ),
       update: jest.fn(
         ({
@@ -127,10 +147,15 @@ describe('MechanicWorkService.release', () => {
       RepairStatus.IN_PROGRESS,
       RepairStatus.FOR_VERIFICATION,
     ]);
+    // One row per released ticket; the reopened one records its status change in the same row
     expect(audits).toHaveLength(2);
     expect(audits[0]).toMatchObject({
       action: 'MECHANIC_UNASSIGNED',
       note: 'Account deactivated',
+      changes: [
+        { field: 'mechanic', before: 'Leaver', after: null },
+        { field: 'repairStatus', before: 'ASSIGNED', after: 'OPEN' },
+      ],
     });
 
     expect(await service.release('u1', 'DEACTIVATED', admin, 'tok')).toEqual({
