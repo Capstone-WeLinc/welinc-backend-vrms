@@ -613,11 +613,26 @@ describe('request limits', () => {
         validate(
           plainToInstance(UpdateRepairStatusDto, {
             status: RepairStatus.CANCELLED,
+            lastUpdatedAt: '2026-10-29T01:00:00.000Z',
             [field]: 'x'.repeat(length),
           }),
         );
       expect(await errorsFor(500)).toHaveLength(0);
       expect((await errorsFor(501)).map((e) => e.property)).toEqual([field]);
+    },
+  );
+
+  // Spec 0014, AC-12: required and an ISO date, so a missing or malformed value is a 400
+  it.each([undefined, 'yesterday'])(
+    'rejects a status body with lastUpdatedAt %p',
+    async (lastUpdatedAt) => {
+      const errors = await validate(
+        plainToInstance(UpdateRepairStatusDto, {
+          status: RepairStatus.CANCELLED,
+          lastUpdatedAt,
+        }),
+      );
+      expect(errors.map((e) => e.property)).toEqual(['lastUpdatedAt']);
     },
   );
 

@@ -137,6 +137,8 @@ function setupLink(
     $transaction: jest.fn((fn: (client: typeof tx) => unknown) => fn(tx)),
     // loadStats for the typical hours on the response
     $queryRaw: jest.fn().mockResolvedValue([]),
+    // lastRejection on an In progress response (spec 0014, AC-14)
+    auditLog: { findMany: jest.fn().mockResolvedValue([]) },
   };
   return {
     tx,
@@ -318,6 +320,8 @@ describe('RepairsService.create with a common issue', () => {
       mechanic: { count: jest.fn().mockResolvedValue(1) },
       repairTicket: { create: jest.fn().mockResolvedValue(fullTicket()) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      // lastRejection, as the fixture ticket is In progress (spec 0014, AC-14)
+      auditLog: { findMany: jest.fn().mockResolvedValue([]) },
     };
     return {
       prisma,

@@ -12,8 +12,8 @@ import { FINISHED_STATUSES, OPEN_STATUSES } from './ticket-statuses';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
 
-// Spec 0010, AC-3, AC-4, AC-4a, AC-6 and AC-10: today's forward moves on the v2 names, the
-// verifier on close, one audit row per event, and lastActivityAt moving with it.
+// Spec 0014 on the status endpoint: the table, the check order, every effect of a move inside
+// one transaction, and the required stale check. Spec 0010, AC-4a and AC-10 still hold.
 
 type JwtUser = {
   sub: string;
@@ -41,6 +41,7 @@ const chief: JwtUser = {
 const TICKET = '00000000-0000-4000-8000-0000000000aa';
 const MECH = 'mech-chief';
 const LOADED = new Date('2026-10-29T01:00:00.000Z');
+const AT = LOADED.toISOString();
 
 /** A ticket shaped like ticketInclude(), for formatTicket. */
 function fullTicket(status: RepairStatus) {
@@ -67,13 +68,19 @@ function fullTicket(status: RepairStatus) {
     isLumpSum: false,
     isUnlocked: false,
     unlockReason: null,
+    vehicleId: 'v1',
     vehicle: { plateNumber: 'ABC 123', model: 'Hilux', status: 'UNDER_REPAIR' },
     driver: { name: 'Driver', licenseNumber: 'driver', isVerified: true },
     garage: { name: 'Sta. Rosa' },
     assignments: [
       {
         mechanicId: MECH,
-        mechanic: { id: MECH, name: 'Ramon', authUserId: chief.sub },
+        mechanic: {
+          id: MECH,
+          name: 'Ramon',
+          authUserId: chief.sub,
+          isActive: true,
+        },
       },
     ],
     repairParts: [],
@@ -81,38 +88,39 @@ function fullTicket(status: RepairStatus) {
   };
 }
 
-function setup(status: RepairStatus, over: Record<string, unknown> = {}) {
-  const loaded = {
-    ...fullTicket(status),
-    vehicleId: 'v1',
-    issues: [],
-    ...over,
-  };
+function setup(
+  status: RepairStatus,
+  over: Record<string, unknown> = {},
+  opts: { stale?: boolean } = {},
+) {
+  const loaded = { ...fullTicket(status), ...over };
   const tx = {
     repairPart: {
       deleteMany: jest.fn().mockResolvedValue({}),
       createMany: jest.fn().mockResolvedValue({}),
     },
-    repairTicket: { update: jest.fn().mockResolvedValue({}) },
-    auditLog: { create: jest.fn().mockResolvedValue({}) },
-  };
-  const prisma = {
     repairTicket: {
-      findUnique: jest.fn().mockResolvedValue(loaded),
-      update: jest.fn().mockResolvedValue(fullTicket(status)),
+      // count 0 is the race lost inside the transaction
+      updateMany: jest.fn().mockResolvedValue({ count: opts.stale ? 0 : 1 }),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(loaded),
+    },
+    repairIssue: {
+      update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     vehicle: {
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 900 }),
       update: jest.fn().mockResolvedValue({}),
-      findUnique: jest.fn().mockResolvedValue({ odometer: 900 }),
     },
-    mechanic: { findUnique: jest.fn().mockResolvedValue({ id: MECH }) },
-    // The status update passes an array of queries; costs pass a callback
-    $transaction: jest.fn((arg: unknown) =>
-      typeof arg === 'function'
-        ? (arg as (client: typeof tx) => unknown)(tx)
-        : Promise.all(arg as Promise<unknown>[]),
-    ),
+  };
+  const prisma = {
+    repairTicket: { findUnique: jest.fn().mockResolvedValue(loaded) },
+    auditLog: {
+      create: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    $transaction: jest.fn((run: (client: typeof tx) => unknown) => run(tx)),
   };
   return {
     prisma,
@@ -125,13 +133,21 @@ function setup(status: RepairStatus, over: Record<string, unknown> = {}) {
   };
 }
 
-type UpdateData = Record<string, unknown>;
-const ticketData = (mock: jest.Mock) =>
-  (mock.mock.calls[0] as [{ data: UpdateData }])[0].data;
-const auditRow = (mock: jest.Mock) =>
-  (mock.mock.calls[0] as [{ data: UpdateData }])[0].data;
+type Data = Record<string, unknown>;
+const firstData = (mock: jest.Mock) =>
+  (mock.mock.calls[0] as [{ data: Data }])[0].data;
 
-describe('status sets (AC-4a)', () => {
+/** The 400 body of an INVALID_TRANSITION. */
+async function invalidBody(run: Promise<unknown>) {
+  const error = await run.then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(error).toBeInstanceOf(BadRequestException);
+  return (error as BadRequestException).getResponse() as Data;
+}
+
+describe('status sets (spec 0010, AC-4a)', () => {
   it('splits the nine statuses into open and finished, with ON_HOLD open', () => {
     expect(FINISHED_STATUSES).toEqual([
       RepairStatus.CLOSED,
@@ -143,114 +159,192 @@ describe('status sets (AC-4a)', () => {
   });
 });
 
-describe('RepairsService.updateStatus on the v2 names', () => {
+describe('RepairsService.updateStatus moves (AC-1, AC-7, AC-10, AC-12)', () => {
   it.each([
     [RepairStatus.ASSIGNED, RepairStatus.IN_PROGRESS],
     [RepairStatus.IN_PROGRESS, RepairStatus.FOR_VERIFICATION],
   ])(
-    'lets an assigned chief mechanic move %s to %s, moving lastActivityAt with the audit row',
+    'lets an assigned chief mechanic move %s to %s through the conditional update',
     async (from, to) => {
-      const { prisma, service } = setup(from);
+      const { tx, service } = setup(from);
       await service.updateStatus(
         TICKET,
-        { status: to, lastUpdatedAt: LOADED.toISOString(), resolutions: [] },
+        { status: to, lastUpdatedAt: AT, resolutions: [] },
         chief,
         defaultAbility(chief),
       );
-      const data = ticketData(prisma.repairTicket.update);
-      const row = auditRow(prisma.auditLog.create);
+      expect(tx.repairTicket.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: TICKET, updatedAt: LOADED } }),
+      );
+      const data = firstData(tx.repairTicket.updateMany);
+      const row = firstData(tx.auditLog.create);
       expect(data.repairStatus).toBe(to);
       expect(row).toMatchObject({
         action: 'STATUS_CHANGE',
         changes: [{ field: 'repairStatus', before: from, after: to }],
         actorRole: 'CHIEF_MECHANIC',
       });
-      expect(data.lastActivityAt).toBeInstanceOf(Date);
       expect(data.lastActivityAt).toBe(row.createdAt);
+      expect(data.updatedAt).toBe(row.createdAt);
       expect(data).not.toHaveProperty('verifiedByUserId');
       expect(data).not.toHaveProperty('closedAt');
+      expect(tx.vehicle.update).not.toHaveBeenCalled();
     },
   );
 
-  it('records the admin who closes as the verifier, with closedAt at the same instant', async () => {
-    const { prisma, service } = setup(RepairStatus.FOR_VERIFICATION);
+  it('verifies: records the closer, frees the truck and syncs the odometer in the same transaction', async () => {
+    const { tx, service } = setup(RepairStatus.FOR_VERIFICATION);
     await service.updateStatus(
       TICKET,
-      { status: RepairStatus.CLOSED },
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
       admin,
       defaultAbility(admin),
     );
-    const data = ticketData(prisma.repairTicket.update);
+    const data = firstData(tx.repairTicket.updateMany);
     expect(data).toMatchObject({
       repairStatus: RepairStatus.CLOSED,
       verifiedByUserId: admin.sub,
       verifiedByName: 'Victor Ramos',
     });
     expect(data.verifiedAt).toBe(data.closedAt);
-    expect(data.closedAt).toBe(auditRow(prisma.auditLog.create).createdAt);
+    expect(data.closedAt).toBe(firstData(tx.auditLog.create).createdAt);
+    expect(firstData(tx.vehicle.update)).toEqual({
+      status: 'AVAILABLE',
+      odometer: 1000,
+    });
   });
 
-  it('sets closedAt but no verifier on cancel, with the reason as the note', async () => {
-    const { prisma, service } = setup(RepairStatus.IN_PROGRESS);
+  it('cancels from any open status with the reason, no verifier, and the truck freed', async () => {
+    const { tx, service } = setup(RepairStatus.ON_HOLD);
     await service.updateStatus(
       TICKET,
-      { status: RepairStatus.CANCELLED, cancellationReason: ' Duplicate ' },
+      {
+        status: RepairStatus.CANCELLED,
+        cancellationReason: ' Duplicate ',
+        lastUpdatedAt: AT,
+      },
       admin,
       defaultAbility(admin),
     );
-    const data = ticketData(prisma.repairTicket.update);
+    const data = firstData(tx.repairTicket.updateMany);
     expect(data.closedAt).toBeInstanceOf(Date);
     expect(data).not.toHaveProperty('verifiedByUserId');
     expect(data.cancellationReason).toBe('Duplicate');
-    expect(auditRow(prisma.auditLog.create).note).toBe('Duplicate');
+    expect(firstData(tx.auditLog.create).note).toBe('Duplicate');
+    expect(firstData(tx.vehicle.update)).toEqual({ status: 'AVAILABLE' });
   });
 
-  it.each([RepairStatus.CLOSED, RepairStatus.CANCELLED])(
-    'refuses a chief mechanic moving to %s, naming the statuses',
-    async (to) => {
-      const { prisma, service } = setup(RepairStatus.FOR_VERIFICATION);
-      const run = service.updateStatus(
-        TICKET,
-        { status: to, cancellationReason: 'x' },
-        chief,
-        defaultAbility(chief),
-      );
-      await expect(run).rejects.toBeInstanceOf(ForbiddenException);
-      await expect(run).rejects.toThrow(
-        'Allowed: In progress, For verification.',
-      );
-      expect(prisma.repairTicket.update).not.toHaveBeenCalled();
-    },
-  );
-
-  it('rejects a skipped move with the new labels', async () => {
-    const { service } = setup(RepairStatus.ASSIGNED);
-    const run = service.updateStatus(
-      TICKET,
-      { status: RepairStatus.CLOSED },
-      admin,
-      defaultAbility(admin),
-    );
-    await expect(run).rejects.toBeInstanceOf(BadRequestException);
-    await expect(run).rejects.toThrow(
-      "Cannot change status from 'Assigned' to 'Closed'",
-    );
-  });
-
-  it('only cancels from an open status, not an unlocked closed ticket', async () => {
-    const { service } = setup(RepairStatus.CLOSED, { isUnlocked: true });
+  it('answers 400 without a cancellation reason, after the right check', async () => {
+    const { tx, service } = setup(RepairStatus.IN_PROGRESS);
     await expect(
       service.updateStatus(
         TICKET,
-        { status: RepairStatus.CANCELLED, cancellationReason: 'x' },
+        { status: RepairStatus.CANCELLED, lastUpdatedAt: AT },
         admin,
         defaultAbility(admin),
       ),
-    ).rejects.toThrow("from 'Closed' to 'Cancelled'");
+    ).rejects.toThrow('A cancellation reason is required');
+    expect(tx.repairTicket.updateMany).not.toHaveBeenCalled();
   });
 
-  it('answers 409 for a stale lastUpdatedAt', async () => {
+  it('refuses a chief mechanic cancelling, with the move message', async () => {
+    const { prisma, service } = setup(RepairStatus.IN_PROGRESS);
+    const run = service.updateStatus(
+      TICKET,
+      {
+        status: RepairStatus.CANCELLED,
+        cancellationReason: 'x',
+        lastUpdatedAt: AT,
+      },
+      chief,
+      defaultAbility(chief),
+    );
+    await expect(run).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(run).rejects.toThrow(
+      "You can't make this move on this ticket.",
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('moves outside the table (AC-3, AC-3a, AC-4)', () => {
+  it('rejects a skipped move with INVALID_TRANSITION, both labels and the allowed list', async () => {
     const { service } = setup(RepairStatus.ASSIGNED);
+    const body = await invalidBody(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    );
+    expect(body).toEqual({
+      statusCode: 400,
+      code: 'INVALID_TRANSITION',
+      message: "Can't move a ticket from 'Assigned' to 'Closed'.",
+      allowed: [RepairStatus.IN_PROGRESS, RepairStatus.CANCELLED],
+    });
+  });
+
+  it('names the owning action for a move a later feature makes', async () => {
+    const { service } = setup(RepairStatus.IN_PROGRESS);
+    const body = await invalidBody(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.ON_HOLD, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    );
+    expect(body.message).toBe(
+      'A ticket goes On hold when a hold is filed, not from here.',
+    );
+  });
+
+  it.each([false, true])(
+    'never leaves Closed through the status endpoint (unlocked: %s)',
+    async (isUnlocked) => {
+      const { service } = setup(RepairStatus.CLOSED, { isUnlocked });
+      const body = await invalidBody(
+        service.updateStatus(
+          TICKET,
+          { status: RepairStatus.IN_PROGRESS, lastUpdatedAt: AT },
+          admin,
+          defaultAbility(admin),
+        ),
+      );
+      expect(body).toMatchObject({ code: 'INVALID_TRANSITION', allowed: [] });
+    },
+  );
+
+  it('rejects the same status on an open ticket', async () => {
+    const { service } = setup(RepairStatus.IN_PROGRESS);
+    const body = await invalidBody(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.IN_PROGRESS, lastUpdatedAt: AT },
+        chief,
+        defaultAbility(chief),
+      ),
+    );
+    expect(body.message).toBe('This ticket is already In progress.');
+  });
+
+  it('keeps the finished lock as an INVALID_TRANSITION', async () => {
+    const { service } = setup(RepairStatus.CLOSED);
+    const body = await invalidBody(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    );
+    expect(body.code).toBe('INVALID_TRANSITION');
+  });
+
+  it('answers 409 before the move check when lastUpdatedAt is stale', async () => {
+    const { service } = setup(RepairStatus.CLOSED);
     await expect(
       service.updateStatus(
         TICKET,
@@ -264,39 +358,104 @@ describe('RepairsService.updateStatus on the v2 names', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('writes no audit row and leaves lastActivityAt alone on an unlocked save with no move', async () => {
-    const { prisma, service } = setup(RepairStatus.CLOSED, {
-      isUnlocked: true,
-    });
+  it('answers 409 and writes nothing more when the race is lost inside the transaction', async () => {
+    const { tx, service } = setup(
+      RepairStatus.FOR_VERIFICATION,
+      {},
+      { stale: true },
+    );
+    await expect(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.vehicle.update).not.toHaveBeenCalled();
+  });
+
+  it('saves an unlocked finished ticket with no move, no audit row and no lastActivityAt', async () => {
+    const { tx, service } = setup(RepairStatus.CLOSED, { isUnlocked: true });
     await service.updateStatus(
       TICKET,
-      { status: RepairStatus.CLOSED },
+      { status: RepairStatus.CLOSED, remarks: 'Fixed note', lastUpdatedAt: AT },
       admin,
       defaultAbility(admin),
     );
-    expect(prisma.auditLog.create).not.toHaveBeenCalled();
-    const data = ticketData(prisma.repairTicket.update);
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    const data = firstData(tx.repairTicket.updateMany);
+    expect(data).toMatchObject({ isUnlocked: false, remarks: 'Fixed note' });
     expect(data).not.toHaveProperty('lastActivityAt');
     expect(data).not.toHaveProperty('closedAt');
+    expect(data).not.toHaveProperty('repairStatus');
   });
 });
 
-describe('RepairsService.updateCosts (AC-6, AC-10)', () => {
-  it('writes one COST_UPDATE row with three changes, and moves lastActivityAt with it', async () => {
-    const { prisma, tx, service } = setup(RepairStatus.FOR_VERIFICATION, {
-      partsCost: 3000,
-      laborCost: 1000,
-      totalCost: 4000,
-      repairParts: [],
+describe('Send back (AC-8, AC-9)', () => {
+  it('needs remarks of 5 to 500 characters', async () => {
+    const { tx, service } = setup(RepairStatus.FOR_VERIFICATION);
+    await expect(
+      service.updateStatus(
+        TICKET,
+        {
+          status: RepairStatus.IN_PROGRESS,
+          remarks: ' ok ',
+          lastUpdatedAt: AT,
+        },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toThrow('Say what needs fixing.');
+    expect(tx.repairTicket.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('goes back to In progress, keeps the comment in the audit row only, and clears resolvedAt', async () => {
+    const { tx, service } = setup(RepairStatus.FOR_VERIFICATION);
+    await service.updateStatus(
+      TICKET,
+      {
+        status: RepairStatus.IN_PROGRESS,
+        remarks: ' Rear pads still squeal ',
+        lastUpdatedAt: AT,
+      },
+      admin,
+      defaultAbility(admin),
+    );
+    const data = firstData(tx.repairTicket.updateMany);
+    expect(data.repairStatus).toBe(RepairStatus.IN_PROGRESS);
+    expect(data).not.toHaveProperty('remarks');
+    expect(firstData(tx.auditLog.create).note).toBe('Rear pads still squeal');
+    expect(tx.repairIssue.updateMany).toHaveBeenCalledWith({
+      where: { repairTicketId: TICKET },
+      data: { resolvedAt: null },
     });
+    expect(tx.vehicle.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('RepairsService.updateCosts (spec 0010, AC-6, AC-10; spec 0014, AC-12)', () => {
+  const costed = {
+    partsCost: 3000,
+    laborCost: 1000,
+    totalCost: 4000,
+    repairParts: [],
+  };
+
+  it('writes one COST_UPDATE row with every change, and moves lastActivityAt with it', async () => {
+    const { prisma, tx, service } = setup(
+      RepairStatus.FOR_VERIFICATION,
+      costed,
+    );
     await service.updateCosts(
       TICKET,
-      { isLumpSum: true, partsCost: 3500, laborCost: 1700 },
+      { isLumpSum: true, partsCost: 3500, laborCost: 1700, lastUpdatedAt: AT },
       admin,
       defaultAbility(admin),
     );
     expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
-    const row = auditRow(tx.auditLog.create);
+    const row = firstData(tx.auditLog.create);
     expect(row).toMatchObject({
       action: 'COST_UPDATE',
       changes: [
@@ -306,7 +465,7 @@ describe('RepairsService.updateCosts (AC-6, AC-10)', () => {
         { field: 'isLumpSum', before: 'false', after: 'true' },
       ],
     });
-    expect(ticketData(tx.repairTicket.update).lastActivityAt).toBe(
+    expect(firstData(tx.repairTicket.updateMany).lastActivityAt).toBe(
       row.createdAt,
     );
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
@@ -314,21 +473,104 @@ describe('RepairsService.updateCosts (AC-6, AC-10)', () => {
 
   it('writes no row and keeps lastActivityAt when nothing changed', async () => {
     const { tx, service } = setup(RepairStatus.FOR_VERIFICATION, {
-      partsCost: 3000,
-      laborCost: 1000,
-      totalCost: 4000,
+      ...costed,
       isLumpSum: true,
-      repairParts: [],
     });
     await service.updateCosts(
       TICKET,
-      { isLumpSum: true, partsCost: 3000, laborCost: 1000 },
+      { isLumpSum: true, partsCost: 3000, laborCost: 1000, lastUpdatedAt: AT },
       admin,
       defaultAbility(admin),
     );
     expect(tx.auditLog.create).not.toHaveBeenCalled();
-    expect(ticketData(tx.repairTicket.update)).not.toHaveProperty(
+    expect(firstData(tx.repairTicket.updateMany)).not.toHaveProperty(
       'lastActivityAt',
     );
+  });
+
+  it('answers 409 when the race is lost inside the transaction, before touching parts', async () => {
+    const { tx, service } = setup(RepairStatus.FOR_VERIFICATION, costed, {
+      stale: true,
+    });
+    await expect(
+      service.updateCosts(
+        TICKET,
+        { isLumpSum: true, partsCost: 1, laborCost: 1, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.repairPart.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('RepairsService.unlockTicket (AC-12)', () => {
+  it('answers 409 for a stale lastUpdatedAt', async () => {
+    const { prisma, service } = setup(RepairStatus.CLOSED);
+    await expect(
+      service.unlockTicket(
+        TICKET,
+        { unlockReason: 'Fix cost', lastUpdatedAt: '2026-10-28T00:00:00.000Z' },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('unlocks through the conditional update with one UNLOCK row', async () => {
+    const { tx, service } = setup(RepairStatus.CLOSED);
+    await service.unlockTicket(
+      TICKET,
+      { unlockReason: 'Fix cost', lastUpdatedAt: AT },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(firstData(tx.repairTicket.updateMany)).toMatchObject({
+      isUnlocked: true,
+      unlockReason: 'Fix cost',
+    });
+    expect(firstData(tx.auditLog.create).action).toBe('UNLOCK');
+  });
+});
+
+describe('lastRejection on the detail read (AC-14)', () => {
+  const rejected = {
+    changes: [
+      {
+        field: 'repairStatus',
+        before: 'FOR_VERIFICATION',
+        after: 'IN_PROGRESS',
+      },
+    ],
+    note: 'Rear pads still squeal',
+    actorName: 'Ramon Villanueva',
+    actorEmail: 'vrms.chief@welinc.com',
+    createdAt: LOADED,
+  };
+
+  it('sends the Send back still in force while In progress, read newest first', async () => {
+    const { prisma, service } = setup(RepairStatus.IN_PROGRESS);
+    prisma.auditLog.findMany.mockResolvedValue([rejected]);
+    const res = await service.findOne(TICKET, defaultAbility(admin));
+    expect(res.lastRejection).toEqual({
+      remarks: 'Rear pads still squeal',
+      byName: 'Ramon Villanueva',
+      at: AT,
+    });
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { repairTicketId: TICKET, action: 'STATUS_CHANGE' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }),
+    );
+  });
+
+  it('is null and reads nothing outside In progress and On hold', async () => {
+    const { prisma, service } = setup(RepairStatus.FOR_VERIFICATION);
+    prisma.auditLog.findMany.mockResolvedValue([rejected]);
+    const res = await service.findOne(TICKET, defaultAbility(admin));
+    expect(res.lastRejection).toBeNull();
+    expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
   });
 });

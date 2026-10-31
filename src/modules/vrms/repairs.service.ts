@@ -12,8 +12,16 @@ import {
   KnowledgeEntryStatus,
   Prisma,
   RepairStatus,
+  type RepairTicket,
   VehicleStatus,
 } from '@prisma/client';
+import { applyStatusMove } from './apply-status-move';
+import {
+  findMove,
+  invalidMoveMessage,
+  statusMovesFrom,
+  type TicketMove,
+} from './ticket-transitions';
 import { UserRole } from '../../auth/roles';
 import {
   type AppAbility,
@@ -28,8 +36,8 @@ import {
   decodeCursor,
   encodeCursor,
   knowledgeLinkEvent,
+  lastRejectionFrom,
   olderThan,
-  statusEvent,
   toAuditEvent,
   unlockEvent,
   whoName,
@@ -38,7 +46,6 @@ import {
   FINISHED_STATUSES,
   isFinished,
   OPEN_STATUSES,
-  STATUS_LABELS,
 } from './ticket-statuses';
 import { readableTickets } from './ticket-access';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
@@ -75,23 +82,12 @@ type JwtUser = {
   system: string;
 };
 
-// Mechanics and chief mechanics may only start work and send it for verification; closing and
-// cancelling stay Admin only until feature 16 replaces these moves (spec 0010, AC-4)
-const MECHANIC_ALLOWED_TRANSITIONS: RepairStatus[] = [
-  RepairStatus.IN_PROGRESS,
-  RepairStatus.FOR_VERIFICATION,
-];
-
-// Today's forward moves on the v2 names; any open status may also move to CANCELLED
-const FORWARD_MOVES: Partial<Record<RepairStatus, RepairStatus>> = {
-  [RepairStatus.ASSIGNED]: RepairStatus.IN_PROGRESS,
-  [RepairStatus.IN_PROGRESS]: RepairStatus.FOR_VERIFICATION,
-  [RepairStatus.FOR_VERIFICATION]: RepairStatus.CLOSED,
-};
-
 const AUDIT_PAGE_SIZE = 50;
 
 const LIST_PAGE_SIZE = 20;
+
+/** How many STATUS_CHANGE rows the lastRejection scan reads, newest first (spec 0014, AC-14). */
+const REJECTION_SCAN_ROWS = 20;
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -118,9 +114,9 @@ function visibleCostFields(ability: AppAbility): ReadonlySet<CostField> {
 }
 
 /**
- * How the caller may change this ticket's status, steps and known fixes (spec 0011, AC-12).
- * ticket.administer acts on any ticket with every valid move and wins over ticket.work, which
- * acts on the caller's own tickets with the mechanic moves only. Anyone else gets a 403.
+ * Whether the caller may change this ticket's steps and known fixes (spec 0011, AC-12):
+ * ticket.administer on any ticket, ticket.work on their own. Anyone else gets a 403. Status
+ * moves check their own right per move (spec 0014, AC-6).
  */
 function workAccess(
   ability: AppAbility,
@@ -130,6 +126,58 @@ function workAccess(
   if (ability.can('administer', target)) return 'administer';
   if (ability.can('work', target)) return 'work';
   throw new ForbiddenException('You are not assigned to this repair ticket');
+}
+
+/** A ticket loaded with its assignments' welinc-auth ids, as both load shapes carry them. */
+type MoveSubject = RepairTicket & {
+  assignments: { mechanic: { authUserId: string | null } }[];
+};
+
+/** Whether the caller holds a status move's right on this ticket (spec 0014, AC-6). */
+function mayMake(
+  move: TicketMove,
+  ability: AppAbility,
+  ticket: MoveSubject,
+): boolean {
+  const target = subject('RepairTicket', ticket);
+  switch (move.right) {
+    case 'work':
+      return ability.can('work', target) || ability.can('administer', target);
+    case 'administer':
+      return ability.can('administer', target);
+    case 'verify':
+      // ticket.verify on a ticket the caller may read and is not assigned to (the ability's
+      // cannot rule); ticket.administer alone no longer closes
+      return ability.can('verify', target) && ability.can('read', target);
+    default:
+      return false;
+  }
+}
+
+/** The status endpoint moves this caller may make on this ticket right now (AC-13). */
+function movesFor(ticket: MoveSubject, ability: AppAbility): TicketMove[] {
+  return statusMovesFrom(ticket.repairStatus).filter((m) =>
+    mayMake(m, ability, ticket),
+  );
+}
+
+/** The 400 for a move outside the table or owned by a later feature (AC-3). */
+function invalidTransition(
+  ticket: MoveSubject,
+  to: RepairStatus,
+  ability: AppAbility,
+) {
+  const from = ticket.repairStatus;
+  const message =
+    from === to && isFinished(from)
+      ? 'Closed and Cancelled tickets are locked. An Admin must unlock this ticket first.'
+      : invalidMoveMessage(from, to);
+  return new BadRequestException({
+    statusCode: 400,
+    code: 'INVALID_TRANSITION',
+    message,
+    allowed: movesFor(ticket, ability).map((m) => m.to),
+  });
 }
 
 /** Assignments loaded with the mechanic's welinc-auth id, so ownership conditions can match. */
@@ -559,190 +607,146 @@ export class RepairsService {
   ) {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id },
-      include: { assignments: ownerInclude, vehicle: true, issues: true },
+      include: { assignments: ownerInclude, issues: true },
     });
 
+    // AC-3a: the first failing check answers, in this order
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
-    if (
-      dto.lastUpdatedAt &&
-      ticket.updatedAt.toISOString() !== dto.lastUpdatedAt
-    ) {
-      throw new ConflictException(
-        'This ticket has been updated by another user. Please reload the page to see the latest changes.',
+    if (ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
+      throw new ConflictException(STALE_TICKET);
+    }
+
+    const from = ticket.repairStatus;
+    // AC-4: an unlocked finished ticket saved with its own status keeps today's save
+    if (from === dto.status && isFinished(from) && ticket.isUnlocked) {
+      return this.saveUnlocked(ticket, dto, ability);
+    }
+
+    const move = findMove(from, dto.status);
+    if (!move || move.trigger !== 'status') {
+      throw invalidTransition(ticket, dto.status, ability);
+    }
+
+    if (!mayMake(move, ability, ticket)) {
+      const selfVerify =
+        move.right === 'verify' &&
+        ability.can('ticket.verify', 'Permission') &&
+        ticket.assignments.some((a) => a.mechanic.authUserId === user.sub);
+      throw new ForbiddenException(
+        selfVerify
+          ? "Someone else must verify work on a ticket you're assigned to."
+          : "You can't make this move on this ticket.",
       );
     }
 
-    // Today's forward moves on the v2 names, plus cancel from any open status (spec 0010, AC-4)
-    const currentStatus = ticket.repairStatus;
-    const nextStatus = dto.status;
-    const statusChanged = nextStatus !== currentStatus;
-
-    // Finished lock: only bypassed if an Admin has explicitly unlocked the ticket
-    if (isFinished(currentStatus) && !ticket.isUnlocked) {
-      throw new BadRequestException(
-        'Closed or Cancelled repair tickets are locked and cannot be edited. An Admin must unlock this ticket first.',
-      );
-    }
-
-    if (statusChanged) {
-      const isValidTransition =
-        nextStatus === RepairStatus.CANCELLED
-          ? OPEN_STATUSES.includes(currentStatus)
-          : FORWARD_MOVES[currentStatus] === nextStatus;
-      if (!isValidTransition) {
-        throw new BadRequestException(
-          `Cannot change status from '${STATUS_LABELS[currentStatus]}' to '${STATUS_LABELS[nextStatus]}'. Tickets must progress in order: Assigned ➔ In progress ➔ For verification ➔ Closed.`,
-        );
-      }
-    }
-
-    // ticket.work: own tickets and the mechanic moves; closing and cancelling need administer
-    if (workAccess(ability, ticket) === 'work') {
-      if (!MECHANIC_ALLOWED_TRANSITIONS.includes(dto.status)) {
-        throw new ForbiddenException(
-          `Mechanics cannot change status to '${STATUS_LABELS[dto.status]}'. Allowed: ${MECHANIC_ALLOWED_TRANSITIONS.map((s) => STATUS_LABELS[s]).join(', ')}.`,
-        );
-      }
-    }
-
-    // Cancellation requires a reason
+    // The values the move needs, last (AC-3a)
+    const remarks = dto.remarks?.trim() || null;
+    const reason = dto.cancellationReason?.trim() || null;
     if (
-      dto.status === RepairStatus.CANCELLED &&
-      !dto.cancellationReason?.trim()
+      move.needs?.includes('remarks') &&
+      (!remarks || remarks.length < 5 || remarks.length > 500)
     ) {
+      throw new BadRequestException('Say what needs fixing.');
+    }
+    if (move.needs?.includes('cancellationReason') && !reason) {
       throw new BadRequestException('A cancellation reason is required');
     }
+    // Spec 0007, AC-31 kept exactly (AC-11): "What fixed it" for every issue, while the
+    // knowledge base is on (spec 0012, AC-15)
+    const resolutions =
+      move.needs?.includes('resolutions') &&
+      this.settings.isModuleOn('knowledge')
+        ? checkResolutions(ticket.issues, dto.resolutions)
+        : null;
 
-    // Spec 0007, AC-31: "What fixed it" for every issue on the way to For verification.
-    // Other moves ignore resolutions, and so does this one while the knowledge base is off
-    // (spec 0012, AC-15).
-    const sendsForVerification =
-      currentStatus === RepairStatus.IN_PROGRESS &&
-      nextStatus === RepairStatus.FOR_VERIFICATION &&
-      this.settings.isModuleOn('knowledge');
-    const resolutions = sendsForVerification
-      ? checkResolutions(ticket.issues, dto.resolutions)
-      : null;
-    // One clock reading for the audit row, lastActivityAt and the close fields (AC-10)
+    // One clock reading for the audit row, lastActivityAt and the close fields
     const now = new Date();
-
-    // Build update data
-    const updateData: Prisma.RepairTicketUpdateInput = {
-      repairStatus: dto.status,
-      // Re-lock ticket after any edit (if it was unlocked)
-      isUnlocked: false,
+    const data: Prisma.RepairTicketUpdateManyMutationInput = {
+      ...this.costData(ticket, dto, ability),
+      ...(move.to === RepairStatus.CANCELLED && { cancellationReason: reason }),
+      // Send back's comment lives only in its audit row (AC-8); other moves keep the latest remark
+      ...(remarks && !move.needs?.includes('remarks') && { remarks }),
     };
+    const issues = resolutions
+      ? ticket.issues.map((issue) => ({
+          id: issue.id,
+          data: resolutionData(
+            resolutions.get(issue.id)!,
+            !!issue.knowledgeEntryId,
+            now,
+          ),
+        }))
+      : [];
 
-    if (dto.cancellationReason) {
-      updateData.cancellationReason = dto.cancellationReason.trim();
-    }
-
-    if (dto.remarks?.trim()) {
-      updateData.remarks = dto.remarks.trim();
-    }
-
-    // Cost fields sent without ticket.costs.edit are ignored (AC-11)
-    if (ability.can('editCosts', subject('RepairTicket', ticket))) {
-      if (dto.partsCost !== undefined) updateData.partsCost = dto.partsCost;
-      if (dto.laborCost !== undefined) updateData.laborCost = dto.laborCost;
-      if (dto.partsCost !== undefined || dto.laborCost !== undefined) {
-        const parts = dto.partsCost ?? Number(ticket.partsCost ?? 0);
-        const labor = dto.laborCost ?? Number(ticket.laborCost ?? 0);
-        updateData.totalCost = parts + labor;
-      }
-    }
-
-    if (statusChanged) {
-      // Only an audited action moves lastActivityAt; an unlocked save with no move writes no row
-      updateData.lastActivityAt = now;
-      // closedAt is the close time: set only on a real move into a finished status,
-      // so saving an unlocked finished ticket never re-dates it
-      if (isFinished(nextStatus)) updateData.closedAt = now;
-      // Whoever closes the ticket verified it (Admin today); cancelling records no verifier
-      if (nextStatus === RepairStatus.CLOSED) {
-        updateData.verifiedByUserId = user.sub;
-        updateData.verifiedByName = whoName(user);
-        updateData.verifiedAt = now;
-      }
-    }
-
-    // When closing or cancelling, revert vehicle status
-    if (isFinished(dto.status)) {
-      await this.prisma.vehicle.update({
-        where: { id: ticket.vehicleId },
-        data: { status: VehicleStatus.AVAILABLE },
-      });
-    }
-
-    // On close, sync odometer reading back to the master Vehicle record
-    // (only if the ticket's reading is higher than the current stored value)
-    if (dto.status === RepairStatus.CLOSED) {
-      const currentVehicle = await this.prisma.vehicle.findUnique({
-        where: { id: ticket.vehicleId },
-        select: { odometer: true },
-      });
-      if (currentVehicle && ticket.odometer > currentVehicle.odometer) {
-        await this.prisma.vehicle.update({
-          where: { id: ticket.vehicleId },
-          data: { odometer: ticket.odometer },
-        });
-        this.logger.log(
-          `Odometer synced for vehicle ${ticket.vehicleId}: ${currentVehicle.odometer} → ${ticket.odometer} km`,
-        );
-      }
-    }
-
-    // Write a status audit row only when the status actually changed
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.repairTicket.update({
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await applyStatusMove(
+        tx,
+        ticket,
+        move,
+        user,
+        move.to === RepairStatus.CANCELLED ? reason : remarks,
+        now,
+        { data, issues },
+      );
+      return tx.repairTicket.findUniqueOrThrow({
         where: { id },
-        data: {
-          ...updateData,
-          // Nested, so the issues are saved before this update reads them back (AC-31)
-          ...(resolutions
-            ? {
-                issues: {
-                  update: ticket.issues.map((issue) => ({
-                    where: { id: issue.id },
-                    data: resolutionData(
-                      resolutions.get(issue.id)!,
-                      !!issue.knowledgeEntryId,
-                      now,
-                    ),
-                  })),
-                },
-              }
-            : {}),
-        },
         include: ticketInclude,
-      }),
-      ...(statusChanged
-        ? [
-            this.prisma.auditLog.create({
-              data: {
-                repairTicketId: id,
-                ...auditData(
-                  user,
-                  statusEvent(
-                    currentStatus,
-                    nextStatus,
-                    nextStatus === RepairStatus.CANCELLED
-                      ? dto.cancellationReason
-                      : dto.remarks,
-                  ),
-                  now,
-                ),
-              },
-            }),
-          ]
-        : []),
-    ]);
+      });
+    });
 
     this.logger.log(
-      `Repair ticket ${ticket.repairNumber} status updated to ${dto.status} by ${user.email}`,
+      `Repair ticket ${ticket.repairNumber} status updated to ${move.to} by ${user.email} (${move.id})`,
     );
 
+    return this.present(updated, ability);
+  }
+
+  /** Cost fields sent with a status body; ignored without ticket.costs.edit (spec 0011, AC-11). */
+  private costData(
+    ticket: RepairTicket,
+    dto: UpdateRepairStatusDto,
+    ability: AppAbility,
+  ): Prisma.RepairTicketUpdateManyMutationInput {
+    if (!ability.can('editCosts', subject('RepairTicket', ticket))) return {};
+    if (dto.partsCost === undefined && dto.laborCost === undefined) return {};
+    const parts = dto.partsCost ?? Number(ticket.partsCost ?? 0);
+    const labor = dto.laborCost ?? Number(ticket.laborCost ?? 0);
+    return {
+      ...(dto.partsCost !== undefined && { partsCost: dto.partsCost }),
+      ...(dto.laborCost !== undefined && { laborCost: dto.laborCost }),
+      totalCost: parts + labor,
+    };
+  }
+
+  /**
+   * AC-4: an unlocked finished ticket saved with its own status. No move and no audit row:
+   * the fields are saved and the ticket locks again, through the same stale check.
+   */
+  private async saveUnlocked(
+    ticket: RepairTicket,
+    dto: UpdateRepairStatusDto,
+    ability: AppAbility,
+  ) {
+    const remarks = dto.remarks?.trim();
+    const reason = dto.cancellationReason?.trim();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.repairTicket.updateMany({
+        where: { id: ticket.id, updatedAt: ticket.updatedAt },
+        data: {
+          ...this.costData(ticket, dto, ability),
+          ...(remarks && { remarks }),
+          ...(reason && { cancellationReason: reason }),
+          isUnlocked: false,
+          updatedAt: new Date(),
+        },
+      });
+      if (count === 0) throw new ConflictException(STALE_TICKET);
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id: ticket.id },
+        include: ticketInclude,
+      });
+    });
     return this.present(updated, ability);
   }
 
@@ -910,13 +914,8 @@ export class RepairsService {
 
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
-    if (
-      dto.lastUpdatedAt &&
-      ticket.updatedAt.toISOString() !== dto.lastUpdatedAt
-    ) {
-      throw new ConflictException(
-        'This ticket has been updated by another user. Please reload the page to see the latest changes.',
-      );
+    if (ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
+      throw new ConflictException(STALE_TICKET);
     }
 
     // Cost encoding only available at FOR_VERIFICATION or once finished
@@ -979,44 +978,44 @@ export class RepairsService {
     const audited = event.changes.length > 0;
     const now = new Date();
 
-    await this.prisma.$transaction(async (tx) => {
-      // Clear existing itemized parts
-      await tx.repairPart.deleteMany({ where: { repairTicketId: id } });
-
-      // Re-create parts if itemized
-      if (!dto.isLumpSum && partsData.length > 0) {
-        await tx.repairPart.createMany({ data: partsData });
-      }
-
-      await tx.repairTicket.update({
-        where: { id },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // The stale check again, first: only the loaded updatedAt may move on (spec 0014, AC-12)
+      const { count } = await tx.repairTicket.updateMany({
+        where: { id, updatedAt: ticket.updatedAt },
         data: {
           isLumpSum: dto.isLumpSum,
           partsCost,
           laborCost,
           totalCost,
           isUnlocked: false,
+          updatedAt: now,
           // A save that changes no amount writes no audit row, so it is not activity (AC-10)
           ...(audited && { lastActivityAt: now }),
         },
       });
+      if (count === 0) throw new ConflictException(STALE_TICKET);
+
+      // Clear existing itemized parts, then re-create them if itemized
+      await tx.repairPart.deleteMany({ where: { repairTicketId: id } });
+      if (!dto.isLumpSum && partsData.length > 0) {
+        await tx.repairPart.createMany({ data: partsData });
+      }
 
       if (audited) {
         await tx.auditLog.create({
           data: { repairTicketId: id, ...auditData(user, event, now) },
         });
       }
-    });
-
-    const updated = await this.prisma.repairTicket.findUnique({
-      where: { id },
-      include: ticketInclude,
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
     });
 
     this.logger.log(
       `Costs updated on ticket ${ticket.repairNumber} by ${user.email}`,
     );
-    return this.present(updated!, ability);
+    return this.present(updated, ability);
   }
 
   // ── List available (unoccupied) in-house mechanics ────────────────────────
@@ -1047,6 +1046,10 @@ export class RepairsService {
     const ticket = await this.prisma.repairTicket.findUnique({ where: { id } });
     if (!ticket) throw new NotFoundException('Repair ticket not found');
 
+    if (ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
+      throw new ConflictException(STALE_TICKET);
+    }
+
     if (!isFinished(ticket.repairStatus)) {
       throw new BadRequestException(
         'Only Closed or Cancelled tickets can be unlocked',
@@ -1058,23 +1061,29 @@ export class RepairsService {
     }
 
     const now = new Date();
-    const [updated] = await this.prisma.$transaction([
-      this.prisma.repairTicket.update({
-        where: { id },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // The stale check again inside the transaction (spec 0014, AC-12)
+      const { count } = await tx.repairTicket.updateMany({
+        where: { id, updatedAt: ticket.updatedAt },
         data: {
           isUnlocked: true,
           unlockReason: dto.unlockReason.trim(),
           lastActivityAt: now,
+          updatedAt: now,
         },
-        include: ticketInclude,
-      }),
-      this.prisma.auditLog.create({
+      });
+      if (count === 0) throw new ConflictException(STALE_TICKET);
+      await tx.auditLog.create({
         data: {
           repairTicketId: id,
           ...auditData(user, unlockEvent(dto.unlockReason), now),
         },
-      }),
-    ]);
+      });
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+    });
 
     this.logger.log(
       `Ticket ${ticket.repairNumber} unlocked by ${user.email}: ${dto.unlockReason}`,
@@ -1170,15 +1179,62 @@ export class RepairsService {
         issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
       ),
     ];
-    const stats = await loadStats(
-      this.prisma,
-      entryIds,
-      this.settings.get('knowledge.min_samples'),
-    );
+    const [stats, lastRejection] = await Promise.all([
+      loadStats(
+        this.prisma,
+        entryIds,
+        this.settings.get('knowledge.min_samples'),
+      ),
+      this.lastRejection(ticket),
+    ]);
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );
-    return this.formatTicket(ticket, ability, hours);
+    return {
+      ...this.formatTicket(ticket, ability, hours),
+      // Single ticket responses only; list rows carry neither (spec 0014, AC-13, AC-14)
+      moves: this.movesOut(ticket, ability),
+      lastRejection,
+    };
+  }
+
+  /** AC-14: the Send back still in force, shown only while the ticket is In progress or On hold. */
+  private async lastRejection(ticket: TicketRow) {
+    if (
+      ticket.repairStatus !== RepairStatus.IN_PROGRESS &&
+      ticket.repairStatus !== RepairStatus.ON_HOLD
+    ) {
+      return null;
+    }
+    const rows = await this.prisma.auditLog.findMany({
+      where: { repairTicketId: ticket.id, action: 'STATUS_CHANGE' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: {
+        changes: true,
+        note: true,
+        actorName: true,
+        actorEmail: true,
+        createdAt: true,
+      },
+      // The scan stops at the newest send or send back; hold moves in between are the only
+      // rows it skips, so a short window is enough
+      take: REJECTION_SCAN_ROWS,
+    });
+    return lastRejectionFrom(rows);
+  }
+
+  /** The moves the web app offers: the status endpoint moves this caller may make now (AC-13). */
+  private movesOut(ticket: TicketRow, ability: AppAbility) {
+    const knowledgeOn = this.settings.isModuleOn('knowledge');
+    return movesFor(ticket, ability).map((m) => {
+      const need = m.needs?.[0] ?? null;
+      return {
+        to: m.to,
+        label: m.label!,
+        kind: m.kind,
+        needs: need === 'resolutions' && !knowledgeOn ? null : need,
+      };
+    });
   }
 
   private formatTicket(
@@ -1240,6 +1296,8 @@ export class RepairsService {
       can: {
         work: ability.can('work', target),
         administer: ability.can('administer', target),
+        // Spec 0014, AC-13: false on a ticket the caller is assigned to
+        verify: ability.can('verify', target),
         editCosts: ability.can('editCosts', target),
         unlock: ability.can('unlock', target),
       },

@@ -1,5 +1,6 @@
 import {
   IsBoolean,
+  IsISO8601,
   IsNumber,
   IsOptional,
   IsString,
@@ -44,7 +45,7 @@ export class UpdateCostsDto {
   @Type(() => RepairPartDto)
   parts?: RepairPartDto[]; // used in itemized mode
 
-  @IsOptional()
-  @IsString()
-  lastUpdatedAt?: string;
+  // Required, so a costs save runs the stale check (spec 0014, AC-12)
+  @IsISO8601()
+  lastUpdatedAt: string;
 }

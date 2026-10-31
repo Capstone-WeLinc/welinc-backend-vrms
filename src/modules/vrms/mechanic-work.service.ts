@@ -10,6 +10,11 @@ import type { AuthUser } from '../../auth/account-check';
 import { auditData, mechanicUnassignedEvent } from './audit-events';
 import { MechanicRoster } from './mechanic-roster.service';
 import { OPEN_STATUSES } from './ticket-statuses';
+import { applyStatusMove } from './apply-status-move';
+import { findMove } from './ticket-transitions';
+
+/** M2: the last mechanic removed sends an Assigned ticket back to Open (spec 0014). */
+const UNASSIGN_RELEASE = findMove(RepairStatus.ASSIGNED, RepairStatus.OPEN)!;
 
 // Spec 0011, AC-32 and AC-33: what a person still holds when they leave VRMS, and how an Admin
 // moves it back to the queue.
@@ -79,6 +84,9 @@ export class MechanicWorkService {
         select: {
           id: true,
           repairStatus: true,
+          updatedAt: true,
+          vehicleId: true,
+          odometer: true,
           _count: { select: { assignments: true } },
         },
       });
@@ -93,23 +101,22 @@ export class MechanicWorkService {
         if (count === 0) continue;
         const goesBack =
           t.repairStatus === RepairStatus.ASSIGNED && t._count.assignments <= 1;
-        await tx.repairTicket.update({
-          where: { id: t.id },
-          data: {
-            lastActivityAt: now,
-            ...(goesBack && { repairStatus: RepairStatus.OPEN }),
-          },
-        });
-        await tx.auditLog.create({
-          data: {
-            repairTicketId: t.id,
-            ...auditData(
-              user,
-              mechanicUnassignedEvent(person.name, reason, goesBack),
-              now,
-            ),
-          },
-        });
+        const event = mechanicUnassignedEvent(person.name, reason, goesBack);
+        if (goesBack) {
+          // M2 through the one status helper; its MECHANIC_UNASSIGNED row already records the
+          // status change, so no STATUS_CHANGE row is added (spec 0014, AC-1)
+          await applyStatusMove(tx, t, UNASSIGN_RELEASE, user, null, now, {
+            audit: event,
+          });
+        } else {
+          await tx.repairTicket.update({
+            where: { id: t.id },
+            data: { lastActivityAt: now },
+          });
+          await tx.auditLog.create({
+            data: { repairTicketId: t.id, ...auditData(user, event, now) },
+          });
+        }
         released++;
         if (goesBack) reopened++;
       }

@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsISO8601,
   IsOptional,
   IsString,
   IsNumber,
@@ -63,9 +64,9 @@ export class UpdateRepairStatusDto {
   @MaxLength(500)
   remarks?: string;
 
-  @IsOptional()
-  @IsString()
-  lastUpdatedAt?: string;
+  // Required, so every move runs the stale check (spec 0014, AC-12)
+  @IsISO8601()
+  lastUpdatedAt: string;
 
   // Only read on In progress to For verification (spec 0007, AC-31)
   @IsOptional()
