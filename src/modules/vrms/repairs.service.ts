@@ -36,6 +36,7 @@ import {
   decodeCursor,
   encodeCursor,
   knowledgeLinkEvent,
+  lastRejectionFrom,
   olderThan,
   toAuditEvent,
   unlockEvent,
@@ -84,6 +85,9 @@ type JwtUser = {
 const AUDIT_PAGE_SIZE = 50;
 
 const LIST_PAGE_SIZE = 20;
+
+/** How many STATUS_CHANGE rows the lastRejection scan reads, newest first (spec 0014, AC-14). */
+const REJECTION_SCAN_ROWS = 20;
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -1175,19 +1179,48 @@ export class RepairsService {
         issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
       ),
     ];
-    const stats = await loadStats(
-      this.prisma,
-      entryIds,
-      this.settings.get('knowledge.min_samples'),
-    );
+    const [stats, lastRejection] = await Promise.all([
+      loadStats(
+        this.prisma,
+        entryIds,
+        this.settings.get('knowledge.min_samples'),
+      ),
+      this.lastRejection(ticket),
+    ]);
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );
     return {
       ...this.formatTicket(ticket, ability, hours),
-      // Single ticket responses only; list rows carry neither (spec 0014, AC-13)
+      // Single ticket responses only; list rows carry neither (spec 0014, AC-13, AC-14)
       moves: this.movesOut(ticket, ability),
+      lastRejection,
     };
+  }
+
+  /** AC-14: the Send back still in force, shown only while the ticket is In progress or On hold. */
+  private async lastRejection(ticket: TicketRow) {
+    if (
+      ticket.repairStatus !== RepairStatus.IN_PROGRESS &&
+      ticket.repairStatus !== RepairStatus.ON_HOLD
+    ) {
+      return null;
+    }
+    const rows = await this.prisma.auditLog.findMany({
+      where: { repairTicketId: ticket.id, action: 'STATUS_CHANGE' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: {
+        changes: true,
+        note: true,
+        actorName: true,
+        actorEmail: true,
+        createdAt: true,
+      },
+      // The scan stops at the newest send or send back; hold moves in between are the only
+      // rows it skips, so a short window is enough
+      take: REJECTION_SCAN_ROWS,
+    });
+    return lastRejectionFrom(rows);
   }
 
   /** The moves the web app offers: the status endpoint moves this caller may make now (AC-13). */

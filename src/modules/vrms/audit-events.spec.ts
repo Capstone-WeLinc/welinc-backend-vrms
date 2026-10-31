@@ -6,6 +6,7 @@ import {
   decodeCursor,
   encodeCursor,
   knowledgeLinkEvent,
+  lastRejectionFrom,
   olderThan,
   readChanges,
   statusEvent,
@@ -231,5 +232,54 @@ describe('actor fields', () => {
   it('writes one now to the row', () => {
     const now = new Date('2026-10-29T01:00:00.000Z');
     expect(auditData(user, statusEvent('A', 'B'), now).createdAt).toBe(now);
+  });
+});
+
+// Spec 0014, AC-14: the newest first scan behind lastRejection
+describe('lastRejectionFrom', () => {
+  const row = (
+    before: string,
+    after: string,
+    minute: number,
+    note: string | null = null,
+  ) => ({
+    changes: [{ field: 'repairStatus', before, after }],
+    note,
+    actorName: 'Ramon Villanueva',
+    actorEmail: 'vrms.chief@welinc.com',
+    createdAt: new Date(Date.UTC(2026, 9, 31, 8, minute)),
+  });
+
+  it('finds the send back, skipping hold moves after it', () => {
+    expect(
+      lastRejectionFrom([
+        row('ON_HOLD', 'IN_PROGRESS', 30),
+        row('IN_PROGRESS', 'ON_HOLD', 20),
+        row('FOR_VERIFICATION', 'IN_PROGRESS', 10, 'Rear pads still squeal'),
+        row('IN_PROGRESS', 'FOR_VERIFICATION', 5),
+      ]),
+    ).toEqual({
+      remarks: 'Rear pads still squeal',
+      byName: 'Ramon Villanueva',
+      at: '2026-10-31T08:10:00.000Z',
+    });
+  });
+
+  it('ends with null once the work was sent for verification again', () => {
+    expect(
+      lastRejectionFrom([
+        row('IN_PROGRESS', 'FOR_VERIFICATION', 20),
+        row('FOR_VERIFICATION', 'IN_PROGRESS', 10, 'Fix it'),
+      ]),
+    ).toBeNull();
+  });
+
+  it('is null with no send back, and falls back to the email for the name', () => {
+    expect(lastRejectionFrom([row('ASSIGNED', 'IN_PROGRESS', 1)])).toBeNull();
+    expect(
+      lastRejectionFrom([
+        { ...row('FOR_VERIFICATION', 'IN_PROGRESS', 1, 'x'), actorName: null },
+      ])?.byName,
+    ).toBe('vrms.chief@welinc.com');
   });
 });

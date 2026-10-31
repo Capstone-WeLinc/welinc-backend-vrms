@@ -275,6 +275,40 @@ export function readChanges(value: Prisma.JsonValue): AuditChange[] {
   });
 }
 
+/** One STATUS_CHANGE row, as lastRejectionFrom reads it. */
+export type StatusRow = {
+  changes: Prisma.JsonValue;
+  note: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  createdAt: Date;
+};
+
+export type LastRejection = { remarks: string; byName: string; at: string };
+
+/**
+ * Spec 0014, AC-14: the Send back still in force. Rows come newest first (createdAt desc, id
+ * desc). A move into For verification ends the scan with null (the work was resent); the first
+ * For verification to In progress move is the rejection.
+ */
+export function lastRejectionFrom(rows: StatusRow[]): LastRejection | null {
+  for (const row of rows) {
+    const move = readChanges(row.changes).find(
+      (c) => c.field === 'repairStatus',
+    );
+    if (!move) continue;
+    if (move.after === 'FOR_VERIFICATION') return null;
+    if (move.before === 'FOR_VERIFICATION' && move.after === 'IN_PROGRESS') {
+      return {
+        remarks: row.note ?? '',
+        byName: row.actorName ?? row.actorEmail ?? '',
+        at: row.createdAt.toISOString(),
+      };
+    }
+  }
+  return null;
+}
+
 /** The actor is stored on the row itself: welinc-auth id, email, name and role at write time. */
 export function toAuditEvent(row: AuditRow): AuditEvent {
   return {

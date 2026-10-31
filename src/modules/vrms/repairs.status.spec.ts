@@ -533,3 +533,44 @@ describe('RepairsService.unlockTicket (AC-12)', () => {
     expect(firstData(tx.auditLog.create).action).toBe('UNLOCK');
   });
 });
+
+describe('lastRejection on the detail read (AC-14)', () => {
+  const rejected = {
+    changes: [
+      {
+        field: 'repairStatus',
+        before: 'FOR_VERIFICATION',
+        after: 'IN_PROGRESS',
+      },
+    ],
+    note: 'Rear pads still squeal',
+    actorName: 'Ramon Villanueva',
+    actorEmail: 'vrms.chief@welinc.com',
+    createdAt: LOADED,
+  };
+
+  it('sends the Send back still in force while In progress, read newest first', async () => {
+    const { prisma, service } = setup(RepairStatus.IN_PROGRESS);
+    prisma.auditLog.findMany.mockResolvedValue([rejected]);
+    const res = await service.findOne(TICKET, defaultAbility(admin));
+    expect(res.lastRejection).toEqual({
+      remarks: 'Rear pads still squeal',
+      byName: 'Ramon Villanueva',
+      at: AT,
+    });
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { repairTicketId: TICKET, action: 'STATUS_CHANGE' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      }),
+    );
+  });
+
+  it('is null and reads nothing outside In progress and On hold', async () => {
+    const { prisma, service } = setup(RepairStatus.FOR_VERIFICATION);
+    prisma.auditLog.findMany.mockResolvedValue([rejected]);
+    const res = await service.findOne(TICKET, defaultAbility(admin));
+    expect(res.lastRejection).toBeNull();
+    expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
+  });
+});
