@@ -1,4 +1,6 @@
+import heicConvert from 'heic-convert';
 import sharp from 'sharp';
+import { Semaphore } from './semaphore';
 
 // Spec 0017, AC-6: every stored photo is re-encoded. Upright, sRGB, no metadata, no transparency.
 
@@ -24,11 +26,43 @@ export class UnreadableImageError extends Error {
   }
 }
 
-// One image at a time per sharp call keeps CPU and memory steady on a small container
+// One thread per sharp call keeps CPU and memory steady on a 0.5 vCPU, 1 GiB container
 sharp.concurrency(1);
 
-/** JPEG or PNG in; a display JPEG (longest edge 2048, never enlarged) and a 320 px WebP thumbnail out. */
-export async function processImage(input: Buffer): Promise<ProcessedImage> {
+// Per replica: 1 HEIC conversion and 2 other images at once; the rest wait their turn
+const heicSlots = new Semaphore(1);
+const imageSlots = new Semaphore(2);
+
+/** iPhone HEIC or HEIF to JPEG (quality 0.92), in pure WebAssembly. */
+async function heicToJpeg(input: Buffer): Promise<Buffer> {
+  try {
+    const jpeg = await heicConvert({
+      buffer: new Uint8Array(input.buffer, input.byteOffset, input.length),
+      format: 'JPEG',
+      quality: 0.92,
+    });
+    return Buffer.from(jpeg);
+  } catch (cause) {
+    throw new UnreadableImageError({ cause });
+  }
+}
+
+/**
+ * JPEG, PNG or HEIC in; a display JPEG (longest edge 2048, never enlarged) and a 320 px WebP
+ * thumbnail out. The original is never kept.
+ */
+export async function processImage(
+  input: Buffer,
+  type: 'image/jpeg' | 'image/png' | 'image/heic',
+): Promise<ProcessedImage> {
+  const decodable =
+    type === 'image/heic'
+      ? await heicSlots.run(() => heicToJpeg(input))
+      : input;
+  return imageSlots.run(() => reencode(decodable));
+}
+
+async function reencode(input: Buffer): Promise<ProcessedImage> {
   try {
     const { data: display, info } = await sharp(input, {
       limitInputPixels: MAX_INPUT_PIXELS,

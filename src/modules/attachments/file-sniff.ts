@@ -49,6 +49,8 @@ export const TYPE_NAMES: Record<SniffedType, string> = {
   'application/pdf': 'PDF',
 };
 
-export function isImageType(type: SniffedType): boolean {
+export function isImageType(
+  type: SniffedType,
+): type is Exclude<SniffedType, 'application/pdf'> {
   return type !== 'application/pdf';
 }

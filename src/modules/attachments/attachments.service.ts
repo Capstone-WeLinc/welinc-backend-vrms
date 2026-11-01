@@ -13,6 +13,7 @@ import {
   canViewCosts,
 } from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
+import { SettingsService } from '../../settings/settings.service';
 import { whoName } from '../vrms/audit-events';
 import { readableTickets } from '../vrms/ticket-access';
 import { isFinished, STATUS_LABELS } from '../vrms/ticket-statuses';
@@ -41,8 +42,7 @@ import { processImage, UnreadableImageError } from './image-pipeline';
 
 const MB = 1024 * 1024;
 
-/** The upload limits. Milestone 2 reads these from SettingsService (AC-5, AC-9). */
-const LIMITS = { maxFileMb: 10, maxVehiclePhotos: 5, maxDocuments: 20 };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type UploadedFile = { buffer: Buffer; originalname: string };
 
@@ -113,17 +113,28 @@ export class AttachmentsService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(FILE_STORE) private readonly store: FileStore,
+    private readonly settings: SettingsService,
   ) {}
+
+  /** AC-5 and AC-9: the three upload settings, read on every request. */
+  limits() {
+    return {
+      maxFileMb: this.settings.get('uploads.max_file_mb'),
+      maxVehiclePhotos: this.settings.get('uploads.max_vehicle_photos'),
+      maxDocuments: this.settings.get('uploads.max_documents'),
+    };
+  }
 
   /** AC-16: the ticket when the caller may read it, else 404. */
   async findVisibleTicket(ability: AppAbility, id: string): Promise<Ticket> {
     const scope = readableTickets(ability);
-    const ticket = scope
-      ? await this.prisma.repairTicket.findFirst({
-          where: { id, AND: [scope] },
-          select: { id: true, repairStatus: true },
-        })
-      : null;
+    const ticket =
+      scope && UUID.test(id)
+        ? await this.prisma.repairTicket.findFirst({
+            where: { id, AND: [scope] },
+            select: { id: true, repairStatus: true },
+          })
+        : null;
     if (!ticket) throw new NotFoundException('Repair ticket not found');
     return ticket;
   }
@@ -176,7 +187,7 @@ export class AttachmentsService {
       items,
       urlsExpireAt: linkWindow(now).expiresOn,
       limits: {
-        ...LIMITS,
+        ...this.limits(),
         vehiclePhotoCount,
         documentCount: canViewCosts(ability) ? documentCount : 0,
       },
@@ -204,6 +215,7 @@ export class AttachmentsService {
     this.requireStore();
     const ticket = await this.findVisibleTicket(ability, ticketId);
     const rule = KIND_RULES[dto.kind];
+    const limits = this.limits();
 
     // AC-12b: the first failing check wins, in this order
     if (!(await this.canAdd(ability, ticketId, dto.kind))) {
@@ -212,9 +224,9 @@ export class AttachmentsService {
     if (isFinished(ticket.repairStatus)) {
       throw ticketFinished(STATUS_LABELS[ticket.repairStatus]);
     }
-    if (file && file.buffer.length > LIMITS.maxFileMb * MB) {
+    if (file && file.buffer.length > limits.maxFileMb * MB) {
       throw fileTooLarge(
-        LIMITS.maxFileMb,
+        limits.maxFileMb,
         `${(file.buffer.length / MB).toFixed(1)} MB`,
       );
     }
@@ -243,7 +255,7 @@ export class AttachmentsService {
         duplicate: true,
       };
     }
-    await this.checkCaps(this.prisma, ticketId, dto.kind);
+    await this.checkCaps(this.prisma, ticketId, dto.kind, limits);
 
     const prepared = await this.prepare(file, type);
     const id = randomUUID();
@@ -285,7 +297,7 @@ export class AttachmentsService {
             sha256,
           );
           if (duplicate) return { row: duplicate, duplicate: true };
-          await this.checkCaps(tx, ticketId, dto.kind);
+          await this.checkCaps(tx, ticketId, dto.kind, limits);
 
           const row = await tx.attachment.create({
             data: {
@@ -341,12 +353,12 @@ export class AttachmentsService {
     file: UploadedFile,
     type: NonNullable<ReturnType<typeof sniffType>>,
   ): Promise<Prepared> {
-    if (!isImageType(type) || type === 'image/heic') {
-      // HEIC (milestone 2) and PDF (milestone 5) pipelines are not built yet
+    if (!isImageType(type)) {
+      // The PDF pipeline lands with documents (milestone 5)
       throw fileUnreadable();
     }
     try {
-      const image = await processImage(file.buffer);
+      const image = await processImage(file.buffer, type);
       return {
         body: image.display,
         thumbnail: image.thumbnail,
@@ -411,16 +423,17 @@ export class AttachmentsService {
     db: Prisma.TransactionClient,
     ticketId: string,
     kind: AttachmentKind,
+    limits: ReturnType<AttachmentsService['limits']>,
   ) {
     if (kind === 'VEHICLE_PHOTO') {
       const count = await this.liveCount(db, ticketId, ['VEHICLE_PHOTO']);
-      if (count >= LIMITS.maxVehiclePhotos) {
-        throw photoLimitReached(LIMITS.maxVehiclePhotos);
+      if (count >= limits.maxVehiclePhotos) {
+        throw photoLimitReached(limits.maxVehiclePhotos);
       }
     } else if (DOCUMENT_KINDS.includes(kind)) {
       const count = await this.liveCount(db, ticketId, DOCUMENT_KINDS);
-      if (count >= LIMITS.maxDocuments) {
-        throw documentLimitReached(LIMITS.maxDocuments);
+      if (count >= limits.maxDocuments) {
+        throw documentLimitReached(limits.maxDocuments);
       }
     }
   }
@@ -466,7 +479,8 @@ export class AttachmentsService {
     }
   }
 
-  private requireStore() {
+  /** AC-3: every attachment route answers 503 while storage is not configured. */
+  requireStore() {
     if (!this.store.configured) throw new StorageUnavailableException();
   }
 }

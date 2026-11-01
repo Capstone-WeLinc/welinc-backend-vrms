@@ -10,7 +10,7 @@ import {
 // Spec 0012, AC-1: the one definition of settings
 
 describe('SETTINGS_CATALOG', () => {
-  it('holds exactly the 10 entries of the specs, in order (0012 AC-1, 0013 AC-18, 0015 AC-4, 0016 AC-8)', () => {
+  it('holds exactly the 13 entries of the specs, in order (0012 AC-1, 0013 AC-18, 0015 AC-4, 0016 AC-8, 0017 AC-5 and AC-9)', () => {
     expect(SETTINGS_CATALOG.map((entry) => entry.key)).toEqual([
       'module.ai',
       'module.analytics',
@@ -22,6 +22,9 @@ describe('SETTINGS_CATALOG', () => {
       'ai.embed_catchup_days',
       'tickets.require_costs_to_close',
       'tickets.odometer_jump_warn_km',
+      'uploads.max_file_mb',
+      'uploads.max_vehicle_photos',
+      'uploads.max_documents',
     ]);
   });
 

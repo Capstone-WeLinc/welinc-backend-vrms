@@ -187,6 +187,47 @@ export const SETTINGS_CATALOG = [
     max: 200000,
     unit: 'km',
   },
+  {
+    // Spec 0017, AC-5
+    key: 'uploads.max_file_mb',
+    kind: 'value',
+    group: 'Files',
+    label: 'Largest file',
+    description:
+      'The biggest photo or document anyone can attach to a ticket. Never more than 25 MB.',
+    type: 'int',
+    default: 10,
+    min: 1,
+    max: 25,
+    unit: 'MB',
+  },
+  {
+    // Spec 0017, AC-9
+    key: 'uploads.max_vehicle_photos',
+    kind: 'value',
+    group: 'Files',
+    label: 'Vehicle photos per ticket',
+    description: 'How many vehicle photos one ticket can hold.',
+    type: 'int',
+    default: 5,
+    min: 1,
+    max: 20,
+    unit: 'photos',
+  },
+  {
+    // Spec 0017, AC-9
+    key: 'uploads.max_documents',
+    kind: 'value',
+    group: 'Files',
+    label: 'Documents per ticket',
+    description:
+      'How many receipts and other documents one ticket can hold, together.',
+    type: 'int',
+    default: 20,
+    min: 1,
+    max: 100,
+    unit: 'documents',
+  },
 ] as const satisfies readonly SettingEntry[];
 
 export type SettingKey = (typeof SETTINGS_CATALOG)[number]['key'];

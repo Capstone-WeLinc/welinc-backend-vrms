@@ -9,21 +9,21 @@ import {
   Req,
   Res,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import type { AuthUser } from '../../auth/account-check';
 import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { Authenticated } from '../../auth/permissions/permission.decorators';
+import { UploadAccessGuard, UserThrottlerGuard } from './attachments.guard';
 import { AttachmentsService } from './attachments.service';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
+import { SingleFileInterceptor } from './upload.interceptor';
 
 type AuthRequest = { user: AuthUser };
-
-/** AC-5: the hard cap multer holds in memory; the setting is checked after. */
-export const MULTER_MAX_BYTES = 25 * 1024 * 1024 + 1;
 
 // Spec 0017, API surface. The add right depends on the kind, so the service checks it (AC-15).
 @Controller('vrms/repairs/:id/attachments')
@@ -39,13 +39,13 @@ export class AttachmentsController {
     return this.attachments.list(id, ability);
   }
 
+  // AC-12 and AC-12a: visibility (404), then the per user rate limit (429), and only then is the
+  // body read into memory by the interceptor
   @Authenticated()
   @Post()
-  @UseInterceptors(
-    FileInterceptor('file', {
-      limits: { fileSize: MULTER_MAX_BYTES, files: 1, fields: 5 },
-    }),
-  )
+  @UseGuards(UploadAccessGuard, UserThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseInterceptors(SingleFileInterceptor)
   async upload(
     @Param('id', ParseUUIDPipe) id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
