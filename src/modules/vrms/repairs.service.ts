@@ -27,6 +27,7 @@ import {
 import { UserRole } from '../../auth/roles';
 import {
   type AppAbility,
+  canViewCosts,
   COST_FIELDS,
 } from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
@@ -37,6 +38,7 @@ import {
   createdEvent,
   decodeCursor,
   encodeCursor,
+  hideDocumentEvents,
   knowledgeLinkEvent,
   mechanicAssignedEvent,
   lastRejectionFrom,
@@ -1383,6 +1385,7 @@ export class RepairsService {
 
   async findAuditEvents(
     query: AuditEventsQueryDto,
+    ability: AppAbility,
   ): Promise<{ data: AuditEvent[]; nextCursor: string | null }> {
     const limit = query.limit ?? AUDIT_PAGE_SIZE;
     const { from, to } = parseRange(query.from, query.to);
@@ -1405,6 +1408,9 @@ export class RepairsService {
     }
     if (query.ticketId) filters.push({ repairTicketId: query.ticketId });
     if (query.cursor) filters.push(olderThan(decodeCursor(query.cursor)));
+    // Spec 0017, AC-16: receipt and document events stay hidden without ticket.costs.view
+    const hidden = hideDocumentEvents(canViewCosts(ability));
+    if (hidden) filters.push(hidden);
 
     // One extra row tells us whether anything older remains
     const rows = await this.prisma.auditLog.findMany({

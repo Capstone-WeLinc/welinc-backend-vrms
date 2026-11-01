@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common/constants';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import type { Request } from 'express';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
@@ -125,10 +126,13 @@ describe('Route decorators (AC-7)', () => {
     expect(wrong.map(label)).toEqual([]);
   });
 
-  it('opens only the health check to everyone, and only /permissions/me to any signed in user', () => {
+  it('opens only the health check to everyone, and only /permissions/me and the attachment routes (spec 0017, AC-12) to any signed in user', () => {
     expect(routes.filter((r) => r.isPublic).map(label)).toEqual(['GET /']);
     expect(routes.filter((r) => r.authenticated).map(label)).toEqual([
       'GET /vrms/permissions/me',
+      'GET /vrms/repairs/:id/attachments',
+      'DELETE /vrms/repairs/:id/attachments/:attachmentId',
+      'POST /vrms/repairs/:id/attachments',
     ]);
   });
 });
@@ -177,6 +181,8 @@ describe('Every route against every matrix role, under the default matrix (AC-15
     );
     deps.delete(PermissionsService);
     const moduleRef = await Test.createTestingModule({
+      // The upload route's per user throttle guard needs its options (spec 0017, AC-12)
+      imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10_000 }])],
       controllers,
       providers: [
         ...[...deps].map((dep) => ({ provide: dep, useValue: stubService() })),

@@ -17,7 +17,10 @@ export type TicketAction =
   | 'verify'
   | 'editCosts'
   | 'unlock'
-  | 'assign';
+  | 'assign'
+  | 'addFiles'
+  | 'addDocuments'
+  | 'removeAny';
 export type AppAction = TicketAction | 'edit' | 'review' | PermissionKey;
 
 export type AppSubjects =
@@ -85,6 +88,19 @@ export function buildAbility(
         break;
       case 'ticket.unlock':
         can('unlock', 'RepairTicket');
+        break;
+      case 'ticket.files.add':
+        // Spec 0017, AC-15: everywhere the caller sees every ticket, else on their assigned ones
+        if (keys.has('ticket.view_all')) can('addFiles', 'RepairTicket');
+        else can('addFiles', 'RepairTicket', mine);
+        break;
+      case 'ticket.documents.add':
+        // Spec 0017, AC-15: no condition; the 404 visibility check bounds it to tickets the
+        // caller can see. Documents also need ticket.costs.view, checked per kind
+        can('addDocuments', 'RepairTicket');
+        break;
+      case 'ticket.files.remove_any':
+        can('removeAny', 'RepairTicket');
         break;
       case 'knowledge.view':
         can('read', 'KnowledgeEntry', { status: 'ACTIVE' });

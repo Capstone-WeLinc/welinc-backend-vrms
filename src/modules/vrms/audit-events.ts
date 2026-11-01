@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UserRole } from '../../auth/roles';
+import { DOCUMENT_KINDS } from '../attachments/attachment-kinds';
 
 // Spec 0003 and spec 0010. One audit row per event: who did it, the action, its field changes as a
 // JSON list, and an optional note. Pure helpers, so the shapes test without a database.
@@ -21,6 +22,8 @@ export const AUDIT_ACTIONS = [
   'KNOWLEDGE_LINK',
   'MECHANIC_UNASSIGNED',
   'MECHANIC_ASSIGNED',
+  'ATTACHMENT_ADDED',
+  'ATTACHMENT_REMOVED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -201,6 +204,63 @@ export function mechanicAssignedEvent(names: string[]): AuditEventData {
       { field: 'repairStatus', before: 'OPEN', after: 'ASSIGNED' },
     ],
     note: null,
+  };
+}
+
+/** What an attachment event names: the file, its id and its kind (spec 0017, AC-18). */
+export type AttachmentRef = {
+  id: string;
+  kind: string;
+  kindLabel: string;
+  fileName: string;
+};
+
+function attachmentChanges(file: AttachmentRef, added: boolean): AuditChange[] {
+  const name = `${file.kindLabel}: ${file.fileName}`;
+  return [
+    {
+      field: 'attachment',
+      before: added ? null : name,
+      after: added ? name : null,
+    },
+    // Extras ride in changes, the way KNOWLEDGE_LINK carries issueId
+    { field: 'attachmentId', before: null, after: file.id },
+    { field: 'kind', before: null, after: file.kind },
+  ];
+}
+
+export function attachmentAddedEvent(file: AttachmentRef): AuditEventData {
+  return {
+    action: 'ATTACHMENT_ADDED',
+    changes: attachmentChanges(file, true),
+    note: null,
+  };
+}
+
+export function attachmentRemovedEvent(file: AttachmentRef): AuditEventData {
+  return {
+    action: 'ATTACHMENT_REMOVED',
+    changes: attachmentChanges(file, false),
+    note: null,
+  };
+}
+
+/**
+ * Spec 0017, AC-16: the one where fragment that hides document add and remove events from a
+ * caller without ticket.costs.view. Every audit reader applies it. Null means nothing to hide.
+ */
+export function hideDocumentEvents(
+  canViewCosts: boolean,
+): Prisma.AuditLogWhereInput | null {
+  if (canViewCosts) return null;
+  return {
+    NOT: {
+      action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
+      // jsonb containment (@>): matches a changes element with this field and value
+      OR: DOCUMENT_KINDS.map((kind) => ({
+        changes: { array_contains: [{ field: 'kind', after: kind }] },
+      })),
+    },
   };
 }
 

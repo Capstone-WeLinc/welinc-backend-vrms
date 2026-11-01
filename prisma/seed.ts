@@ -25,6 +25,9 @@ async function cleanDatabase(prisma: PrismaClient) {
   await prisma.knowledgeEntryChange.deleteMany({});
   // Audit rows first: the database refuses to delete a ticket that still has them (spec 0010, AC-8)
   await prisma.auditLog.deleteMany({});
+  // Spec 0017: attachment rows block a ticket delete too. Their blobs become orphans, which the
+  // nightly sweep removes after 24 hours.
+  await prisma.attachment.deleteMany({});
   await prisma.ticketAssignment.deleteMany({});
   await prisma.repairPart.deleteMany({});
   await prisma.repairIssue.deleteMany({});

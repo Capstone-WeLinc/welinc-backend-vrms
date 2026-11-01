@@ -1,8 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
-import type { ServerResponse } from 'http';
 import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 
@@ -13,13 +11,7 @@ function isLocalDevOrigin(origin: string): boolean {
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
-    prefix: '/uploads/',
-    setHeaders: (res: ServerResponse) => {
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-    },
-  });
-
+  // Spec 0017, AC-1: no files on local disk; attachments open through signed Blob Storage links
   app.use((_: Request, res: Response, next: NextFunction) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
