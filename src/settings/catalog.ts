@@ -173,6 +173,20 @@ export const SETTINGS_CATALOG = [
     type: 'boolean',
     default: false,
   },
+  {
+    // Spec 0016, AC-8
+    key: 'tickets.odometer_jump_warn_km',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Odometer jump that needs a check',
+    description:
+      'A new ticket reading this far above the truck’s last reading must be confirmed as right.',
+    type: 'int',
+    default: 20000,
+    min: 1000,
+    max: 200000,
+    unit: 'km',
+  },
 ] as const satisfies readonly SettingEntry[];
 
 export type SettingKey = (typeof SETTINGS_CATALOG)[number]['key'];

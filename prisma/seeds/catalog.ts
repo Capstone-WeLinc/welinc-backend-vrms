@@ -1117,6 +1117,8 @@ PROBLEMS.push(
 export type VehicleSpec = {
   plateNumber: string;
   model: string;
+  /** A starting vehicle type name from the lookup list (spec 0016, AC-21). */
+  type: string;
   /** Payload in kilograms. */
   capacity: number;
   /** Odometer at the start of the seeded history. */
@@ -1132,6 +1134,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NDG 5821',
     model: 'Isuzu Elf NKR',
+    type: '4 wheeler',
     capacity: 3000,
     startKm: 41200,
     kmPerDay: 140,
@@ -1140,6 +1143,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NEB 7306',
     model: 'Isuzu Elf NLR',
+    type: '4 wheeler',
     capacity: 3500,
     startKm: 18600,
     kmPerDay: 160,
@@ -1148,6 +1152,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'DAK 2917',
     model: 'Isuzu Elf NPR',
+    type: '6 wheeler',
     capacity: 4000,
     startKm: 96300,
     kmPerDay: 120,
@@ -1156,6 +1161,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NIE 4482',
     model: 'Mitsubishi Fuso Canter FE71',
+    type: '6 wheeler',
     capacity: 3500,
     startKm: 63800,
     kmPerDay: 150,
@@ -1164,6 +1170,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'CAK 9043',
     model: 'Hino 300 Dutro',
+    type: '6 wheeler',
     capacity: 4000,
     startKm: 72000,
     kmPerDay: 130,
@@ -1172,6 +1179,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NBQ 1175',
     model: 'Toyota Hiace Commuter',
+    type: '4 wheeler',
     capacity: 1200,
     startKm: 28400,
     kmPerDay: 180,
@@ -1180,6 +1188,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'PXW 382',
     model: 'Mitsubishi L300 FB',
+    type: '4 wheeler',
     capacity: 1000,
     startKm: 154200,
     kmPerDay: 110,
@@ -1189,6 +1198,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NAU 6620',
     model: 'Isuzu Forward FRR',
+    type: '10 wheeler',
     capacity: 7000,
     startKm: 88100,
     kmPerDay: 170,
@@ -1198,6 +1208,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NCX 3359',
     model: 'Isuzu Elf NKR',
+    type: '4 wheeler',
     capacity: 3000,
     startKm: 52700,
     kmPerDay: 110,
@@ -1206,6 +1217,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'WOB 2947',
     model: 'Hino 300 Dutro',
+    type: '6 wheeler',
     capacity: 4000,
     startKm: 31500,
     kmPerDay: 125,
@@ -1214,6 +1226,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NFH 8814',
     model: 'Mitsubishi Fuso Canter FE71',
+    type: '6 wheeler',
     capacity: 3500,
     startKm: 44900,
     kmPerDay: 115,
@@ -1222,6 +1235,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'DCR 5096',
     model: 'Isuzu Elf NLR',
+    type: '4 wheeler',
     capacity: 3500,
     startKm: 109400,
     kmPerDay: 100,
@@ -1230,6 +1244,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NGT 2731',
     model: 'Hyundai H100',
+    type: '4 wheeler',
     capacity: 1000,
     startKm: 36800,
     kmPerDay: 150,
@@ -1238,6 +1253,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NJA 9468',
     model: 'Toyota Hiace Commuter',
+    type: '4 wheeler',
     capacity: 1200,
     startKm: 12300,
     kmPerDay: 165,
@@ -1246,6 +1262,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NKP 4027',
     model: 'Isuzu Forward FRR',
+    type: '10 wheeler',
     capacity: 7000,
     startKm: 67500,
     kmPerDay: 155,
@@ -1255,6 +1272,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'TGD 908',
     model: 'Foton Tornado',
+    type: '6 wheeler',
     capacity: 5000,
     startKm: 92000,
     kmPerDay: 135,
@@ -1263,6 +1281,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NRE 471',
     model: 'Isuzu Giga FVR',
+    type: 'Tractor head',
     capacity: 9000,
     startKm: 145000,
     kmPerDay: 190,
@@ -1271,6 +1290,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NMS 3384',
     model: 'Isuzu Elf NPR',
+    type: '6 wheeler',
     capacity: 4000,
     startKm: 58200,
     kmPerDay: 145,
@@ -1279,6 +1299,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NOV 1652',
     model: 'Hino 500 FC',
+    type: '10 wheeler',
     capacity: 6500,
     startKm: 81600,
     kmPerDay: 175,
@@ -1287,6 +1308,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'DFL 7790',
     model: 'Mitsubishi Fuso Canter FE85',
+    type: '6 wheeler',
     capacity: 4500,
     startKm: 101700,
     kmPerDay: 140,
@@ -1295,6 +1317,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NPW 5213',
     model: 'Isuzu Elf NKR',
+    type: '4 wheeler',
     capacity: 3000,
     startKm: 22900,
     kmPerDay: 150,
@@ -1303,6 +1326,7 @@ export const VEHICLES: VehicleSpec[] = [
   {
     plateNumber: 'NQZ 8045',
     model: 'Hino 300 Dutro',
+    type: '6 wheeler',
     capacity: 4000,
     startKm: 47300,
     kmPerDay: 130,

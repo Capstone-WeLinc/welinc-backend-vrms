@@ -101,6 +101,13 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
+    key: 'ticket.assign',
+    label: 'Assign mechanics',
+    group: 'Tickets',
+    description: 'Assign in house mechanics to an Open ticket.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
+  },
+  {
     key: 'ticket.unlock',
     label: 'Unlock closed tickets',
     group: 'Tickets',
@@ -136,6 +143,14 @@ export const PERMISSION_CATALOG = [
     group: 'Records',
     description: 'Read the garage, vehicle, driver and mechanic lists.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
+  },
+  {
+    // Spec 0016, AC-21: the Vehicles section in Settings
+    key: 'vehicle.manage',
+    label: 'Manage vehicles',
+    group: 'Records',
+    description: 'Set a vehicle type on each truck in Settings.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
     key: 'knowledge.view',
@@ -191,7 +206,8 @@ export const PERMISSION_CATALOG = [
     key: 'lookups.manage',
     label: 'Edit lookup lists',
     group: 'Admin',
-    description: 'Add, rename and deactivate issue categories.',
+    description:
+      'Add, rename and deactivate issue categories, vehicle types and corporations.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
   },
 ] as const satisfies readonly PermissionEntry[];

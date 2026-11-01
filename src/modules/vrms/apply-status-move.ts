@@ -23,6 +23,8 @@ export type MovingTicket = {
   updatedAt: Date;
   vehicleId: string;
   odometer: number;
+  /** Spec 0016, AC-9: the truck's status before the ticket was created; null on old tickets. */
+  priorVehicleStatus: VehicleStatus | null;
 };
 
 export type MoveOptions = {
@@ -108,7 +110,11 @@ export async function applyStatusMove(
     await tx.vehicle.update({
       where: { id: ticket.vehicleId },
       data: {
-        status: VehicleStatus.AVAILABLE,
+        // A truck that was Disabled before the repair goes back to Disabled (spec 0016, AC-9)
+        status:
+          ticket.priorVehicleStatus === VehicleStatus.DISABLED
+            ? VehicleStatus.DISABLED
+            : VehicleStatus.AVAILABLE,
         ...(odometer !== null && { odometer }),
       },
     });

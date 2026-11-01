@@ -51,6 +51,7 @@ npx prisma migrate dev   # asks first, see root rules
 - Every request body is a DTO class with `class-validator` decorators. The global `ValidationPipe` rejects anything else.
 - Database access goes through `PrismaService`, never a new `PrismaClient`.
 - Repair updates use optimistic locking. The client sends `lastUpdatedAt` and a stale write is rejected. Keep that check on any new update path (see `update-costs.dto.ts` and `update-repair-status.dto.ts`).
+- Any path that changes a ticket's `repairStatus` must also set `statusChangedAt` in the same update (spec 0015); `applyStatusMove` does, so go through it. The For verification list sorts on it.
 - Ticket changes write audit events through `audit-events.ts`, so a new state change should add one.
 - Knowledge entry and category writes log one `KnowledgeEntryChange` row per changed field in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
 - Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp. The history starts at one baseline, `20261029000000_baseline` (spec 0010); add new folders after it.

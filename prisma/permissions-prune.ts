@@ -2,10 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
-import {
-  catalogEntry,
-  isMatrixRole,
-} from '../src/auth/permissions/catalog';
+import { catalogEntry, isMatrixRole } from '../src/auth/permissions/catalog';
 
 // Spec 0011, AC-3: the startup backfill never deletes, so rows for a key that left the catalog
 // stay (and deny). `npm run permissions:prune` removes them on purpose, logging each one.
