@@ -145,6 +145,14 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
   },
   {
+    // Spec 0016, AC-21: the Vehicles section in Settings
+    key: 'vehicle.manage',
+    label: 'Manage vehicles',
+    group: 'Records',
+    description: 'Set a vehicle type on each truck in Settings.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
+  },
+  {
     key: 'knowledge.view',
     label: 'Read the fix library',
     group: 'Knowledge',
@@ -198,7 +206,8 @@ export const PERMISSION_CATALOG = [
     key: 'lookups.manage',
     label: 'Edit lookup lists',
     group: 'Admin',
-    description: 'Add, rename and deactivate issue categories.',
+    description:
+      'Add, rename and deactivate issue categories, vehicle types and corporations.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
   },
 ] as const satisfies readonly PermissionEntry[];

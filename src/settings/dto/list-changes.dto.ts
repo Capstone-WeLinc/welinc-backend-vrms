@@ -11,7 +11,7 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 
-export const CHANGE_KINDS = ['all', 'setting', 'permission'] as const;
+export const CHANGE_KINDS = ['all', 'setting', 'permission', 'lookup'] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 
 // Spec 0012, API surface: GET /vrms/settings/changes

@@ -33,13 +33,16 @@ async function cleanDatabase(prisma: PrismaClient) {
   await prisma.knowledgeEntry.deleteMany({});
   await prisma.driver.deleteMany({});
   await prisma.mechanic.deleteMany({});
+  await prisma.vehicleChange.deleteMany({});
   await prisma.vehicle.deleteMany({});
   await prisma.garage.deleteMany({});
   console.log('Database cleaned successfully!\n');
 }
 
 async function main() {
-  console.log(`Seeding database with SEED=${SEED} (the same SEED rebuilds the same data, dated from today)...\n`);
+  console.log(
+    `Seeding database with SEED=${SEED} (the same SEED rebuilds the same data, dated from today)...\n`,
+  );
   // One clock for every module, so "today" is the same instant everywhere
   const now = Date.now();
 
@@ -55,12 +58,24 @@ async function main() {
 
   console.log('Database seeded successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('Login credentials (accounts live in welinc-auth; run its seed too):');
-  console.log('  BMS Admin  → email: bms.admin@welinc.com  password: admin1234');
-  console.log('  VRMS Admin → email: vrms.admin@welinc.com password: admin1234');
-  console.log('  VMMS Admin → email: vmms.admin@welinc.com password: admin1234');
-  console.log('  CS user    → email: cs.user@welinc.com    password: cs1234 (BMS)');
-  console.log('  Operations → email: ops.user@welinc.com   password: ops1234 (BMS)');
+  console.log(
+    'Login credentials (accounts live in welinc-auth; run its seed too):',
+  );
+  console.log(
+    '  BMS Admin  → email: bms.admin@welinc.com  password: admin1234',
+  );
+  console.log(
+    '  VRMS Admin → email: vrms.admin@welinc.com password: admin1234',
+  );
+  console.log(
+    '  VMMS Admin → email: vmms.admin@welinc.com password: admin1234',
+  );
+  console.log(
+    '  CS user    → email: cs.user@welinc.com    password: cs1234 (BMS)',
+  );
+  console.log(
+    '  Operations → email: ops.user@welinc.com   password: ops1234 (BMS)',
+  );
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 

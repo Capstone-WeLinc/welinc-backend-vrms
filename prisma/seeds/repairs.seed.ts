@@ -294,9 +294,7 @@ export async function seedRepairs(
       quarter(around(p.laborHours[0], p.laborHours[1])),
     );
     const crewSize =
-      issueHours.reduce((a, b) => a + b, 0) > 4 && chance(0.45)
-        ? 2
-        : 1;
+      issueHours.reduce((a, b) => a + b, 0) > 4 && chance(0.45) ? 2 : 1;
     const workHours =
       issueHours.reduce((a, b) => a + b, 0) / (crewSize === 2 ? 1.6 : 1);
     // Waits in working hours: for a free bay and mechanic, for parts, for the admin to encode and verify
@@ -306,10 +304,7 @@ export async function seedRepairs(
       MEDIUM: [3, 20],
       LOW: [6, 36],
     };
-    const startAt = addWorkHours(
-      createdAt,
-      between(...QUEUE[priority]),
-    );
+    const startAt = addWorkHours(createdAt, between(...QUEUE[priority]));
     const partsWait = chance(0.3) ? between(1, 5) * DAY : 0;
     const fvAt = addWorkHours(startAt + partsWait, workHours);
     const costAt = addWorkHours(fvAt, between(0.5, 8));
@@ -611,10 +606,7 @@ export async function seedRepairs(
             50,
           )
         : lines.reduce((s, l) => s + l.subtotal, 0);
-      laborCost = peso(
-        labourHours * between(380, 460),
-        50,
-      );
+      laborCost = peso(labourHours * between(380, 460), 50);
       ticketParts = isLumpSum
         ? []
         : lines.map((l, i) => ({
@@ -628,7 +620,12 @@ export async function seedRepairs(
         costAt,
         ADMIN,
         costEvent(
-          { partsCost: null, laborCost: null, totalCost: null, isLumpSum: false },
+          {
+            partsCost: null,
+            laborCost: null,
+            totalCost: null,
+            isLumpSum: false,
+          },
           { partsCost, laborCost, totalCost: partsCost + laborCost, isLumpSum },
         ),
       );

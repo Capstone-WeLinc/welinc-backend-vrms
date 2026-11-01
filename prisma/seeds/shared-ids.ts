@@ -39,29 +39,96 @@ export const NAMED_MECHANICS: SeedPerson[] = [
 
 // 60 more mechanics so the user list has pages
 const FIRST_NAMES = [
-  'Danilo', 'Edgardo', 'Ramon', 'Arnel', 'Bernardo', 'Catalino', 'Dionisio', 'Juan', 'Pedro',
-  'Rommel', 'Roberto', 'Generoso', 'Jaime', 'Manuel', 'Restituto', 'Reynaldo', 'Salvador',
-  'Vicente', 'Wilfredo', 'Renato', 'Gregorio', 'Leopoldo', 'Rolando', 'Armando', 'Francisco',
-  'Ernesto', 'Fernando', 'Mario', 'Antonio', 'Joseph', 'Alberto', 'Ricardo', 'Ferdinand',
-  'Eduardo', 'Roger', 'Enrique', 'Luis', 'Carlos', 'Oscar', 'Winston', 'Benjamin',
+  'Danilo',
+  'Edgardo',
+  'Ramon',
+  'Arnel',
+  'Bernardo',
+  'Catalino',
+  'Dionisio',
+  'Juan',
+  'Pedro',
+  'Rommel',
+  'Roberto',
+  'Generoso',
+  'Jaime',
+  'Manuel',
+  'Restituto',
+  'Reynaldo',
+  'Salvador',
+  'Vicente',
+  'Wilfredo',
+  'Renato',
+  'Gregorio',
+  'Leopoldo',
+  'Rolando',
+  'Armando',
+  'Francisco',
+  'Ernesto',
+  'Fernando',
+  'Mario',
+  'Antonio',
+  'Joseph',
+  'Alberto',
+  'Ricardo',
+  'Ferdinand',
+  'Eduardo',
+  'Roger',
+  'Enrique',
+  'Luis',
+  'Carlos',
+  'Oscar',
+  'Winston',
+  'Benjamin',
 ];
 const LAST_NAMES = [
-  'Santos', 'Ramos', 'Cruz', 'Gonzales', 'Reyes', 'Castro', 'Bulaon', 'Mendoza', 'Pascual',
-  'Perez', 'Mercado', 'Dizon', 'Aquino', 'Bautista', 'Garcia', 'Torres', 'Tolentino',
-  'Villanueva', 'dela Cruz', 'Ocampo', 'Espiritu', 'Panganiban', 'Soriano', 'Gomez', 'Lopez',
-  'Castillo', 'Santiago', 'Sebastian', 'del Rosario', 'Valdez', 'Guzman', 'Corpuz',
+  'Santos',
+  'Ramos',
+  'Cruz',
+  'Gonzales',
+  'Reyes',
+  'Castro',
+  'Bulaon',
+  'Mendoza',
+  'Pascual',
+  'Perez',
+  'Mercado',
+  'Dizon',
+  'Aquino',
+  'Bautista',
+  'Garcia',
+  'Torres',
+  'Tolentino',
+  'Villanueva',
+  'dela Cruz',
+  'Ocampo',
+  'Espiritu',
+  'Panganiban',
+  'Soriano',
+  'Gomez',
+  'Lopez',
+  'Castillo',
+  'Santiago',
+  'Sebastian',
+  'del Rosario',
+  'Valdez',
+  'Guzman',
+  'Corpuz',
 ];
 
-export const BULK_MECHANICS: SeedPerson[] = Array.from({ length: 60 }, (_, k) => {
-  const i = k + 1;
-  const firstName = FIRST_NAMES[i % FIRST_NAMES.length];
-  const lastName = LAST_NAMES[(i * 3) % LAST_NAMES.length];
-  return {
-    id: id(1000 + i),
-    name: `${firstName} ${lastName}`,
-    email: `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(/\s+/g, '')}${i}@welinc.com`,
-  };
-});
+export const BULK_MECHANICS: SeedPerson[] = Array.from(
+  { length: 60 },
+  (_, k) => {
+    const i = k + 1;
+    const firstName = FIRST_NAMES[i % FIRST_NAMES.length];
+    const lastName = LAST_NAMES[(i * 3) % LAST_NAMES.length];
+    return {
+      id: id(1000 + i),
+      name: `${firstName} ${lastName}`,
+      email: `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(/\s+/g, '')}${i}@welinc.com`,
+    };
+  },
+);
 
 // The VRMS role each seeded person holds in welinc-auth's seed
 const ROLE_BY_EMAIL = new Map<string, string>([

@@ -8,6 +8,10 @@ import {
   whoName,
 } from '../modules/vrms/audit-events';
 import { catalogEntry, ROLE_LABELS } from '../auth/permissions/catalog';
+import {
+  LOOKUP_LISTS,
+  isLookupList,
+} from '../modules/vrms/lookups/lookup-lists';
 import { SETTINGS_CATALOG, settingEntry } from './catalog';
 import { parseKeys, type ListChangesQueryDto } from './dto/list-changes.dto';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -18,8 +22,19 @@ export const STALE_SETTINGS =
 
 const CHANGES_PAGE_SIZE = 20;
 
+/** "Vehicle types: 6 wheeler" for a lookup row, from the list's title and the value's name (spec 0016, AC-20). */
+function lookupLabel(key: string, before: unknown, after: unknown): string {
+  const list = key.replace(/^lookup\./, '');
+  const title = isLookupList(list) ? LOOKUP_LISTS[list].title : list;
+  const name = (value: unknown) =>
+    value && typeof value === 'object' && 'name' in value
+      ? String(value.name)
+      : null;
+  return `${title}: ${name(after) ?? name(before) ?? ''}`.trimEnd();
+}
+
 type ChangeRow = {
-  kind: 'setting' | 'permission';
+  kind: 'setting' | 'permission' | 'lookup';
   id: string;
   key: string;
   role: string | null;
@@ -179,9 +194,12 @@ export class SettingsAdminService {
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
     const keys = query.keys === undefined ? null : parseKeys(query.keys);
 
-    const kinds: ('setting' | 'permission')[] = [];
-    if (kind !== 'permission') kinds.push('setting');
-    if (kind !== 'setting' && canSeePermissions) kinds.push('permission');
+    const kinds: ('setting' | 'permission' | 'lookup')[] = [];
+    if (kind === 'all' || kind === 'setting') kinds.push('setting');
+    if (kind === 'all' || kind === 'lookup') kinds.push('lookup');
+    if ((kind === 'all' || kind === 'permission') && canSeePermissions) {
+      kinds.push('permission');
+    }
     if (kinds.length === 0) return { data: [], nextCursor: null };
 
     const rows = await this.prisma.$queryRaw<ChangeRow[]>`
@@ -193,6 +211,11 @@ export class SettingsAdminService {
         SELECT 'permission'::text, id, permission, role, to_jsonb(before), to_jsonb(after),
                NULL::text, actor_name, actor_email, note, created_at
         FROM permission_changes
+        UNION ALL
+        SELECT 'lookup'::text, l.id, 'lookup.' || v.list, NULL::text, l.before, l.after,
+               l.action, l.actor_name, l.actor_email, NULL::text, l.created_at
+        FROM lookup_value_changes l
+        JOIN lookup_values v ON v.id = l.lookup_value_id
       ) c
       WHERE c.kind IN (${Prisma.join(kinds)})
       ${keys ? Prisma.sql`AND c.key IN (${Prisma.join(keys)})` : Prisma.empty}
@@ -213,9 +236,11 @@ export class SettingsAdminService {
         key: row.key,
         // The label from the catalog the key belongs to, else the raw key (Value sourcing)
         label:
-          (row.kind === 'setting'
-            ? settingEntry(row.key)?.label
-            : catalogEntry(row.key)?.label) ?? row.key,
+          row.kind === 'lookup'
+            ? lookupLabel(row.key, row.before, row.after)
+            : ((row.kind === 'setting'
+                ? settingEntry(row.key)?.label
+                : catalogEntry(row.key)?.label) ?? row.key),
         role: row.role,
         roleLabel:
           row.role === null

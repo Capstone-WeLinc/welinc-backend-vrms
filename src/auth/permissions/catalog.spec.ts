@@ -26,6 +26,7 @@ const EXPECTED: Array<
   ['audit.view', 'Records', true, false, false],
   ['analytics.view', 'Records', true, false, false],
   ['config.read', 'Records', true, true, true],
+  ['vehicle.manage', 'Records', true, false, false],
   ['knowledge.view', 'Knowledge', true, true, true],
   ['knowledge.suggest', 'Knowledge', true, true, true],
   ['knowledge.edit', 'Knowledge', true, true, false],
@@ -85,9 +86,9 @@ describe('permission catalog', () => {
   });
 
   // covers: AC-1, AC-2
-  it('seeds one row per matrix role and key, 63 today', () => {
+  it('seeds one row per matrix role and key, 66 today', () => {
     expect(MATRIX_ROLES).toEqual(['ADMIN', 'CHIEF_MECHANIC', 'MECHANIC']);
-    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(63);
+    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(66);
   });
 
   // covers: AC-4
@@ -154,7 +155,7 @@ describe('permission catalog', () => {
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(allowed('ADMIN')).toHaveLength(20);
+    expect(allowed('ADMIN')).toHaveLength(21);
     expect(allowed('ADMIN')).not.toContain('ticket.work');
   });
 
