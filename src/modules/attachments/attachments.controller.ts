@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
@@ -34,9 +36,23 @@ export class AttachmentsController {
   @Get()
   list(
     @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: AuthRequest,
     @CurrentAbility() ability: AppAbility,
   ) {
-    return this.attachments.list(id, ability);
+    return this.attachments.list(id, req.user, ability);
+  }
+
+  // AC-17: soft delete; the remove rule is checked in the service
+  @Authenticated()
+  @Delete(':attachmentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.attachments.remove(id, attachmentId, req.user, ability);
   }
 
   // AC-12 and AC-12a: visibility (404), then the per user rate limit (429), and only then is the

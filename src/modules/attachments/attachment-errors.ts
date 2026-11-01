@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 
 // Spec 0017, API surface: the error bodies the web reads by `code`, with the message it shows.
 
@@ -23,6 +23,16 @@ export const forbiddenKind = () =>
     'FORBIDDEN_KIND',
     'You can’t add this kind of file to this ticket.',
   );
+
+export const notYourFile = () =>
+  attachmentError(
+    HttpStatus.FORBIDDEN,
+    'NOT_YOUR_FILE',
+    'You can only remove files you added yourself.',
+  );
+
+export const attachmentNotFound = () =>
+  new NotFoundException('Attachment not found');
 
 export const issueNotOnTicket = () =>
   attachmentError(

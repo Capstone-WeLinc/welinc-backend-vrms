@@ -67,8 +67,11 @@ export class RepairsController {
   // Audit timeline, keyset paged (declared before :id)
   @RequirePermission('audit.view')
   @Get('audit-logs')
-  findAuditEvents(@Query() query: AuditEventsQueryDto) {
-    return this.repairsService.findAuditEvents(query);
+  findAuditEvents(
+    @Query() query: AuditEventsQueryDto,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.repairsService.findAuditEvents(query, ability);
   }
 
   // Everyone who appears in the audit log, for the Person filter

@@ -124,6 +124,25 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
   },
   {
+    // Spec 0017, AC-15: receipts and other documents also need ticket.costs.view
+    key: 'ticket.documents.add',
+    label: 'Add receipts and other documents',
+    group: 'Tickets',
+    description:
+      'Add receipts and other documents on the tickets you can see. Needs See costs too.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
+  },
+  {
+    // Spec 0017, AC-15 and AC-17: everyone may still remove the files they added themselves
+    key: 'ticket.files.remove_any',
+    label: 'Remove anyone’s files',
+    group: 'Tickets',
+    description:
+      'Remove photos, proof and documents that someone else added, on the tickets you can see.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
+    locked: { MECHANIC: true },
+  },
+  {
     key: 'ai.use',
     label: 'Use AI diagnosis',
     group: 'Tickets',

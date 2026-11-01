@@ -23,6 +23,8 @@ const EXPECTED: Array<
   ['ticket.assign', 'Tickets', true, true, false],
   ['ticket.unlock', 'Tickets', true, false, false],
   ['ticket.files.add', 'Tickets', true, true, true],
+  ['ticket.documents.add', 'Tickets', true, true, false],
+  ['ticket.files.remove_any', 'Tickets', true, true, false],
   ['ai.use', 'Tickets', true, true, true],
   ['audit.view', 'Records', true, false, false],
   ['analytics.view', 'Records', true, false, false],
@@ -50,7 +52,7 @@ const MODULE_KEYS = {
 
 describe('permission catalog', () => {
   // covers: AC-1
-  it('holds exactly the 20 keys of the specs, in the spec order', () => {
+  it('holds exactly the keys of the specs, in the spec order', () => {
     expect(PERMISSION_CATALOG.map((e) => e.key)).toEqual(
       EXPECTED.map(([key]) => key),
     );
@@ -87,19 +89,26 @@ describe('permission catalog', () => {
   });
 
   // covers: AC-1, AC-2
-  it('seeds one row per matrix role and key, 69 today', () => {
+  it('seeds one row per matrix role and key, 75 today', () => {
     expect(MATRIX_ROLES).toEqual(['ADMIN', 'CHIEF_MECHANIC', 'MECHANIC']);
-    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(69);
+    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(75);
   });
 
-  // covers: AC-4
-  it('locks users.manage and permissions.manage for every role, and settings.manage for Admin only', () => {
+  // covers: AC-4. Spec 0017, AC-15 locks ticket.files.remove_any off for the Mechanic
+  it('locks users.manage and permissions.manage for every role, settings.manage for Admin and remove_any for Mechanic', () => {
     const locked = PERMISSION_CATALOG.filter((e) => 'locked' in e).map(
       (e) => e.key,
     );
 
-    expect(locked).toEqual([...LOCKED_KEYS, 'settings.manage']);
+    expect(locked).toEqual([
+      'ticket.files.remove_any',
+      ...LOCKED_KEYS,
+      'settings.manage',
+    ]);
     expect(catalogEntry('settings.manage')?.locked).toEqual({ ADMIN: true });
+    expect(catalogEntry('ticket.files.remove_any')?.locked).toEqual({
+      MECHANIC: true,
+    });
     for (const key of LOCKED_KEYS) {
       expect(catalogEntry(key)?.locked).toEqual({
         ADMIN: true,
@@ -142,6 +151,8 @@ describe('permission catalog', () => {
       'ticket.costs.view',
       'ticket.assign',
       'ticket.files.add',
+      'ticket.documents.add',
+      'ticket.files.remove_any',
       'ai.use',
       'config.read',
       'knowledge.view',
@@ -158,7 +169,7 @@ describe('permission catalog', () => {
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(allowed('ADMIN')).toHaveLength(22);
+    expect(allowed('ADMIN')).toHaveLength(24);
     expect(allowed('ADMIN')).not.toContain('ticket.work');
   });
 

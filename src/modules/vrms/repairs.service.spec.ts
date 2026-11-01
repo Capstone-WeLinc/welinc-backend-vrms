@@ -16,6 +16,7 @@ import type { PermissionsService } from '../../auth/permissions/permissions.serv
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsController } from './repairs.controller';
 import { RepairsService } from './repairs.service';
+import { hideDocumentEvents } from './audit-events';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -421,12 +422,57 @@ describe('RepairsService.findAuditEvents', () => {
       new FakeSettings(),
       new FakeEmbeddings().asService(),
     );
-    await service.findAuditEvents({ ticketId: GARAGE });
+    await service.findAuditEvents({ ticketId: GARAGE }, asAdmin);
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
       { where: Prisma.AuditLogWhereInput },
     ];
     expect(args.where.AND).toEqual([{ repairTicketId: GARAGE }]);
   });
+
+  // Spec 0017, AC-16: one ticket's Activity and the global Audit logs both apply the fragment
+  it.each([
+    ['the ticket Activity', { ticketId: GARAGE }],
+    ['the global Audit logs', {}],
+  ])(
+    'hides receipt and document events in %s without ticket.costs.view',
+    async (_reader, query) => {
+      const prisma = {
+        auditLog: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      const service = new RepairsService(
+        prisma as unknown as PrismaService,
+        new FakeSettings(),
+        new FakeEmbeddings().asService(),
+      );
+
+      await service.findAuditEvents(query, asMechanic);
+      await service.findAuditEvents(query, asAdmin);
+      const [[hiding], [showing]] = prisma.auditLog.findMany.mock.calls as [
+        { where: { AND: Prisma.AuditLogWhereInput[] } },
+      ][];
+
+      expect(hiding.where.AND).toContainEqual(hideDocumentEvents(false));
+      expect(hideDocumentEvents(false)).toEqual({
+        NOT: {
+          action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
+          OR: [
+            {
+              changes: {
+                array_contains: [{ field: 'kind', after: 'RECEIPT' }],
+              },
+            },
+            {
+              changes: {
+                array_contains: [{ field: 'kind', after: 'OTHER_DOCUMENT' }],
+              },
+            },
+          ],
+        },
+      });
+      expect(showing.where.AND).not.toContainEqual(hideDocumentEvents(false));
+      expect(hideDocumentEvents(true)).toBeNull();
+    },
+  );
 
   it('matches the Person filter on the welinc-auth id in actorUserId (spec 0009, AC-10)', async () => {
     const prisma = { auditLog: { findMany: jest.fn().mockResolvedValue([]) } };
@@ -435,7 +481,7 @@ describe('RepairsService.findAuditEvents', () => {
       new FakeSettings(),
       new FakeEmbeddings().asService(),
     );
-    await service.findAuditEvents({ actorId: GARAGE });
+    await service.findAuditEvents({ actorId: GARAGE }, asAdmin);
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
       { where: Prisma.AuditLogWhereInput },
     ];

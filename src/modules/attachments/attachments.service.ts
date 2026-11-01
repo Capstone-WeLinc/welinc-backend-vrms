@@ -14,17 +14,29 @@ import {
 } from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
 import { SettingsService } from '../../settings/settings.service';
-import { whoName } from '../vrms/audit-events';
+import {
+  attachmentAddedEvent,
+  attachmentRemovedEvent,
+  auditData,
+  whoName,
+} from '../vrms/audit-events';
 import { readableTickets } from '../vrms/ticket-access';
 import { isFinished, STATUS_LABELS } from '../vrms/ticket-statuses';
-import { DOCUMENT_KINDS, KIND_RULES, visibleKinds } from './attachment-kinds';
 import {
+  type AddAction,
+  DOCUMENT_KINDS,
+  KIND_RULES,
+  visibleKinds,
+} from './attachment-kinds';
+import {
+  attachmentNotFound,
   fileTooLarge,
   fileTypeNotAllowed,
   fileUnreadable,
   forbiddenKind,
   issueNotOnTicket,
   noFile,
+  notYourFile,
   documentLimitReached,
   photoLimitReached,
   ticketFinished,
@@ -63,6 +75,42 @@ export type AttachmentView = {
 };
 
 type Ticket = { id: string; repairStatus: RepairStatus };
+
+/** What AC-17's remove rule reads, worked out once per request. */
+export type RemoveRights = {
+  userId: string;
+  /** The ticket is in an open status (AC-10). */
+  open: boolean;
+  removeAny: boolean;
+  /** The add right for each add action on this ticket (AC-15), documents including costs. */
+  add: Record<AddAction, boolean>;
+};
+
+/**
+ * Spec 0017, AC-17: anyone with ticket.files.remove_any removes any file they can see; the
+ * uploader removes their own while they still hold the add right for its kind. Never on a
+ * finished ticket.
+ */
+export function canRemove(
+  row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
+  rights: RemoveRights,
+): boolean {
+  if (!rights.open) return false;
+  if (rights.removeAny) return true;
+  return (
+    row.uploadedByUserId === rights.userId &&
+    rights.add[KIND_RULES[row.kind].addAction]
+  );
+}
+
+function attachmentRef(row: Pick<Attachment, 'id' | 'kind' | 'fileName'>) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    kindLabel: KIND_RULES[row.kind].label,
+    fileName: row.fileName,
+  };
+}
 
 /** The bytes ready to store, after the pipeline. */
 type Prepared = {
@@ -157,7 +205,7 @@ export class AttachmentsService {
     return found > 0;
   }
 
-  async list(ticketId: string, ability: AppAbility) {
+  async list(ticketId: string, user: AuthUser, ability: AppAbility) {
     this.requireStore();
     const ticket = await this.findVisibleTicket(ability, ticketId);
     const kinds = visibleKinds(canViewCosts(ability));
@@ -181,7 +229,15 @@ export class AttachmentsService {
       ]);
 
     const open = !isFinished(ticket.repairStatus);
-    const items = await Promise.all(rows.map((row) => this.view(row, now)));
+    const rights: RemoveRights = {
+      userId: user.sub,
+      open,
+      removeAny: ability.can('removeAny', 'RepairTicket'),
+      add: { addFiles, addDocuments },
+    };
+    const items = await Promise.all(
+      rows.map((row) => this.view(row, now, canRemove(row, rights))),
+    );
 
     return {
       items,
@@ -242,6 +298,17 @@ export class AttachmentsService {
     }
     if (dto.issueId) await this.checkIssue(this.prisma, ticketId, dto);
 
+    // AC-17 here: the caller just passed the add check on an open ticket
+    const removeAny = ability.can('removeAny', 'RepairTicket');
+    const answer = async (row: Attachment, duplicate: boolean) => ({
+      attachment: await this.view(
+        row,
+        new Date(),
+        removeAny || row.uploadedByUserId === user.sub,
+      ),
+      duplicate,
+    });
+
     const sha256 = sha256Hex(file.buffer);
     const existing = await this.findDuplicate(
       this.prisma,
@@ -249,12 +316,7 @@ export class AttachmentsService {
       dto.kind,
       sha256,
     );
-    if (existing) {
-      return {
-        attachment: await this.view(existing, new Date()),
-        duplicate: true,
-      };
-    }
+    if (existing) return answer(existing, true);
     await this.checkCaps(this.prisma, ticketId, dto.kind, limits);
 
     const prepared = await this.prepare(file, type);
@@ -299,9 +361,11 @@ export class AttachmentsService {
           if (duplicate) return { row: duplicate, duplicate: true };
           await this.checkCaps(tx, ticketId, dto.kind, limits);
 
+          const now = new Date();
           const row = await tx.attachment.create({
             data: {
               id,
+              createdAt: now,
               repairTicketId: ticketId,
               issueId:
                 dto.kind === 'VEHICLE_PHOTO' ? (dto.issueId ?? null) : null,
@@ -318,16 +382,20 @@ export class AttachmentsService {
               uploadedByName: whoName(user),
             },
           });
+          // AC-18: the audit row in the same transaction (lock order: ticket, attachment, audit)
+          await tx.auditLog.create({
+            data: {
+              repairTicketId: ticketId,
+              ...auditData(user, attachmentAddedEvent(attachmentRef(row)), now),
+            },
+          });
           return { row, duplicate: false };
         },
         { timeout: 10_000 },
       );
 
       if (result.duplicate) await this.deleteBlobs(written);
-      return {
-        attachment: await this.view(result.row, new Date()),
-        duplicate: result.duplicate,
-      };
+      return answer(result.row, result.duplicate);
     } catch (error) {
       await this.deleteBlobs(written);
       // AC-8: the partial unique index is only a backstop, caught outside the aborted transaction
@@ -338,14 +406,67 @@ export class AttachmentsService {
           dto.kind,
           sha256,
         );
-        if (row)
-          return {
-            attachment: await this.view(row, new Date()),
-            duplicate: true,
-          };
+        if (row) return answer(row, true);
       }
       throw error;
     }
+  }
+
+  /**
+   * AC-17: soft delete. Error order (AC-12b): 404 ticket or attachment not visible, 204 when
+   * already deleted, 403 NOT_YOUR_FILE, 409 TICKET_FINISHED (again under the row lock).
+   */
+  async remove(
+    ticketId: string,
+    attachmentId: string,
+    user: AuthUser,
+    ability: AppAbility,
+  ): Promise<void> {
+    this.requireStore();
+    const ticket = await this.findVisibleTicket(ability, ticketId);
+    const row = await this.prisma.attachment.findFirst({
+      where: {
+        id: attachmentId,
+        repairTicketId: ticketId,
+        // A receipt or other document is 404 without ticket.costs.view (AC-16)
+        kind: { in: visibleKinds(canViewCosts(ability)) },
+      },
+    });
+    if (!row) throw attachmentNotFound();
+    if (row.deletedAt) return;
+
+    const mayRemove =
+      ability.can('removeAny', 'RepairTicket') ||
+      (row.uploadedByUserId === user.sub &&
+        (await this.canAdd(ability, ticketId, row.kind)));
+    if (!mayRemove) throw notYourFile();
+    if (isFinished(ticket.repairStatus)) {
+      throw ticketFinished(STATUS_LABELS[ticket.repairStatus]);
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(
+      async (tx) => {
+        await this.lockOpenTicket(tx, ticketId);
+        // Only a live row changes, so a second remove racing this one writes nothing (idempotent)
+        const { count } = await tx.attachment.updateMany({
+          where: { id: row.id, deletedAt: null },
+          data: {
+            deletedAt: now,
+            deletedByUserId: user.sub,
+            deletedByName: whoName(user),
+          },
+        });
+        if (count === 0) return;
+        await tx.auditLog.create({
+          data: {
+            repairTicketId: ticketId,
+            ...auditData(user, attachmentRemovedEvent(attachmentRef(row)), now),
+          },
+        });
+      },
+      { timeout: 10_000 },
+    );
   }
 
   /** AC-6 and AC-7: the bytes that get stored. No uploaded bytes are stored unchanged. */
@@ -438,7 +559,11 @@ export class AttachmentsService {
     }
   }
 
-  private async view(row: Attachment, now: Date): Promise<AttachmentView> {
+  private async view(
+    row: Attachment,
+    now: Date,
+    removable: boolean,
+  ): Promise<AttachmentView> {
     const [url, thumbnailUrl] = await Promise.all([
       this.store.readUrl(row.storageKey, row.fileName, row.mimeType, now),
       row.thumbnailKey
@@ -463,8 +588,7 @@ export class AttachmentsService {
       createdAt: row.createdAt,
       url,
       thumbnailUrl,
-      // Milestone 3 computes this from AC-17
-      canRemove: false,
+      canRemove: removable,
     };
   }
 

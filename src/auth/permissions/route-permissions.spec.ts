@@ -131,6 +131,7 @@ describe('Route decorators (AC-7)', () => {
     expect(routes.filter((r) => r.authenticated).map(label)).toEqual([
       'GET /vrms/permissions/me',
       'GET /vrms/repairs/:id/attachments',
+      'DELETE /vrms/repairs/:id/attachments/:attachmentId',
       'POST /vrms/repairs/:id/attachments',
     ]);
   });
