@@ -449,7 +449,9 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
     ({
       vehiclePlate: 'ABC 123',
       garageLocation: 'Sta. Rosa',
-      driverName: 'Driver One',
+      driverId: '00000000-0000-4000-8000-0000000000d1',
+      accountType: 'ONLINE',
+      odometerReading: 1000,
       issues: [],
       mechanics,
     }) as unknown as CreateRepairDto;
@@ -459,11 +461,13 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
       vehicle: {
         findFirst: jest.fn().mockResolvedValue({ id: 'v1' }),
         update: jest.fn().mockRejectedValue(new Error('stop here')),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 0 }),
       },
       garage: { findFirst: jest.fn().mockResolvedValue({ id: 'g1' }) },
       issueCategory: { findMany: jest.fn().mockResolvedValue([]) },
       knowledgeEntry: { findMany: jest.fn().mockResolvedValue([]) },
       driver: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'd1' }),
         findUnique: jest.fn().mockResolvedValue({ id: 'd1' }),
         update: jest.fn().mockResolvedValue({ id: 'd1' }),
         create: jest.fn(),
@@ -472,7 +476,10 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
       $queryRaw: jest
         .fn()
         .mockResolvedValue([{ id: 'v1', status: 'AVAILABLE' }]),
-      repairTicket: { findFirst: jest.fn().mockResolvedValue(null) },
+      repairTicket: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        aggregate: jest.fn().mockResolvedValue({ _max: { odometer: null } }),
+      },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) =>

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../shared/prisma.service';
 import { OPEN_STATUSES } from '../ticket-statuses';
+import type { AppAbility } from '../../../auth/permissions/ability.factory';
 
 @Injectable()
 export class ConfigService {
@@ -59,11 +60,28 @@ export class ConfigService {
 
   // ─── Drivers (for autocomplete) ─────────────────────────────────────────────
 
-  async listDrivers() {
-    return this.prisma.driver.findMany({
+  /**
+   * Active drivers matching `q` on name or license, up to 20 by name (spec 0016, AC-13). The
+   * license number goes only to a caller who may create tickets; it is personal data.
+   */
+  async listDrivers(q: string | undefined, ability: AppAbility) {
+    const term = q?.trim();
+    const rows = await this.prisma.driver.findMany({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        ...(term && {
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { licenseNumber: { contains: term, mode: 'insensitive' } },
+          ],
+        }),
+      },
       select: { id: true, name: true, licenseNumber: true },
       orderBy: { name: 'asc' },
-      take: 200,
+      take: 20,
     });
+    if (ability.can('create', 'RepairTicket')) return rows;
+    return rows.map(({ id, name }) => ({ id, name }));
   }
 }

@@ -50,6 +50,8 @@ import {
   OPEN_STATUSES,
 } from './ticket-statuses';
 import { readableTickets } from './ticket-access';
+import { odometerProblem, vehicleOdometerFloor } from './odometer';
+import { CORPORATION_LIST } from './lookups/lookup-lists';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -217,6 +219,15 @@ function isRepairNumberCollision(error: unknown): boolean {
   );
 }
 
+function driverExists(driver: { id: string; name: string }) {
+  return new ConflictException({
+    statusCode: 409,
+    code: 'DRIVER_EXISTS',
+    message: `A driver with this license exists: ${driver.name}.`,
+    driver: { id: driver.id, name: driver.name },
+  });
+}
+
 function generateRepairNumber(): string {
   const now = new Date();
   const date = [
@@ -296,6 +307,25 @@ export class RepairsService {
     // Spec 0007, AC-26: each issue's category must be active, and a picked entry Active
     const { categories, entries } = await this.issueSources(dto);
 
+    // Spec 0016, AC-4: the account and the corporation snapshot
+    const corporation = await this.corporationFor(dto);
+
+    // Spec 0016, AC-6: exactly one of an existing driver or a new one
+    if (!!dto.driverId === !!dto.newDriver) {
+      throw new BadRequestException('Choose or add a driver.');
+    }
+    if (dto.driverId) {
+      const driver = await this.prisma.driver.findFirst({
+        where: { id: dto.driverId, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      if (!driver) {
+        throw new BadRequestException(
+          'This driver is no longer available. Choose another.',
+        );
+      }
+    }
+
     // Mechanics are optional now (spec 0016, AC-1); any given must be active (spec 0010, AC-12)
     const mechanicIds = [...new Set((dto.mechanics ?? []).map((m) => m.id))];
     if (mechanicIds.length > 0) {
@@ -320,6 +350,7 @@ export class RepairsService {
             vehicleId: vehicle.id,
             garageId: garage.id,
             mechanicIds,
+            corporation,
             categories,
             entries,
           }),
@@ -359,14 +390,27 @@ export class RepairsService {
       vehicleId: string;
       garageId: string;
       mechanicIds: string[];
+      corporation: string | null;
       categories: Map<string, { id: string; name: string }>;
       entries: Map<
         string,
-        { id: string; steps: { position: number; text: string }[] }
+        {
+          id: string;
+          name: string;
+          steps: { position: number; text: string }[];
+        }
       >;
     },
   ) {
-    const { dto, user, repairNumber, mechanicIds, categories, entries } = input;
+    const {
+      dto,
+      user,
+      repairNumber,
+      mechanicIds,
+      corporation,
+      categories,
+      entries,
+    } = input;
 
     const locked = await tx.$queryRaw<{ id: string; status: VehicleStatus }[]>(
       Prisma.sql`SELECT id, status::text AS status FROM vehicles
@@ -398,26 +442,18 @@ export class RepairsService {
       });
     }
 
-    // Lookup/Create: Drivers (the license key and the driver picker arrive with spec 0016, step 6)
-    const licenseKey = dto.driverName
-      .toLowerCase()
-      .replace(/\s+/g, '-')
-      .substring(0, 50);
-    const existingDriver = await tx.driver.findUnique({
-      where: { licenseNumber: licenseKey },
-    });
-    const driver = existingDriver
-      ? await tx.driver.update({
-          where: { id: existingDriver.id },
-          data: { name: dto.driverName, isActive: true, deletedAt: null },
-        })
-      : await tx.driver.create({
-          data: {
-            name: dto.driverName,
-            licenseNumber: licenseKey,
-            isVerified: false,
-          },
-        });
+    // Spec 0016, AC-7: the reading may not drop below the truck's last one, and a big jump
+    // must be confirmed
+    const floor = await vehicleOdometerFloor(tx, input.vehicleId);
+    const problem = odometerProblem(
+      dto.odometerReading,
+      floor,
+      this.settings.get('tickets.odometer_jump_warn_km'),
+      dto.confirmOdometerJump === true,
+    );
+    if (problem) throw problem;
+
+    const driverId = dto.driverId ?? (await this.driverFor(tx, dto.newDriver!));
 
     await tx.vehicle.update({
       where: { id: input.vehicleId },
@@ -431,13 +467,15 @@ export class RepairsService {
       data: {
         repairNumber,
         vehicleId: input.vehicleId,
-        driverId: driver.id,
+        driverId,
         garageId: input.garageId,
         odometer: dto.odometerReading,
         repairStatus:
           mechanicIds.length > 0 ? RepairStatus.ASSIGNED : RepairStatus.OPEN,
         priority: dto.priority,
         priorVehicleStatus,
+        accountType: dto.accountType,
+        corporation,
         reportedByUserId: reporter.userId,
         reportedByName: reporter.name,
         lastActivityAt: now,
@@ -449,7 +487,8 @@ export class RepairsService {
               ? entries.get(issue.knowledgeEntryId)
               : undefined;
             return {
-              description: `[${categories.get(issue.categoryId)!.name}] ${issue.rootCause}: ${issue.description}`,
+              // A blank description with a linked entry takes the entry's name (spec 0016, AC-5)
+              description: `[${categories.get(issue.categoryId)!.name}] ${issue.rootCause}: ${issue.description || entry?.name || ''}`,
               categoryId: issue.categoryId,
               knowledgeEntryId: entry?.id ?? null,
               ...(entry
@@ -478,6 +517,71 @@ export class RepairsService {
       },
       include: ticketInclude,
     });
+  }
+
+  /**
+   * The corporation name to store: the active lookup value for CORPORATE, null for ONLINE, which
+   * ignores any corporationId (spec 0016, AC-4).
+   */
+  private async corporationFor(dto: CreateRepairDto): Promise<string | null> {
+    if (dto.accountType !== 'CORPORATE') return null;
+    if (!dto.corporationId)
+      throw new BadRequestException('Choose a corporation.');
+    const value = await this.prisma.lookupValue.findFirst({
+      where: { id: dto.corporationId, list: CORPORATION_LIST, isActive: true },
+      select: { name: true },
+    });
+    if (!value) {
+      throw new BadRequestException(
+        'This corporation is no longer available. Choose another.',
+      );
+    }
+    return value.name;
+  }
+
+  /**
+   * A new driver by LTO license inside the create transaction (spec 0016, AC-6): an active owner
+   * answers 409 DRIVER_EXISTS, an inactive or deleted one is reactivated with its stored name.
+   */
+  private async driverFor(
+    tx: Prisma.TransactionClient,
+    input: { name: string; licenseNumber: string },
+  ): Promise<string> {
+    const existing = await tx.driver.findUnique({
+      where: { licenseNumber: input.licenseNumber },
+    });
+    if (existing?.isActive && !existing.deletedAt) {
+      throw driverExists(existing);
+    }
+    if (existing) {
+      await tx.driver.update({
+        where: { id: existing.id },
+        data: { isActive: true, deletedAt: null },
+      });
+      return existing.id;
+    }
+    try {
+      const created = await tx.driver.create({
+        data: {
+          name: input.name,
+          licenseNumber: input.licenseNumber,
+          isVerified: false,
+        },
+      });
+      return created.id;
+    } catch (error) {
+      // A concurrent insert won the unique index
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const winner = await this.prisma.driver.findUnique({
+          where: { licenseNumber: input.licenseNumber },
+        });
+        if (winner) throw driverExists(winner);
+      }
+      throw error;
+    }
   }
 
   /** The categories and entries the new issues point at; 400 when one is missing or not active. */
@@ -1406,6 +1510,9 @@ export class RepairsService {
       dueAt: ticket.dueAt?.toISOString() ?? null,
       dueAtSource: ticket.dueAtSource,
       reportedByName: ticket.reportedByName,
+      // Spec 0016, AC-4: null on tickets made before they were stored
+      accountType: ticket.accountType,
+      corporation: ticket.corporation,
       verifiedByName: ticket.verifiedByName,
       verifiedAt: ticket.verifiedAt?.toISOString() ?? null,
       issueDescription:

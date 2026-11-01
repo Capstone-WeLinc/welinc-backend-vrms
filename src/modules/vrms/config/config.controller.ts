@@ -7,10 +7,13 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   Body,
 } from '@nestjs/common';
 import { RequirePermission } from '../../../auth/permissions/permission.decorators';
+import { CurrentAbility } from '../../../auth/permissions/current-ability.decorator';
+import type { AppAbility } from '../../../auth/permissions/ability.factory';
 import { ConfigService } from './config.service';
 import type { AuthUser } from '../../../auth/account-check';
 import { MechanicRoster } from '../mechanic-roster.service';
@@ -83,7 +86,10 @@ export class ConfigController {
   // GET /vrms/config/drivers (autocomplete suggestions)
   @RequirePermission('config.read')
   @Get('config/drivers')
-  listDrivers() {
-    return this.configService.listDrivers();
+  listDrivers(
+    @Query('q') q: string | undefined,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.configService.listDrivers(q, ability);
   }
 }
