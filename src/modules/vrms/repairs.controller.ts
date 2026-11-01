@@ -63,13 +63,6 @@ export class RepairsController {
     return this.repairsService.findHistory(query, ability);
   }
 
-  // In house mechanics not currently on any active ticket
-  @RequirePermission('ticket.create')
-  @Get('available-mechanics')
-  listAvailableMechanics() {
-    return this.repairsService.listAvailableMechanics();
-  }
-
   // Audit timeline, keyset paged (declared before :id)
   @RequirePermission('audit.view')
   @Get('audit-logs')

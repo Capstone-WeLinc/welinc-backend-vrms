@@ -1253,22 +1253,6 @@ export class RepairsService {
     return this.present(updated, ability);
   }
 
-  // ── List available (unoccupied) in-house mechanics ────────────────────────
-
-  async listAvailableMechanics() {
-    // Active mechanics not assigned to any open ticket
-    return this.prisma.mechanic.findMany({
-      where: {
-        isActive: true,
-        assignments: {
-          none: { repairTicket: { repairStatus: { in: OPEN_STATUSES } } },
-        },
-      },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-  }
-
   // ── Unlock terminal ticket ────────────────────────────────────────────────
 
   // ticket.unlock is checked by the route's guard

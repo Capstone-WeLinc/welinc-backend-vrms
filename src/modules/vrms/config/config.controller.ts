@@ -42,6 +42,13 @@ export class ConfigController {
     return this.configService.listVehicles();
   }
 
+  // GET /vrms/vehicles/:id/summary (spec 0016, AC-11)
+  @RequirePermission('ticket.create')
+  @Get('vehicles/:id/summary')
+  vehicleSummary(@Param('id', ParseUUIDPipe) id: string) {
+    return this.configService.vehicleSummary(id);
+  }
+
   // GET /vrms/mechanics/available
   @RequirePermission('config.read')
   @Get('mechanics/available')
