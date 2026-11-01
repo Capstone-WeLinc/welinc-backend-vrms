@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import SharedModule from '../../shared/shared.module';
+import { AttachmentPurgeJob } from './attachment-purge.job';
 import { AttachmentsController } from './attachments.controller';
 import { UploadAccessGuard, UserThrottlerGuard } from './attachments.guard';
 import { AttachmentsService } from './attachments.service';
@@ -18,6 +19,7 @@ import { FILE_STORE } from './file-store';
   providers: [
     { provide: FILE_STORE, useClass: BlobFileStore },
     AttachmentsService,
+    AttachmentPurgeJob,
     UploadAccessGuard,
     UserThrottlerGuard,
   ],

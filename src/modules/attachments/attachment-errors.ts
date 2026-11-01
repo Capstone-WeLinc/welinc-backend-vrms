@@ -86,3 +86,24 @@ export const fileUnreadable = () =>
     'FILE_UNREADABLE',
     'This image could not be read. Try taking the photo again.',
   );
+
+export const pdfUnreadable = () =>
+  attachmentError(
+    HttpStatus.UNPROCESSABLE_ENTITY,
+    'FILE_UNREADABLE',
+    'This PDF could not be read. Save or print it as a new PDF and try again.',
+  );
+
+export const fileEncrypted = () =>
+  attachmentError(
+    HttpStatus.UNPROCESSABLE_ENTITY,
+    'FILE_ENCRYPTED',
+    'Password protected or locked PDFs can’t be attached. Save or print it as a new PDF first.',
+  );
+
+export const pdfTooManyPages = (max: number, pageCount: number) =>
+  attachmentError(
+    HttpStatus.UNPROCESSABLE_ENTITY,
+    'PDF_TOO_MANY_PAGES',
+    `PDFs can have 1 to ${max} pages. This one has ${pageCount}.`,
+  );

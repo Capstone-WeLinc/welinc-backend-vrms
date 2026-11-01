@@ -31,8 +31,11 @@ import {
 import {
   attachmentNotFound,
   fileTooLarge,
+  fileEncrypted,
   fileTypeNotAllowed,
   fileUnreadable,
+  pdfTooManyPages,
+  pdfUnreadable,
   forbiddenKind,
   issueNotOnTicket,
   noFile,
@@ -51,6 +54,13 @@ import {
   StorageUnavailableException,
 } from './file-store';
 import { processImage, UnreadableImageError } from './image-pipeline';
+import {
+  EncryptedPdfError,
+  MAX_PDF_PAGES,
+  PdfPageCountError,
+  processPdf,
+  UnreadablePdfError,
+} from './pdf-pipeline';
 
 const MB = 1024 * 1024;
 
@@ -475,8 +485,25 @@ export class AttachmentsService {
     type: NonNullable<ReturnType<typeof sniffType>>,
   ): Promise<Prepared> {
     if (!isImageType(type)) {
-      // The PDF pipeline lands with documents (milestone 5)
-      throw fileUnreadable();
+      try {
+        const pdf = await processPdf(file.buffer);
+        return {
+          body: pdf.body,
+          thumbnail: null,
+          ext: 'pdf',
+          mimeType: pdf.mimeType,
+          width: null,
+          height: null,
+          fileName: cleanFileName(file.originalname, 'pdf', true),
+        };
+      } catch (error) {
+        if (error instanceof EncryptedPdfError) throw fileEncrypted();
+        if (error instanceof PdfPageCountError) {
+          throw pdfTooManyPages(MAX_PDF_PAGES, error.pageCount);
+        }
+        if (error instanceof UnreadablePdfError) throw pdfUnreadable();
+        throw error;
+      }
     }
     try {
       const image = await processImage(file.buffer, type);
