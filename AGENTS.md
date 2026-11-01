@@ -17,6 +17,8 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/modules/vrms/repairs.controller.ts`, `repairs.service.ts` | Repair ticket endpoints and business rules |
 | `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline; each event carries a `changes` list of field, before and after |
 | `src/modules/vrms/ticket-statuses.ts` | The one definition of open and finished ticket statuses (spec 0010); queries read it, never a list of their own |
+| `src/modules/vrms/odometer.ts` | The odometer floor (`vehicleOdometerFloor`) and the below last and jump rules for a new ticket (spec 0016); create and the vehicle summary both read it |
+| `src/modules/vrms/lookups/`, `src/modules/vrms/vehicles/` | Generic lookup lists (`vehicle_type`, `corporation`) behind `lookups.manage` with a `LookupValueChange` history, and the Settings Vehicles endpoints behind `vehicle.manage` with a `VehicleChange` history (spec 0016) |
 | `src/modules/vrms/config/` | VRMS configuration endpoints (dropdown lists and settings) |
 | `src/modules/vrms/dto/` | Request DTOs validated with `class-validator` |
 | `src/modules/knowledge/` | Knowledge base API at `/vrms/knowledge` (spec 0007): categories, entries, stats, suggestions and grouping; its four business values come from `SettingsService`, the fixed tuning constants stay in `knowledge.tuning.ts` |
@@ -53,6 +55,7 @@ npx prisma migrate dev   # asks first, see root rules
 - Repair updates use optimistic locking. The client sends `lastUpdatedAt` and a stale write is rejected. Keep that check on any new update path (see `update-costs.dto.ts` and `update-repair-status.dto.ts`).
 - Any path that changes a ticket's `repairStatus` must also set `statusChangedAt` in the same update (spec 0015); `applyStatusMove` does, so go through it. The For verification list sorts on it.
 - Ticket changes write audit events through `audit-events.ts`, so a new state change should add one.
+- A truck has at most one ticket in an open status, enforced only by `RepairsService.create` (a row lock on the vehicle, then the check). Any new path that inserts a ticket must go through `create` (spec 0016).
 - Knowledge entry and category writes log one `KnowledgeEntryChange` row per changed field in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
 - Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp. The history starts at one baseline, `20261029000000_baseline` (spec 0010); add new folders after it.
 - New variables go in `.env.example` only (today: `PORT`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`, `AUTH_SERVICE_URL` (required, the app refuses to start without it), `CORS_ORIGINS`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_EMBED_MODEL`). With no `GEMINI_API_KEY` the app still starts: AI runs answer 503 `AI_UNAVAILABLE` and analytics works.
