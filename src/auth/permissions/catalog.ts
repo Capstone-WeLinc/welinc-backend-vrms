@@ -115,6 +115,15 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
+    // Spec 0017, AC-15: follows the caller's ticket visibility (assigned only without ticket.view_all)
+    key: 'ticket.files.add',
+    label: 'Add vehicle photos and proof',
+    group: 'Tickets',
+    description:
+      'Add vehicle photos and proof of completion on the tickets you can see.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
+  },
+  {
     key: 'ai.use',
     label: 'Use AI diagnosis',
     group: 'Tickets',

@@ -9,6 +9,7 @@ import { VrmsModule } from './modules/vrms/vrms.module';
 import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     KnowledgeModule,
     AiModule,
     AnalyticsModule,
+    AttachmentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

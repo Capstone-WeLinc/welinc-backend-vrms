@@ -17,7 +17,10 @@ export type TicketAction =
   | 'verify'
   | 'editCosts'
   | 'unlock'
-  | 'assign';
+  | 'assign'
+  | 'addFiles'
+  | 'addDocuments'
+  | 'removeAny';
 export type AppAction = TicketAction | 'edit' | 'review' | PermissionKey;
 
 export type AppSubjects =
@@ -85,6 +88,11 @@ export function buildAbility(
         break;
       case 'ticket.unlock':
         can('unlock', 'RepairTicket');
+        break;
+      case 'ticket.files.add':
+        // Spec 0017, AC-15: everywhere the caller sees every ticket, else on their assigned ones
+        if (keys.has('ticket.view_all')) can('addFiles', 'RepairTicket');
+        else can('addFiles', 'RepairTicket', mine);
         break;
       case 'knowledge.view':
         can('read', 'KnowledgeEntry', { status: 'ACTIVE' });
