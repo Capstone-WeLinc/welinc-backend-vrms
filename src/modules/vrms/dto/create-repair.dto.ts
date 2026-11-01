@@ -73,11 +73,12 @@ export class CreateRepairDto {
   @Min(0)
   odometerReading: number;
 
+  // Optional (spec 0016, AC-1): none means the ticket starts Open
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => MechanicAssignmentDto)
-  mechanics: MechanicAssignmentDto[];
+  mechanics?: MechanicAssignmentDto[];
 
   @IsEnum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';

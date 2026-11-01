@@ -24,6 +24,7 @@ function ticket(status: RepairStatus, odometer = 200000): MovingTicket {
     updatedAt: LOADED,
     vehicleId: 'vehicle-1',
     odometer,
+    priorVehicleStatus: null,
   };
 }
 
@@ -210,6 +211,25 @@ describe('applyStatusMove', () => {
     expect(raw.vehicle.update).toHaveBeenCalledWith({
       where: { id: 'vehicle-1' },
       data: { status: 'AVAILABLE' },
+    });
+  });
+
+  it('puts a truck that was Disabled before the repair back to Disabled (spec 0016, AC-9)', async () => {
+    const { tx, raw } = makeTx();
+    await applyStatusMove(
+      tx,
+      {
+        ...ticket(RepairStatus.FOR_VERIFICATION),
+        priorVehicleStatus: 'DISABLED',
+      },
+      move(RepairStatus.FOR_VERIFICATION, RepairStatus.CLOSED),
+      actor,
+      null,
+      NOW,
+    );
+    expect(raw.vehicle.update).toHaveBeenCalledWith({
+      where: { id: 'vehicle-1' },
+      data: expect.objectContaining({ status: 'DISABLED' }) as unknown,
     });
   });
 

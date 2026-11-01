@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   UnprocessableEntityException,
@@ -207,6 +208,15 @@ type OwnedTicket = Prisma.RepairTicketGetPayload<{
   include: { assignments: typeof ownerInclude };
 }>;
 
+/** A unique violation on the repair number column (Prisma P2002), however the driver words it. */
+function isRepairNumberCollision(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  return (
+    error.code === 'P2002' &&
+    /repair_?number/i.test(JSON.stringify(error.meta ?? {}))
+  );
+}
+
 function generateRepairNumber(): string {
   const now = new Date();
   const date = [
@@ -256,9 +266,7 @@ export class RepairsService {
   // ── Create repair ticket ─────────────────────────────────────────────────
 
   async create(dto: CreateRepairDto, user: JwtUser, ability: AppAbility) {
-    const repairNumber = dto.repairNumber ?? generateRepairNumber();
-
-    // Strict lookup: Vehicle
+    // Checks that need no lock run first, outside the transaction (spec 0016, AC-2)
     const vehicle = await this.prisma.vehicle.findFirst({
       where: {
         plateNumber: dto.vehiclePlate,
@@ -272,7 +280,6 @@ export class RepairsService {
       );
     }
 
-    // Strict lookup: Garage
     const garage = await this.prisma.garage.findFirst({
       where: {
         name: dto.garageLocation,
@@ -286,38 +293,125 @@ export class RepairsService {
       );
     }
 
-    // Spec 0007, AC-26: each issue's category must be active, and a picked entry Active.
-    // Checked before any write, so a 400 leaves nothing half done.
+    // Spec 0007, AC-26: each issue's category must be active, and a picked entry Active
     const { categories, entries } = await this.issueSources(dto);
 
-    // Mechanics come by id and must be active (spec 0009, AC-27; spec 0010, AC-12). Checked here,
-    // before any write, so a 400 leaves nothing half done.
-    const mechanicIds = [...new Set(dto.mechanics.map((m) => m.id))];
-    const activeCount = await this.prisma.mechanic.count({
-      where: { id: { in: mechanicIds }, isActive: true },
-    });
-    if (activeCount !== mechanicIds.length) {
-      throw new BadRequestException('In house mechanic not found');
+    // Mechanics are optional now (spec 0016, AC-1); any given must be active (spec 0010, AC-12)
+    const mechanicIds = [...new Set((dto.mechanics ?? []).map((m) => m.id))];
+    if (mechanicIds.length > 0) {
+      const activeCount = await this.prisma.mechanic.count({
+        where: { id: { in: mechanicIds }, isActive: true },
+      });
+      if (activeCount !== mechanicIds.length) {
+        throw new BadRequestException('In house mechanic not found');
+      }
     }
 
-    // Lookup/Create: Drivers
+    // A repairNumber collision regenerates the number and retries once, then answers 500
+    let ticket: TicketRow | undefined;
+    for (let attempt = 0; attempt < 2 && !ticket; attempt++) {
+      const repairNumber = dto.repairNumber ?? generateRepairNumber();
+      try {
+        ticket = await this.prisma.$transaction((tx) =>
+          this.createLocked(tx, {
+            dto,
+            user,
+            repairNumber,
+            vehicleId: vehicle.id,
+            garageId: garage.id,
+            mechanicIds,
+            categories,
+            entries,
+          }),
+        );
+      } catch (error) {
+        if (!isRepairNumberCollision(error)) throw error;
+        if (attempt === 1 || dto.repairNumber) {
+          this.logger.error(`Repair number collision on ${repairNumber}`);
+          throw new InternalServerErrorException(
+            'Could not create the repair ticket. Try again.',
+          );
+        }
+      }
+    }
+    if (!ticket) throw new InternalServerErrorException();
+
+    this.logger.log(
+      `Repair ticket created — ${ticket.repairNumber} by ${user.email}`,
+    );
+    // Never awaited: embedding must not fail or slow the save (spec 0013, AC-14)
+    void this.embeddings.embedIssuesInBackground(
+      ticket.issues.map((i) => i.id),
+    );
+    return this.present(ticket, ability);
+  }
+
+  /**
+   * The locked part of create (spec 0016, AC-2): lock the truck's row, refuse a second open
+   * ticket, then write everything or nothing.
+   */
+  private async createLocked(
+    tx: Prisma.TransactionClient,
+    input: {
+      dto: CreateRepairDto;
+      user: JwtUser;
+      repairNumber: string;
+      vehicleId: string;
+      garageId: string;
+      mechanicIds: string[];
+      categories: Map<string, { id: string; name: string }>;
+      entries: Map<
+        string,
+        { id: string; steps: { position: number; text: string }[] }
+      >;
+    },
+  ) {
+    const { dto, user, repairNumber, mechanicIds, categories, entries } = input;
+
+    const locked = await tx.$queryRaw<{ id: string; status: VehicleStatus }[]>(
+      Prisma.sql`SELECT id, status::text AS status FROM vehicles
+        WHERE id = ${input.vehicleId}::uuid AND is_active AND deleted_at IS NULL
+        FOR UPDATE`,
+    );
+    if (locked.length === 0) {
+      throw new BadRequestException(
+        `Vehicle with plate number "${dto.vehiclePlate}" not found`,
+      );
+    }
+    // Only values read under the lock are used from here on
+    const priorVehicleStatus = locked[0].status;
+
+    const open = await tx.repairTicket.findFirst({
+      where: {
+        vehicleId: input.vehicleId,
+        repairStatus: { in: OPEN_STATUSES },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, repairNumber: true },
+    });
+    if (open) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'OPEN_TICKET_EXISTS',
+        message: `This truck already has an open repair, ${open.repairNumber}. Add the new issues there.`,
+        ticket: open,
+      });
+    }
+
+    // Lookup/Create: Drivers (the license key and the driver picker arrive with spec 0016, step 6)
     const licenseKey = dto.driverName
       .toLowerCase()
       .replace(/\s+/g, '-')
       .substring(0, 50);
-    const existingDriver = await this.prisma.driver.findUnique({
+    const existingDriver = await tx.driver.findUnique({
       where: { licenseNumber: licenseKey },
     });
     const driver = existingDriver
-      ? await this.prisma.driver.update({
+      ? await tx.driver.update({
           where: { id: existingDriver.id },
-          data: {
-            name: dto.driverName,
-            isActive: true,
-            deletedAt: null,
-          },
+          data: { name: dto.driverName, isActive: true, deletedAt: null },
         })
-      : await this.prisma.driver.create({
+      : await tx.driver.create({
           data: {
             name: dto.driverName,
             licenseNumber: licenseKey,
@@ -325,24 +419,25 @@ export class RepairsService {
           },
         });
 
-    // Set vehicle status to UNDER_REPAIR
-    await this.prisma.vehicle.update({
-      where: { id: vehicle.id },
+    await tx.vehicle.update({
+      where: { id: input.vehicleId },
       data: { status: VehicleStatus.UNDER_REPAIR },
     });
 
-    // The DTO requires a mechanic, so a new ticket starts Assigned (spec 0010, AC-3)
+    // No mechanic: Open. One or more: Assigned (spec 0016, AC-1)
     const now = new Date();
     const reporter = { userId: user.sub, name: whoName(user) };
-    const ticket = await this.prisma.repairTicket.create({
+    return tx.repairTicket.create({
       data: {
         repairNumber,
-        vehicleId: vehicle.id,
+        vehicleId: input.vehicleId,
         driverId: driver.id,
-        garageId: garage.id,
+        garageId: input.garageId,
         odometer: dto.odometerReading,
-        repairStatus: RepairStatus.ASSIGNED,
+        repairStatus:
+          mechanicIds.length > 0 ? RepairStatus.ASSIGNED : RepairStatus.OPEN,
         priority: dto.priority,
+        priorVehicleStatus,
         reportedByUserId: reporter.userId,
         reportedByName: reporter.name,
         lastActivityAt: now,
@@ -383,13 +478,6 @@ export class RepairsService {
       },
       include: ticketInclude,
     });
-
-    this.logger.log(`Repair ticket created — ${repairNumber} by ${user.email}`);
-    // Never awaited: embedding must not fail or slow the save (spec 0013, AC-14)
-    void this.embeddings.embedIssuesInBackground(
-      ticket.issues.map((i) => i.id),
-    );
-    return this.present(ticket, ability);
   }
 
   /** The categories and entries the new issues point at; 400 when one is missing or not active. */

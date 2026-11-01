@@ -319,11 +319,21 @@ describe('RepairsService.create with a common issue', () => {
         create: jest.fn().mockResolvedValue({ id: 'd1' }),
       },
       mechanic: { count: jest.fn().mockResolvedValue(1) },
-      repairTicket: { create: jest.fn().mockResolvedValue(fullTicket()) },
-      $queryRaw: jest.fn().mockResolvedValue([]),
+      repairTicket: {
+        create: jest.fn().mockResolvedValue(fullTicket()),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      // The row lock read, then lastRejection reads (spec 0016, AC-2)
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValue([{ id: 'v1', status: 'AVAILABLE' }]),
       // lastRejection, as the fixture ticket is In progress (spec 0014, AC-14)
       auditLog: { findMany: jest.fn().mockResolvedValue([]) },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) =>
+      fn(prisma),
+    );
     return {
       prisma,
       service: new RepairsService(
@@ -407,6 +417,43 @@ describe('RepairsService.create with a common issue', () => {
       changes: [],
       createdAt: data.lastActivityAt,
     });
+  });
+
+  it('starts the ticket Open when no mechanic is given and keeps the prior truck status (spec 0016, AC-1, AC-9)', async () => {
+    const { prisma, service } = setupCreate();
+    prisma.$queryRaw.mockResolvedValue([{ id: 'v1', status: 'DISABLED' }]);
+    await service.create(
+      { ...dto, mechanics: undefined },
+      admin,
+      defaultAbility(admin),
+    );
+    const [args] = prisma.repairTicket.create.mock.calls[0] as [
+      { data: Record<string, unknown> },
+    ];
+    expect(args.data).toMatchObject({
+      repairStatus: RepairStatus.OPEN,
+      priorVehicleStatus: 'DISABLED',
+    });
+    expect(args.data.assignments).toEqual({ create: [] });
+  });
+
+  it('answers 409 OPEN_TICKET_EXISTS and writes nothing when the truck has an open ticket (spec 0016, AC-3)', async () => {
+    const { prisma, service } = setupCreate();
+    prisma.repairTicket.findFirst.mockResolvedValue({
+      id: 't9',
+      repairNumber: 'REP-20261101-AAAA',
+    });
+    const run = service.create(dto, admin, defaultAbility(admin));
+    await expect(run).rejects.toBeInstanceOf(ConflictException);
+    await expect(run).rejects.toMatchObject({
+      response: {
+        code: 'OPEN_TICKET_EXISTS',
+        ticket: { id: 't9', repairNumber: 'REP-20261101-AAAA' },
+      },
+    });
+    expect(prisma.driver.create).not.toHaveBeenCalled();
+    expect(prisma.vehicle.update).not.toHaveBeenCalled();
+    expect(prisma.repairTicket.create).not.toHaveBeenCalled();
   });
 
   it('refuses an entry that is not Active, before any write', async () => {

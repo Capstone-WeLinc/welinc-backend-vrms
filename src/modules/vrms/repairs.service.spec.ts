@@ -469,7 +469,15 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
         create: jest.fn(),
       },
       mechanic: { count: jest.fn().mockResolvedValue(activeCount) },
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValue([{ id: 'v1', status: 'AVAILABLE' }]),
+      repairTicket: { findFirst: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn(),
     };
+    prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) =>
+      fn(prisma),
+    );
     return {
       prisma,
       service: new RepairsService(

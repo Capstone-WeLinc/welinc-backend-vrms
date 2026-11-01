@@ -13,6 +13,12 @@ datasource db {
 // ENUMS
 // ==========================================
 
+// Spec 0016: how the customer pays for a ticket.
+enum TicketAccountType {
+  ONLINE
+  CORPORATE
+}
+
 enum VehicleStatus {
   AVAILABLE
   UNDER_REPAIR
@@ -71,17 +77,20 @@ enum SuggestionStatus {
 // ==========================================
 
 model Vehicle {
-  id            String         @id @default(uuid()) @db.Uuid
-  plateNumber   String         @unique @map("plate_number") @db.VarChar(20)
-  model         String         @db.VarChar(100)
-  capacity      Int            @default(0) @map("capacity")
-  status        VehicleStatus  @default(AVAILABLE)
-  odometer      Int            @default(0)
-  isActive      Boolean        @default(true) @map("is_active")
-  deletedAt     DateTime?      @map("deleted_at") @db.Timestamptz(6)
-  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            String          @id @default(uuid()) @db.Uuid
+  plateNumber   String          @unique @map("plate_number") @db.VarChar(20)
+  model         String          @db.VarChar(100)
+  capacity      Int             @default(0) @map("capacity")
+  status        VehicleStatus   @default(AVAILABLE)
+  odometer      Int             @default(0)
+  isActive      Boolean         @default(true) @map("is_active")
+  deletedAt     DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  vehicleTypeId String?         @map("vehicle_type_id") @db.Uuid // spec 0016: a value of the vehicle_type lookup list
+  vehicleType   LookupValue?    @relation(fields: [vehicleTypeId], references: [id], onDelete: Restrict)
   repairTickets RepairTicket[]
+  changes       VehicleChange[]
 
   @@index([deletedAt])
   @@map("vehicles")
@@ -132,34 +141,37 @@ model Driver {
 }
 
 model RepairTicket {
-  id                 String         @id @default(uuid()) @db.Uuid
-  repairNumber       String         @unique @map("repair_number") @db.VarChar(50) // REP-YYYYMMDD-XXXX
-  repairStatus       RepairStatus   @default(OPEN) @map("repair_status")
-  priority           RepairPriority @default(MEDIUM)
-  vehicleId          String         @map("vehicle_id") @db.Uuid
-  driverId           String         @map("driver_id") @db.Uuid
-  garageId           String         @map("garage_id") @db.Uuid
+  id                 String             @id @default(uuid()) @db.Uuid
+  repairNumber       String             @unique @map("repair_number") @db.VarChar(50) // REP-YYYYMMDD-XXXX
+  repairStatus       RepairStatus       @default(OPEN) @map("repair_status")
+  priority           RepairPriority     @default(MEDIUM)
+  vehicleId          String             @map("vehicle_id") @db.Uuid
+  driverId           String             @map("driver_id") @db.Uuid
+  garageId           String             @map("garage_id") @db.Uuid
   odometer           Int
-  reportedByUserId   String?        @map("reported_by_user_id") @db.Uuid
-  reportedByName     String?        @map("reported_by_name") @db.VarChar(100)
-  verifiedByUserId   String?        @map("verified_by_user_id") @db.Uuid // set on the move to CLOSED
-  verifiedByName     String?        @map("verified_by_name") @db.VarChar(100)
-  verifiedAt         DateTime?      @map("verified_at") @db.Timestamptz(6)
-  dueAt              DateTime?      @map("due_at") @db.Timestamptz(6)
-  dueAtSource        DueAtSource?   @map("due_at_source")
-  partsCost          Decimal?       @map("parts_cost") @db.Decimal(10, 2)
-  laborCost          Decimal?       @map("labor_cost") @db.Decimal(10, 2)
-  totalCost          Decimal?       @map("total_cost") @db.Decimal(10, 2)
-  isLumpSum          Boolean        @default(false) @map("is_lump_sum")
-  cancellationReason String?        @map("cancellation_reason") @db.Text
-  remarks            String?        @db.Text
-  isUnlocked         Boolean        @default(false) @map("is_unlocked")
-  unlockReason       String?        @map("unlock_reason") @db.Text
-  lastActivityAt     DateTime       @default(now()) @map("last_activity_at") @db.Timestamptz(6) // moved only by a person's audited action
-  statusChangedAt    DateTime       @default(now()) @map("status_changed_at") @db.Timestamptz(6) // time of the last status change (spec 0015)
-  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  closedAt           DateTime?      @map("closed_at") @db.Timestamptz(6) // set on the move to CLOSED or CANCELLED
+  reportedByUserId   String?            @map("reported_by_user_id") @db.Uuid
+  reportedByName     String?            @map("reported_by_name") @db.VarChar(100)
+  verifiedByUserId   String?            @map("verified_by_user_id") @db.Uuid // set on the move to CLOSED
+  verifiedByName     String?            @map("verified_by_name") @db.VarChar(100)
+  verifiedAt         DateTime?          @map("verified_at") @db.Timestamptz(6)
+  dueAt              DateTime?          @map("due_at") @db.Timestamptz(6)
+  dueAtSource        DueAtSource?       @map("due_at_source")
+  partsCost          Decimal?           @map("parts_cost") @db.Decimal(10, 2)
+  laborCost          Decimal?           @map("labor_cost") @db.Decimal(10, 2)
+  totalCost          Decimal?           @map("total_cost") @db.Decimal(10, 2)
+  isLumpSum          Boolean            @default(false) @map("is_lump_sum")
+  cancellationReason String?            @map("cancellation_reason") @db.Text
+  remarks            String?            @db.Text
+  isUnlocked         Boolean            @default(false) @map("is_unlocked")
+  unlockReason       String?            @map("unlock_reason") @db.Text
+  lastActivityAt     DateTime           @default(now()) @map("last_activity_at") @db.Timestamptz(6) // moved only by a person's audited action
+  statusChangedAt    DateTime           @default(now()) @map("status_changed_at") @db.Timestamptz(6) // time of the last status change (spec 0015)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  closedAt           DateTime?          @map("closed_at") @db.Timestamptz(6) // set on the move to CLOSED or CANCELLED
+  accountType        TicketAccountType? @map("account_type") // spec 0016
+  corporation        String?            @db.VarChar(100) // snapshot of the corporation name, spec 0016
+  priorVehicleStatus VehicleStatus?     @map("prior_vehicle_status") // the truck's status just before create, restored on release
 
   vehicle     Vehicle            @relation(fields: [vehicleId], references: [id])
   driver      Driver             @relation(fields: [driverId], references: [id])
@@ -527,4 +539,63 @@ model AiDiagnosisFeedback {
 
   @@unique([diagnosisId, userId])
   @@map("ai_diagnosis_feedback")
+}
+
+// ==========================================
+// LOOKUP LISTS AND VEHICLE HISTORY (spec 0016)
+// ==========================================
+
+// Generic Admin managed plain lists, told apart by `list` (vehicle_type, corporation). Never deleted.
+model LookupValue {
+  id        String   @id @default(uuid()) @db.Uuid
+  list      String   @db.VarChar(40)
+  name      String   @db.VarChar(100)
+  nameKey   String   @map("name_key") @db.VarChar(100) // trimmed and lowercased
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  vehicles Vehicle[]
+  changes  LookupValueChange[]
+
+  @@unique([list, nameKey])
+  @@index([list, isActive])
+  @@map("lookup_values")
+}
+
+model LookupValueChange {
+  id            String   @id @default(uuid()) @db.Uuid
+  lookupValueId String   @map("lookup_value_id") @db.Uuid
+  action        String   @db.VarChar(12) // CREATE, RENAME, DEACTIVATE, REACTIVATE
+  before        Json?
+  after         Json?
+  actorUserId   String?  @map("actor_user_id") @db.Uuid
+  actorName     String?  @map("actor_name") @db.VarChar(100)
+  actorEmail    String?  @map("actor_email") @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  lookupValue LookupValue @relation(fields: [lookupValueId], references: [id])
+
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
+  @@map("lookup_value_changes")
+}
+
+// One history per truck; `field` says what changed (vehicleType today, status with feature 25).
+model VehicleChange {
+  id          String   @id @default(uuid()) @db.Uuid
+  vehicleId   String   @map("vehicle_id") @db.Uuid
+  field       String   @db.VarChar(30)
+  before      Json?
+  after       Json?
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  actorName   String?  @map("actor_name") @db.VarChar(100)
+  actorEmail  String?  @map("actor_email") @db.VarChar(255)
+  note        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId, createdAt])
+  @@map("vehicle_changes")
 }
