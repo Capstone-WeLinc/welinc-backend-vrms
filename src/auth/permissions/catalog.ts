@@ -101,6 +101,13 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
+    key: 'ticket.assign',
+    label: 'Assign mechanics',
+    group: 'Tickets',
+    description: 'Assign in house mechanics to an Open ticket.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
+  },
+  {
     key: 'ticket.unlock',
     label: 'Unlock closed tickets',
     group: 'Tickets',

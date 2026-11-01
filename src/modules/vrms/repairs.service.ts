@@ -38,6 +38,7 @@ import {
   decodeCursor,
   encodeCursor,
   knowledgeLinkEvent,
+  mechanicAssignedEvent,
   lastRejectionFrom,
   olderThan,
   toAuditEvent,
@@ -59,6 +60,7 @@ import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
 import { UnlockTicketDto } from './dto/unlock-ticket.dto';
+import { AssignMechanicsDto } from './dto/assign-mechanics.dto';
 import {
   CheckIssueStepDto,
   LinkIssueKnowledgeDto,
@@ -1310,6 +1312,73 @@ export class RepairsService {
     return this.present(updated, ability);
   }
 
+  // ── Assign mechanics to an Open ticket (spec 0016, AC-17) ─────────────────
+
+  // ticket.assign is checked by the route's guard
+  async assignMechanics(
+    id: string,
+    dto: AssignMechanicsDto,
+    user: JwtUser,
+    ability: AppAbility,
+  ) {
+    const ticket = await this.prisma.repairTicket.findUnique({
+      where: { id },
+      include: { assignments: ownerInclude },
+    });
+    if (!ticket) throw new NotFoundException('Repair ticket not found');
+
+    if (ticket.updatedAt.toISOString() !== dto.lastUpdatedAt) {
+      throw new ConflictException(STALE_TICKET);
+    }
+
+    // M1 is the only move this endpoint makes, and only from Open
+    const move = findMove(ticket.repairStatus, RepairStatus.ASSIGNED);
+    if (!move || move.trigger !== 'assignment') {
+      throw invalidTransition(ticket, RepairStatus.ASSIGNED, ability);
+    }
+
+    const mechanicIds = [...new Set(dto.mechanics.map((m) => m.id))];
+    if (mechanicIds.length !== dto.mechanics.length) {
+      throw new BadRequestException('Choose each mechanic only once.');
+    }
+    const mechanics = await this.prisma.mechanic.findMany({
+      where: { id: { in: mechanicIds }, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (mechanics.length !== mechanicIds.length) {
+      throw new BadRequestException('In house mechanic not found');
+    }
+    const names = mechanicIds.map(
+      (mechanicId) => mechanics.find((m) => m.id === mechanicId)!.name,
+    );
+
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await tx.ticketAssignment.createMany({
+        data: mechanicIds.map((mechanicId) => ({
+          repairTicketId: id,
+          mechanicId,
+          assignedAt: now,
+          assignedByUserId: user.sub,
+          assignedByName: whoName(user),
+        })),
+      });
+      // One MECHANIC_ASSIGNED row records the status change too, so no STATUS_CHANGE row
+      await applyStatusMove(tx, ticket, move, user, null, now, {
+        audit: mechanicAssignedEvent(names),
+      });
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+    });
+
+    this.logger.log(
+      `Ticket ${ticket.repairNumber}: ${names.join(', ')} assigned by ${user.email}`,
+    );
+    return this.present(updated, ability);
+  }
+
   // ── Audit timeline (keyset paged, newest first) ──────────────────────────
 
   async findAuditEvents(
@@ -1532,6 +1601,7 @@ export class RepairsService {
         verify: ability.can('verify', target),
         editCosts: ability.can('editCosts', target),
         unlock: ability.can('unlock', target),
+        assign: ability.can('assign', target),
       },
     };
 

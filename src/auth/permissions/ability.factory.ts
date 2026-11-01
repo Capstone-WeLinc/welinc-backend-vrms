@@ -16,7 +16,8 @@ export type TicketAction =
   | 'administer'
   | 'verify'
   | 'editCosts'
-  | 'unlock';
+  | 'unlock'
+  | 'assign';
 export type AppAction = TicketAction | 'edit' | 'review' | PermissionKey;
 
 export type AppSubjects =
@@ -77,6 +78,10 @@ export function buildAbility(
         break;
       case 'ticket.costs.edit':
         can('editCosts', 'RepairTicket');
+        break;
+      case 'ticket.assign':
+        // Spec 0016, AC-16: a global right, like administer; not per assignment
+        can('assign', 'RepairTicket');
         break;
       case 'ticket.unlock':
         can('unlock', 'RepairTicket');

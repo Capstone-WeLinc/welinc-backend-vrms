@@ -21,6 +21,7 @@ import { HistoryQueryDto } from './dto/history-query.dto';
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { UpdateCostsDto } from './dto/update-costs.dto';
 import { UnlockTicketDto } from './dto/unlock-ticket.dto';
+import { AssignMechanicsDto } from './dto/assign-mechanics.dto';
 import {
   CheckIssueStepDto,
   LinkIssueKnowledgeDto,
@@ -149,6 +150,18 @@ export class RepairsController {
     @CurrentAbility() ability: AppAbility,
   ) {
     return this.repairsService.updateCosts(id, dto, req.user, ability);
+  }
+
+  // Assign mechanics to an Open ticket, moving it to Assigned (spec 0016, AC-17)
+  @RequirePermission('ticket.assign')
+  @Post(':id/assignments')
+  assignMechanics(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignMechanicsDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.repairsService.assignMechanics(id, dto, req.user, ability);
   }
 
   // Unlock a terminal (closed/cancelled) ticket for editing

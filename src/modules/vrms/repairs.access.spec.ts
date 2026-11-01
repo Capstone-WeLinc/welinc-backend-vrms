@@ -138,10 +138,11 @@ describe('ticket can flags (AC-12a)', () => {
       verify: false,
       editCosts: false,
       unlock: false,
+      assign: false,
     };
     // Spec 0014, AC-6: verify on any readable ticket except their own
-    expect(own.can).toEqual({ ...none, work: true });
-    expect(other.can).toEqual({ ...none, verify: true });
+    expect(own.can).toEqual({ ...none, work: true, assign: true });
+    expect(other.can).toEqual({ ...none, verify: true, assign: true });
   });
 
   it('gives an admin administer, verify, cost editing and unlock on any ticket, and no work', async () => {
@@ -155,6 +156,7 @@ describe('ticket can flags (AC-12a)', () => {
       verify: true,
       editCosts: true,
       unlock: true,
+      assign: true,
     });
   });
 

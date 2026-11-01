@@ -20,6 +20,7 @@ export const AUDIT_ACTIONS = [
   'GARAGE_CHANGE',
   'KNOWLEDGE_LINK',
   'MECHANIC_UNASSIGNED',
+  'MECHANIC_ASSIGNED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -184,6 +185,22 @@ export function mechanicUnassignedEvent(
     ],
     note:
       reason === 'DEACTIVATED' ? 'Account deactivated' : 'VRMS role removed',
+  };
+}
+
+/** Mechanics assigned to an Open ticket, which then goes Assigned (spec 0016, AC-17). */
+export function mechanicAssignedEvent(names: string[]): AuditEventData {
+  return {
+    action: 'MECHANIC_ASSIGNED',
+    changes: [
+      ...names.map((name) => ({
+        field: 'mechanic',
+        before: null,
+        after: name,
+      })),
+      { field: 'repairStatus', before: 'OPEN', after: 'ASSIGNED' },
+    ],
+    note: null,
   };
 }
 
