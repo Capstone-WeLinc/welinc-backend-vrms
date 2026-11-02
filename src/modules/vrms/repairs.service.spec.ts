@@ -166,6 +166,7 @@ describe('RepairsService.findHistory', () => {
       data: [],
       total: 0,
       summary: { finished: 0, closed: 0, cancelled: 0, spend: null },
+      verifiers: [],
     });
     expect(prisma.repairTicket.findMany).not.toHaveBeenCalled();
   });
