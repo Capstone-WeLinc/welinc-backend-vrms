@@ -25,6 +25,10 @@ export const AUDIT_ACTIONS = [
   'ATTACHMENT_ADDED',
   'ATTACHMENT_REMOVED',
   'ATTACHMENT_MOVED',
+  'TICKET_EDITED',
+  'ISSUE_ADDED',
+  'ISSUE_EDITED',
+  'ISSUE_REMOVED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -192,19 +196,130 @@ export function mechanicUnassignedEvent(
   };
 }
 
-/** Mechanics assigned to an Open ticket, which then goes Assigned (spec 0016, AC-17). */
-export function mechanicAssignedEvent(names: string[]): AuditEventData {
+/**
+ * Spec 0019, AC-12: one side of a mechanics save, the names removed (MECHANIC_UNASSIGNED) or
+ * added (MECHANIC_ASSIGNED). A status move the save makes rides on the side that triggered it (M1
+ * on the added row, M2 on the removed row, the spec 0016 pattern). The note is the reason on an
+ * unlocked closed ticket.
+ */
+export function mechanicsChangedEvent(
+  side: 'removed' | 'added',
+  names: string[],
+  move: { from: string; to: string } | null = null,
+  note: string | null = null,
+): AuditEventData {
+  const added = side === 'added';
   return {
-    action: 'MECHANIC_ASSIGNED',
+    action: added ? 'MECHANIC_ASSIGNED' : 'MECHANIC_UNASSIGNED',
     changes: [
       ...names.map((name) => ({
         field: 'mechanic',
-        before: null,
-        after: name,
+        before: added ? null : name,
+        after: added ? name : null,
       })),
-      { field: 'repairStatus', before: 'OPEN', after: 'ASSIGNED' },
+      ...(move
+        ? [{ field: 'repairStatus', before: move.from, after: move.to }]
+        : []),
     ],
-    note: null,
+    note,
+  };
+}
+
+/**
+ * Spec 0019, AC-8: the details a ticket edit can change, as the audit row shows them. The driver
+ * is "name (license)", the corporation its name, the rest their raw values.
+ */
+export type TicketDetailValues = {
+  driver: string;
+  odometer: number;
+  priority: string;
+  accountType: string | null;
+  corporation: string | null;
+};
+
+/**
+ * Spec 0019, AC-8: one row per details save, listing only the fields that changed. The note is the
+ * reason on an unlocked closed ticket (AC-3).
+ */
+export function ticketEditedEvent(
+  before: TicketDetailValues,
+  after: TicketDetailValues,
+  note?: string | null,
+): AuditEventData {
+  const pairs: [keyof TicketDetailValues, string | null, string | null][] = [
+    ['driver', before.driver, after.driver],
+    ['odometer', String(before.odometer), String(after.odometer)],
+    ['priority', before.priority, after.priority],
+    ['accountType', before.accountType, after.accountType],
+    ['corporation', before.corporation, after.corporation],
+  ];
+  return {
+    action: 'TICKET_EDITED',
+    changes: pairs
+      .filter(([, b, a]) => b !== a)
+      .map(([field, b, a]) => ({ field, before: b, after: a })),
+    note: note?.trim() || null,
+  };
+}
+
+/** Spec 0019, AC-14: the stored description of the new issue, plus its id. */
+export function issueAddedEvent(
+  issueId: string,
+  description: string,
+  note: string | null = null,
+): AuditEventData {
+  return {
+    action: 'ISSUE_ADDED',
+    changes: [
+      { field: 'issue', before: null, after: description },
+      { field: 'issueId', before: null, after: issueId },
+    ],
+    note,
+  };
+}
+
+/** Spec 0019, AC-15: the issue fields that changed (description, system, a cleared known fix). */
+export function issueEditedEvent(
+  issueId: string,
+  changes: AuditChange[],
+  note: string | null = null,
+): AuditEventData {
+  return {
+    action: 'ISSUE_EDITED',
+    changes: [...changes, { field: 'issueId', before: null, after: issueId }],
+    note,
+  };
+}
+
+/** Spec 0019, AC-16: what the removed issue said, so the record outlives the row. */
+export function issueRemovedEvent(
+  issue: {
+    id: string;
+    description: string;
+    system: string | null;
+    resolutionNote: string | null;
+  },
+  note: string | null = null,
+): AuditEventData {
+  return {
+    action: 'ISSUE_REMOVED',
+    changes: [
+      { field: 'issue', before: issue.description, after: null },
+      ...(issue.system
+        ? [{ field: 'system', before: issue.system, after: null }]
+        : []),
+      ...(issue.resolutionNote
+        ? [
+            {
+              field: 'resolutionNote',
+              before: issue.resolutionNote,
+              after: null,
+            },
+          ]
+        : []),
+      { field: 'issueId', before: null, after: issue.id },
+    ],
+    note,
   };
 }
 

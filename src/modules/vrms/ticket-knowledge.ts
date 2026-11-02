@@ -22,6 +22,8 @@ export const issueInclude = {
       select: {
         id: true,
         name: true,
+        // Spec 0019, AC-15: a system change clears a known fix from another category
+        categoryId: true,
         status: true,
         safetyNotes: true,
         estimatedHours: true,
@@ -54,6 +56,7 @@ export function formatIssue(
       ? {
           id: entry.id,
           name: entry.name,
+          categoryId: entry.categoryId,
           status: entry.status,
           safetyNotes: entry.safetyNotes,
           parts: entry.parts.map((p) => p.name),

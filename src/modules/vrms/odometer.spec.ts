@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
-import { odometerProblem, vehicleOdometerFloor } from './odometer';
+import {
+  correctedOdometerProblem,
+  odometerProblem,
+  ticketOdometerBounds,
+  vehicleOdometerFloor,
+} from './odometer';
 
 // Spec 0016, AC-7: the floor and the jump rule.
 
@@ -83,5 +88,93 @@ describe('odometerProblem', () => {
 
   it('never asks about a jump when the floor is 0 (no baseline)', () => {
     expect(odometerProblem(900000, 0, 20000, false)).toBeNull();
+  });
+});
+
+// Spec 0019, AC-5: the readings a corrected ticket must sit between.
+describe('ticketOdometerBounds', () => {
+  const ticket = {
+    id: 't2',
+    vehicleId: 'v1',
+    createdAt: new Date('2026-11-01'),
+  };
+
+  function boundsReader(
+    before: { odometer: number; repairNumber: string } | null,
+    after: { odometer: number; repairNumber: string } | null,
+  ) {
+    return {
+      repairTicket: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(before)
+          .mockResolvedValueOnce(after),
+      },
+      // Never read: the vehicle's own reading is the truck's latest, so it is no floor here
+      vehicle: { findUniqueOrThrow: jest.fn() },
+    };
+  }
+
+  it('takes the floor and the ceiling from the neighbouring tickets', async () => {
+    const db = boundsReader(
+      { odometer: 1000, repairNumber: 'REP-1' },
+      { odometer: 2000, repairNumber: 'REP-3' },
+    );
+    expect(await ticketOdometerBounds(db as never, ticket)).toEqual({
+      floor: 1000,
+      floorTicket: 'REP-1',
+      ceiling: 2000,
+      ceilingTicket: 'REP-3',
+    });
+  });
+
+  it('has no floor with no earlier ticket, and does not read the vehicle', async () => {
+    const db = boundsReader(null, { odometer: 2000, repairNumber: 'REP-3' });
+    expect(await ticketOdometerBounds(db as never, ticket)).toEqual({
+      floor: null,
+      floorTicket: null,
+      ceiling: 2000,
+      ceilingTicket: 'REP-3',
+    });
+    expect(db.vehicle.findUniqueOrThrow).not.toHaveBeenCalled();
+  });
+});
+
+describe('correctedOdometerProblem', () => {
+  const none = {
+    floor: null,
+    floorTicket: null,
+    ceiling: null,
+    ceilingTicket: null,
+  };
+
+  it('allows any reading, and never asks about a jump, when there is no floor', () => {
+    expect(correctedOdometerProblem(0, none, 20000, false)).toBeNull();
+    expect(correctedOdometerProblem(900000, none, 20000, false)).toBeNull();
+  });
+
+  it('still refuses a reading above the ceiling when there is no floor', () => {
+    const error = correctedOdometerProblem(
+      3000,
+      { ...none, ceiling: 2000, ceilingTicket: 'REP-3' },
+      20000,
+      false,
+    );
+    expect((error?.getResponse() as { code: string }).code).toBe(
+      'ODOMETER_ABOVE_NEXT',
+    );
+  });
+
+  it('names the floor ticket below the floor, and asks about a big jump above it', () => {
+    const bounds = { ...none, floor: 1000, floorTicket: 'REP-1' };
+    const below = correctedOdometerProblem(500, bounds, 20000, false);
+    expect(below?.getResponse()).toMatchObject({
+      code: 'ODOMETER_BELOW_LAST',
+      repairNumber: 'REP-1',
+    });
+    const jump = correctedOdometerProblem(90000, bounds, 20000, false);
+    expect((jump?.getResponse() as { code: string }).code).toBe(
+      'ODOMETER_JUMP_UNCONFIRMED',
+    );
   });
 });

@@ -3,6 +3,7 @@ import SharedModule from '../../shared/shared.module';
 import { AiModule } from '../ai/ai.module';
 import { RepairsController } from './repairs.controller';
 import { RepairsService } from './repairs.service';
+import { TicketEditsService } from './ticket-edits.service';
 import { ConfigController } from './config/config.controller';
 import { ConfigService } from './config/config.service';
 import { LookupsController } from './lookups/lookups.controller';
@@ -22,6 +23,7 @@ import { MechanicWorkService } from './mechanic-work.service';
   ],
   providers: [
     RepairsService,
+    TicketEditsService,
     ConfigService,
     LookupsService,
     VehiclesService,

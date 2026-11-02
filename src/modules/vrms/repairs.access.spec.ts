@@ -142,6 +142,7 @@ describe('ticket can flags (AC-12a)', () => {
       editCosts: false,
       unlock: false,
       assign: false,
+      edit: false,
     };
     // Spec 0014, AC-6: verify on any readable ticket except their own
     expect(own.can).toEqual({ ...none, work: true, assign: true });
@@ -160,6 +161,8 @@ describe('ticket can flags (AC-12a)', () => {
       editCosts: true,
       unlock: true,
       assign: true,
+      // Spec 0019, AC-1: ticket.edit is Admin only by default
+      edit: true,
     });
   });
 

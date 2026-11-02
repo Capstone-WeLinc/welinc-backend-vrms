@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   ParseUUIDPipe,
@@ -14,6 +15,14 @@ import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
+import { TicketEditsService } from './ticket-edits.service';
+import {
+  AddIssueDto,
+  EditIssueDto,
+  EditTicketDetailsDto,
+  SetMechanicsDto,
+  TicketEditDto,
+} from './dto/edit-ticket.dto';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -32,7 +41,10 @@ type AuthRequest = { user: AuthUser };
 // Spec 0011, Route to key mapping. Ownership and hidden fields come from the ability.
 @Controller('vrms/repairs')
 export class RepairsController {
-  constructor(private readonly repairsService: RepairsService) {}
+  constructor(
+    private readonly repairsService: RepairsService,
+    private readonly editsService: TicketEditsService,
+  ) {}
 
   @RequirePermission('ticket.create')
   @Post()
@@ -155,7 +167,19 @@ export class RepairsController {
     return this.repairsService.updateCosts(id, dto, req.user, ability);
   }
 
-  // Assign mechanics to an Open ticket, moving it to Assigned (spec 0016, AC-17)
+  // Set the full mechanic list on any open ticket (spec 0019, AC-9 to AC-12)
+  @RequirePermission('ticket.assign')
+  @Put(':id/assignments')
+  setMechanics(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetMechanicsDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.setMechanics(id, dto, req.user, ability);
+  }
+
+  // Spec 0016, AC-17, kept as a thin alias of the PUT that adds to the current list (spec 0019)
   @RequirePermission('ticket.assign')
   @Post(':id/assignments')
   assignMechanics(
@@ -164,7 +188,57 @@ export class RepairsController {
     @Req() req: AuthRequest,
     @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.assignMechanics(id, dto, req.user, ability);
+    return this.editsService.addMechanics(id, dto, req.user, ability);
+  }
+
+  // Fix the driver, odometer, priority or account after create (spec 0019, AC-4 to AC-8)
+  @RequirePermission('ticket.edit')
+  @Patch(':id/details')
+  editDetails(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EditTicketDetailsDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.editDetails(id, dto, req.user, ability);
+  }
+
+  // Add an issue after create (spec 0019, AC-14)
+  @RequirePermission('ticket.edit')
+  @Post(':id/issues')
+  addIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddIssueDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.addIssue(id, dto, req.user, ability);
+  }
+
+  // Reword an issue or change its system (spec 0019, AC-15)
+  @RequirePermission('ticket.edit')
+  @Patch(':id/issues/:issueId')
+  editIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Body() dto: EditIssueDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.editIssue(id, issueId, dto, req.user, ability);
+  }
+
+  // Remove an issue; a POST, since proxies may drop a DELETE body (spec 0019, AC-16, AC-17)
+  @RequirePermission('ticket.edit')
+  @Post(':id/issues/:issueId/remove')
+  removeIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Body() dto: TicketEditDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.removeIssue(id, issueId, dto, req.user, ability);
   }
 
   // Unlock a terminal (closed/cancelled) ticket for editing

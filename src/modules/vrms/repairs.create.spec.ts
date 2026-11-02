@@ -8,6 +8,7 @@ import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
 import type { CreateRepairDto } from './dto/create-repair.dto';
 import { RepairsService } from './repairs.service';
+import { driverForLicense } from './ticket-inputs';
 
 // Spec 0016, AC-2 and AC-6: the retry on a repair number clash and the driver insert race.
 
@@ -127,11 +128,17 @@ describe('RepairsService.create repair number clash (AC-2)', () => {
   });
 });
 
-describe('RepairsService new driver insert race (AC-6)', () => {
+describe('driverForLicense insert race (spec 0016, AC-6)', () => {
   const input = { name: 'Pedro', licenseNumber: 'A01-23-456789' };
+  const race = (tx: unknown, outside: unknown) =>
+    driverForLicense(
+      tx as Parameters<typeof driverForLicense>[0],
+      outside as Parameters<typeof driverForLicense>[1],
+      input,
+    );
 
   it('answers 409 DRIVER_EXISTS with the driver that won the unique index', async () => {
-    const { prisma, internals } = setup();
+    const { prisma } = setup();
     const tx = {
       driver: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -142,7 +149,7 @@ describe('RepairsService new driver insert race (AC-6)', () => {
     };
     prisma.driver.findUnique.mockResolvedValue({ id: 'd9', name: 'Winner' });
 
-    const error = await internals.driverFor(tx, input).catch((e: unknown) => e);
+    const error = await race(tx, prisma).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(ConflictException);
     expect((error as ConflictException).getResponse()).toMatchObject({
@@ -152,7 +159,7 @@ describe('RepairsService new driver insert race (AC-6)', () => {
   });
 
   it('creates an unverified driver when nobody holds the license', async () => {
-    const { internals } = setup();
+    const { prisma } = setup();
     const tx = {
       driver: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -160,14 +167,14 @@ describe('RepairsService new driver insert race (AC-6)', () => {
       },
     };
 
-    await expect(internals.driverFor(tx, input)).resolves.toBe('d2');
+    await expect(race(tx, prisma)).resolves.toEqual({ id: 'd2' });
     expect(tx.driver.create).toHaveBeenCalledWith({
       data: { ...input, isVerified: false },
     });
   });
 
   it('lets an unrelated insert error through', async () => {
-    const { internals } = setup();
+    const { prisma } = setup();
     const boom = new Error('disk full');
     const tx = {
       driver: {
@@ -176,6 +183,6 @@ describe('RepairsService new driver insert race (AC-6)', () => {
       },
     };
 
-    await expect(internals.driverFor(tx, input)).rejects.toBe(boom);
+    await expect(race(tx, prisma)).rejects.toBe(boom);
   });
 });

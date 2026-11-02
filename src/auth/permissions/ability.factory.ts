@@ -18,6 +18,7 @@ export type TicketAction =
   | 'editCosts'
   | 'unlock'
   | 'assign'
+  | 'edit'
   | 'addFiles'
   | 'addDocuments'
   | 'removeAny';
@@ -85,6 +86,10 @@ export function buildAbility(
       case 'ticket.assign':
         // Spec 0016, AC-16: a global right, like administer; not per assignment
         can('assign', 'RepairTicket');
+        break;
+      case 'ticket.edit':
+        // Spec 0019, AC-1: a global right like assign; the service also checks read on the ticket
+        can('edit', 'RepairTicket');
         break;
       case 'ticket.unlock':
         can('unlock', 'RepairTicket');
