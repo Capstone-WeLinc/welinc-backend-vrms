@@ -563,6 +563,31 @@ describe('RepairsService.findAll', () => {
     expect(prisma.repairTicket.findMany).not.toHaveBeenCalled();
   });
 
+  it('carries mechanicCount, driverId and the edit stamp on every row (spec 0019, AC-13, AC-19)', async () => {
+    const { prisma, service } = listSetup();
+    const none = openTicket({ partsCost: 0, laborCost: 0, totalCost: 0 });
+    const two = {
+      ...none,
+      id: 'two',
+      driverId: 'driver-1',
+      editedAt: new Date('2026-11-03T01:00:00Z'),
+      editedByName: 'Ana Admin',
+      assignments: [
+        { mechanic: { id: 'a', name: 'A', isActive: true } },
+        { mechanic: { id: 'b', name: 'B', isActive: true } },
+      ],
+    };
+    prisma.repairTicket.findMany.mockResolvedValue([none, two]);
+    const res = await service.findAll({}, asAdmin);
+    expect(res.data.map((r) => r.mechanicCount)).toEqual([0, 2]);
+    expect(res.data[1]).toMatchObject({
+      driverId: 'driver-1',
+      editedAt: '2026-11-03T01:00:00.000Z',
+      editedByName: 'Ana Admin',
+    });
+    expect(res.data[0].editedAt).toBeNull();
+  });
+
   it('sends a stored 0 cost as 0, not null', async () => {
     const { service } = listSetup();
     const res = await service.findAll({}, asAdmin);
