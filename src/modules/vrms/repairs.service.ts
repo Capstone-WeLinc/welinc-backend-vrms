@@ -61,7 +61,11 @@ import {
 } from './ticket-statuses';
 import { readableTickets } from './ticket-access';
 import { odometerProblem, vehicleOdometerFloor } from './odometer';
-import { CORPORATION_LIST } from './lookups/lookup-lists';
+import {
+  activeDriver,
+  corporationName,
+  driverForLicense,
+} from './ticket-inputs';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -252,15 +256,6 @@ function isRepairNumberCollision(error: unknown): boolean {
   );
 }
 
-function driverExists(driver: { id: string; name: string }) {
-  return new ConflictException({
-    statusCode: 409,
-    code: 'DRIVER_EXISTS',
-    message: `A driver with this license exists: ${driver.name}.`,
-    driver: { id: driver.id, name: driver.name },
-  });
-}
-
 function generateRepairNumber(): string {
   const now = new Date();
   const date = [
@@ -347,17 +342,7 @@ export class RepairsService {
     if (!!dto.driverId === !!dto.newDriver) {
       throw new BadRequestException('Choose or add a driver.');
     }
-    if (dto.driverId) {
-      const driver = await this.prisma.driver.findFirst({
-        where: { id: dto.driverId, isActive: true, deletedAt: null },
-        select: { id: true },
-      });
-      if (!driver) {
-        throw new BadRequestException(
-          'This driver is no longer available. Choose another.',
-        );
-      }
-    }
+    if (dto.driverId) await activeDriver(this.prisma, dto.driverId);
 
     // Mechanics are optional now (spec 0016, AC-1); any given must be active (spec 0010, AC-12)
     const mechanicIds = [...new Set((dto.mechanics ?? []).map((m) => m.id))];
@@ -486,7 +471,9 @@ export class RepairsService {
     );
     if (problem) throw problem;
 
-    const driverId = dto.driverId ?? (await this.driverFor(tx, dto.newDriver!));
+    const driverId =
+      dto.driverId ??
+      (await driverForLicense(tx, this.prisma, dto.newDriver!)).id;
 
     await tx.vehicle.update({
       where: { id: input.vehicleId },
@@ -558,63 +545,7 @@ export class RepairsService {
    */
   private async corporationFor(dto: CreateRepairDto): Promise<string | null> {
     if (dto.accountType !== 'CORPORATE') return null;
-    if (!dto.corporationId)
-      throw new BadRequestException('Choose a corporation.');
-    const value = await this.prisma.lookupValue.findFirst({
-      where: { id: dto.corporationId, list: CORPORATION_LIST, isActive: true },
-      select: { name: true },
-    });
-    if (!value) {
-      throw new BadRequestException(
-        'This corporation is no longer available. Choose another.',
-      );
-    }
-    return value.name;
-  }
-
-  /**
-   * A new driver by LTO license inside the create transaction (spec 0016, AC-6): an active owner
-   * answers 409 DRIVER_EXISTS, an inactive or deleted one is reactivated with its stored name.
-   */
-  private async driverFor(
-    tx: Prisma.TransactionClient,
-    input: { name: string; licenseNumber: string },
-  ): Promise<string> {
-    const existing = await tx.driver.findUnique({
-      where: { licenseNumber: input.licenseNumber },
-    });
-    if (existing?.isActive && !existing.deletedAt) {
-      throw driverExists(existing);
-    }
-    if (existing) {
-      await tx.driver.update({
-        where: { id: existing.id },
-        data: { isActive: true, deletedAt: null },
-      });
-      return existing.id;
-    }
-    try {
-      const created = await tx.driver.create({
-        data: {
-          name: input.name,
-          licenseNumber: input.licenseNumber,
-          isVerified: false,
-        },
-      });
-      return created.id;
-    } catch (error) {
-      // A concurrent insert won the unique index
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        const winner = await this.prisma.driver.findUnique({
-          where: { licenseNumber: input.licenseNumber },
-        });
-        if (winner) throw driverExists(winner);
-      }
-      throw error;
-    }
+    return corporationName(this.prisma, dto.corporationId);
   }
 
   /** The categories and entries the new issues point at; 400 when one is missing or not active. */
@@ -1640,6 +1571,8 @@ export class RepairsService {
       vehiclePlate: ticket.vehicle.plateNumber,
       vehicleModel: ticket.vehicle.model,
       driverName: ticket.driver.name,
+      // Spec 0019, AC-4: so the details edit can tell a swap from the same driver
+      driverId: ticket.driverId,
       garageLocation: ticket.garage.name,
       odometerReading: ticket.odometer,
       priority: ticket.priority,

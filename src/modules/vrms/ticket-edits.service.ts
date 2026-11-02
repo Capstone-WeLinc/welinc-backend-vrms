@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -21,6 +22,14 @@ import {
   type TicketRow,
 } from './repairs.service';
 import { assertFresh, editNote, stampEdit } from './ticket-edits';
+import {
+  activeDriver,
+  corporationName,
+  driverForLicense,
+  type DriverRow,
+} from './ticket-inputs';
+import { correctedOdometerProblem, ticketOdometerBounds } from './odometer';
+import { SettingsService } from '../../settings/settings.service';
 
 // Spec 0019: fix a ticket after create, one section at a time. Each save is one transaction whose
 // first write is the guarded stamp (AC-19), and answers with the ticket as GET /:id returns it.
@@ -47,6 +56,7 @@ export class TicketEditsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly repairs: RepairsService,
+    private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -84,34 +94,114 @@ export class TicketEditsService {
   ) {
     const { ticket, note } = await this.loadForEdit(id, dto, ability);
 
+    // AC-4: at most one of an existing driver or a new one
+    if (dto.driverId && dto.newDriver) {
+      throw new BadRequestException('Choose or add a driver.');
+    }
+    const pickedDriver =
+      dto.driverId && dto.driverId !== ticket.driverId
+        ? await activeDriver(this.prisma, dto.driverId)
+        : null;
+
     const data: Prisma.RepairTicketUpdateManyMutationInput = {};
     const before = detailValues(ticket);
     const after = { ...before };
+
+    // AC-5: between the truck's tickets before and after this one, with the jump confirm
+    if (
+      dto.odometerReading !== undefined &&
+      dto.odometerReading !== ticket.odometer
+    ) {
+      const problem = correctedOdometerProblem(
+        dto.odometerReading,
+        await ticketOdometerBounds(this.prisma, ticket),
+        this.settings.get('tickets.odometer_jump_warn_km'),
+        dto.confirmOdometerJump === true,
+      );
+      if (problem) throw problem;
+      data.odometer = dto.odometerReading;
+      after.odometer = dto.odometerReading;
+    }
+
     if (dto.priority !== undefined) {
       data.priority = dto.priority;
       after.priority = dto.priority;
     }
 
-    const event = ticketEditedEvent(before, after, note);
-    // AC-8b: nothing changed, so no audit row and no stamp
-    if (event.changes.length === 0)
+    // AC-7: an omitted accountType keeps the current one; ONLINE clears the corporation
+    const account = await this.accountChange(ticket, dto);
+    if (account) {
+      data.accountType = account.accountType;
+      data.corporation = account.corporation;
+      after.accountType = account.accountType;
+      after.corporation = account.corporation;
+    }
+
+    if (pickedDriver) after.driver = driverLabel(pickedDriver);
+    // AC-8b: nothing changed, so no audit row and no stamp (a new driver is always a change)
+    if (!dto.newDriver && !ticketEditedEvent(before, after).changes.length) {
       return this.repairs.present(ticket, ability);
+    }
 
     const now = new Date();
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { updated, event } = await this.prisma.$transaction(async (tx) => {
+      // AC-19: the guarded stamp is the first write, before any driver row is touched
       await stampEdit(tx, ticket, user, now, data);
+      let driver: DriverRow | null = pickedDriver;
+      if (dto.newDriver) {
+        driver = await driverForLicense(tx, this.prisma, dto.newDriver);
+      }
+      if (driver) {
+        await tx.repairTicket.update({
+          where: { id },
+          data: { driverId: driver.id, updatedAt: now },
+        });
+        after.driver = driverLabel(driver);
+      }
+      // One row listing only the fields that changed (AC-8)
+      const event = ticketEditedEvent(before, after, note);
       await tx.auditLog.create({
         data: { repairTicketId: id, ...auditData(user, event, now) },
       });
-      return tx.repairTicket.findUniqueOrThrow({
+      const updated = await tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
       });
+      return { updated, event };
     });
 
     this.logger.log(
       `Ticket ${ticket.repairNumber} edited (${event.changes.map((c) => c.field).join(', ')}) by ${user.email}`,
     );
     return this.repairs.present(updated, ability);
+  }
+
+  /**
+   * AC-7: the account type and corporation snapshot a details save writes, or null when the body
+   * asks for neither. A corporationId on a ticket that is (or becomes) Online is a 400.
+   */
+  private async accountChange(
+    ticket: TicketRow,
+    dto: EditTicketDetailsDto,
+  ): Promise<{
+    accountType: 'ONLINE' | 'CORPORATE';
+    corporation: string | null;
+  } | null> {
+    const type = dto.accountType ?? ticket.accountType;
+    if (dto.accountType === undefined && dto.corporationId === undefined) {
+      return null;
+    }
+    if (type !== 'CORPORATE') {
+      if (dto.corporationId) {
+        throw new BadRequestException(
+          'A corporation goes with a Corporate account only.',
+        );
+      }
+      return { accountType: 'ONLINE', corporation: null };
+    }
+    return {
+      accountType: 'CORPORATE',
+      corporation: await corporationName(this.prisma, dto.corporationId),
+    };
   }
 }
