@@ -1,6 +1,6 @@
 # Attachments (ticket files)
 
-Photos, proof, receipts and other documents on a repair ticket, stored in private Blob Storage and opened through short lived signed links. Governing spec: [docs/specs/0017-file-upload-storage/index.md](../../../../docs/specs/0017-file-upload-storage/index.md) (its AC numbers appear in code comments and tests).
+Photos, proof, receipts and other documents on a repair ticket, stored in private Blob Storage and opened through short lived signed links. Governing spec: [docs/specs/vrms/0017-file-upload-storage/index.md](../../../../docs/specs/vrms/0017-file-upload-storage/index.md) (its AC numbers appear in code comments and tests).
 
 ## Key files
 
