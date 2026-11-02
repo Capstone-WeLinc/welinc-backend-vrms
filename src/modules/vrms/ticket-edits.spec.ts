@@ -57,7 +57,7 @@ type Bound = { odometer: number; repairNumber: string } | null;
 
 function setup(
   row = ticketRow(),
-  bounds: { before?: Bound; after?: Bound; vehicle?: number } = {},
+  bounds: { before?: Bound; after?: Bound } = {},
 ) {
   const tx = {
     repairTicket: {
@@ -84,11 +84,6 @@ function setup(
         .fn()
         .mockResolvedValueOnce(bounds.before ?? null)
         .mockResolvedValueOnce(bounds.after ?? null),
-    },
-    vehicle: {
-      findUniqueOrThrow: jest
-        .fn()
-        .mockResolvedValue({ odometer: bounds.vehicle ?? 100000 }),
     },
     driver: {
       findFirst: jest.fn().mockResolvedValue({
@@ -418,18 +413,24 @@ describe('TicketEditsService.editDetails (driver, odometer, account)', () => {
     });
   });
 
-  it('falls back to the vehicle reading with no earlier ticket, and asks to confirm a big jump (AC-5)', async () => {
-    const first = setup(ticketRow(), { vehicle: 100000 });
-    expect(
-      await rejectedCode(save(first.service, { odometerReading: 130000 })),
-    ).toBe('ODOMETER_JUMP_UNCONFIRMED');
+  it('has no floor and no jump check with no earlier ticket, so the oldest ticket can be corrected (AC-5)', async () => {
+    // Far below any vehicle reading, and a big jump from nothing: both save with no confirm
+    const low = setup(ticketRow());
+    await save(low.service, { odometerReading: 50000 });
+    expect(low.tx.auditLog.create).toHaveBeenCalledTimes(1);
 
-    const confirmed = setup(ticketRow(), { vehicle: 100000 });
-    await save(confirmed.service, {
-      odometerReading: 130000,
-      confirmOdometerJump: true,
+    const high = setup(ticketRow());
+    await save(high.service, { odometerReading: 900000 });
+    expect(high.tx.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('still holds the ceiling when there is no earlier ticket (AC-5)', async () => {
+    const { service } = setup(ticketRow(), {
+      after: { odometer: 121000, repairNumber: 'REP-2' },
     });
-    expect(confirmed.tx.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(await rejectedCode(save(service, { odometerReading: 121500 }))).toBe(
+      'ODOMETER_ABOVE_NEXT',
+    );
   });
 
   it('switches to Corporate with the corporation snapshot (AC-7)', async () => {

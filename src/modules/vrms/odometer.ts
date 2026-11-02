@@ -28,9 +28,12 @@ export async function vehicleOdometerFloor(
 
 /** Spec 0019, AC-5: the readings a corrected ticket must sit between. */
 export type OdometerBounds = {
-  /** The highest reading ordered before this ticket, else the vehicle's own reading. */
-  floor: number;
-  /** The ticket that holds the floor; null when it is the vehicle's reading. */
+  /**
+   * The highest reading ordered before this ticket; null when there is none, so the oldest ticket
+   * on a truck has no floor (the vehicle's own reading is the truck's latest, never a floor here).
+   */
+  floor: number | null;
+  /** The ticket that holds the floor; null when there is no floor. */
   floorTicket: string | null;
   /** The lowest reading ordered after this ticket; null when there is none. */
   ceiling: number | null;
@@ -75,16 +78,8 @@ export async function ticketOdometerBounds(
       select: { odometer: true, repairNumber: true },
     }),
   ]);
-  const floor =
-    before?.odometer ??
-    (
-      await db.vehicle.findUniqueOrThrow({
-        where: { id: ticket.vehicleId },
-        select: { odometer: true },
-      })
-    ).odometer;
   return {
-    floor,
+    floor: before?.odometer ?? null,
     floorTicket: before?.repairNumber ?? null,
     ceiling: after?.odometer ?? null,
     ceilingTicket: after?.repairNumber ?? null,
@@ -103,13 +98,11 @@ export function correctedOdometerProblem(
   confirmed: boolean,
 ): BadRequestException | null {
   const km = (n: number) => `${n.toLocaleString('en-US')} km`;
-  if (reading < bounds.floor) {
+  if (bounds.floor !== null && reading < bounds.floor) {
     return new BadRequestException({
       statusCode: 400,
       code: 'ODOMETER_BELOW_LAST',
-      message: bounds.floorTicket
-        ? `Odometer can't be lower than ${km(bounds.floor)}, the reading on ${bounds.floorTicket}.`
-        : `Odometer can't be lower than the truck's last reading, ${km(bounds.floor)}.`,
+      message: `Odometer can't be lower than ${km(bounds.floor)}, the reading on ${bounds.floorTicket}.`,
       last: bounds.floor,
       repairNumber: bounds.floorTicket,
     });
@@ -123,9 +116,9 @@ export function correctedOdometerProblem(
       repairNumber: bounds.ceilingTicket,
     });
   }
-  // The jump rule, against the floor, as on create
-  const jump = odometerProblem(reading, bounds.floor, jumpWarnKm, confirmed);
-  return jump;
+  // The jump rule, against the floor, as on create; no floor means nothing to jump from
+  if (bounds.floor === null) return null;
+  return odometerProblem(reading, bounds.floor, jumpWarnKm, confirmed);
 }
 
 /** The 400 for a reading below the floor or a big jump nobody confirmed; null when it is fine. */
