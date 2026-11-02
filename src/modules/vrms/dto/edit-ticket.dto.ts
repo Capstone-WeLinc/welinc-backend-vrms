@@ -1,17 +1,23 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsISO8601,
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { MechanicAssignmentDto, NewDriverDto } from './create-repair.dto';
+import {
+  MechanicAssignmentDto,
+  NewDriverDto,
+  RepairIssueDto,
+} from './create-repair.dto';
 
 // Spec 0019: the edit endpoints after create (details, mechanics, issues).
 
@@ -70,4 +76,29 @@ export class EditTicketDetailsDto extends TicketEditDto {
   @IsOptional()
   @IsUUID()
   corporationId?: string;
+}
+
+/** POST /vrms/repairs/:id/issues: create's issue fields and rules (AC-14). */
+export class AddIssueDto extends RepairIssueDto {
+  @IsISO8601()
+  lastUpdatedAt: string;
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+
+/** PATCH /vrms/repairs/:id/issues/:issueId: the system and the text after "[System] " (AC-15). */
+export class EditIssueDto extends TicketEditDto {
+  @IsUUID('all', { message: 'Choose a system.' })
+  categoryId: string;
+
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty({ message: 'Describe the issue.' })
+  @MaxLength(600)
+  text: string;
 }

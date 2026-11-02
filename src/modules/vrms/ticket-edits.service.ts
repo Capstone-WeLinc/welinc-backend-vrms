@@ -6,14 +6,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { subject } from '@casl/ability';
-import { Prisma, RepairStatus } from '@prisma/client';
+import { KnowledgeEntryStatus, Prisma, RepairStatus } from '@prisma/client';
 import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
 import { applyStatusMove } from './apply-status-move';
 import {
   Actor,
+  type AuditChange,
   AuditEventData,
   auditData,
+  issueAddedEvent,
+  issueEditedEvent,
+  issueRemovedEvent,
   mechanicsChangedEvent,
   whoName,
   type TicketDetailValues,
@@ -21,6 +25,8 @@ import {
 } from './audit-events';
 import { AssignMechanicsDto } from './dto/assign-mechanics.dto';
 import {
+  AddIssueDto,
+  EditIssueDto,
   EditTicketDetailsDto,
   SetMechanicsDto,
   TicketEditDto,
@@ -37,7 +43,9 @@ import {
   corporationName,
   driverForLicense,
   type DriverRow,
+  issueDescription,
 } from './ticket-inputs';
+import { EmbeddingService } from '../ai/embedding.service';
 import { correctedOdometerProblem, ticketOdometerBounds } from './odometer';
 import { SettingsService } from '../../settings/settings.service';
 
@@ -67,6 +75,7 @@ export class TicketEditsService {
     private readonly prisma: PrismaService,
     private readonly repairs: RepairsService,
     private readonly settings: SettingsService,
+    private readonly embeddings: EmbeddingService,
   ) {}
 
   /**
@@ -361,6 +370,228 @@ export class TicketEditsService {
 
     this.logger.log(
       `Ticket ${ticket.repairNumber} mechanics: -[${removed.map((m) => m.name).join(', ')}] +[${added.map((m) => m.name).join(', ')}]${move ? ` (${move.id})` : ''} by ${user.email}`,
+    );
+    return this.repairs.present(updated, ability);
+  }
+
+  // ── Issues (AC-14 to AC-17) ───────────────────────────────────────────────
+
+  // ticket.edit is checked by the route's guard
+  async addIssue(
+    id: string,
+    dto: AddIssueDto,
+    user: Actor,
+    ability: AppAbility,
+  ) {
+    const { ticket, note } = await this.loadForEdit(id, dto, ability);
+    const [category, entry] = await Promise.all([
+      this.prisma.issueCategory.findFirst({
+        where: { id: dto.categoryId, isActive: true },
+      }),
+      dto.knowledgeEntryId
+        ? this.prisma.knowledgeEntry.findFirst({
+            where: {
+              id: dto.knowledgeEntryId,
+              status: KnowledgeEntryStatus.ACTIVE,
+            },
+            include: { steps: { orderBy: { position: 'asc' } } },
+          })
+        : null,
+    ]);
+    if (!category) {
+      throw new BadRequestException(
+        'A chosen system is no longer available. Pick another one.',
+      );
+    }
+    if (dto.knowledgeEntryId && !entry) {
+      throw new BadRequestException(
+        'A chosen common issue is no longer available. Pick another one, or choose Other.',
+      );
+    }
+    const description = issueDescription(
+      category.name,
+      dto.rootCause,
+      dto.description,
+      entry?.name,
+    );
+
+    const now = new Date();
+    const { updated, issueId } = await this.prisma.$transaction(async (tx) => {
+      await stampEdit(tx, ticket, user, now);
+      // A linked entry's steps are copied, as on create (spec 0007)
+      const issue = await tx.repairIssue.create({
+        data: {
+          repairTicketId: id,
+          description,
+          categoryId: category.id,
+          knowledgeEntryId: entry?.id ?? null,
+          ...(entry && {
+            steps: {
+              create: entry.steps.map((s) => ({
+                position: s.position,
+                text: s.text,
+              })),
+            },
+          }),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          repairTicketId: id,
+          ...auditData(user, issueAddedEvent(issue.id, description, note), now),
+        },
+      });
+      const updated = await tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+      return { updated, issueId: issue.id };
+    });
+
+    // Never awaited: embedding must not fail or slow the save (spec 0013, AC-14)
+    void this.embeddings.embedIssuesInBackground([issueId]);
+    this.logger.log(
+      `Ticket ${ticket.repairNumber}: issue added by ${user.email}`,
+    );
+    return this.repairs.present(updated, ability);
+  }
+
+  // ticket.edit is checked by the route's guard
+  async editIssue(
+    id: string,
+    issueId: string,
+    dto: EditIssueDto,
+    user: Actor,
+    ability: AppAbility,
+  ) {
+    const { ticket, note } = await this.loadForEdit(id, dto, ability);
+    const issue = ticket.issues.find((i) => i.id === issueId);
+    if (!issue) throw new NotFoundException('Issue not found on this ticket');
+    const category = await this.prisma.issueCategory.findFirst({
+      where: { id: dto.categoryId, isActive: true },
+    });
+    if (!category) {
+      throw new BadRequestException(
+        'A chosen system is no longer available. Pick another one.',
+      );
+    }
+    const description = `[${category.name}] ${dto.text}`;
+    // A known fix from another category no longer fits the issue: the link and its copied steps go
+    const clearsFix =
+      !!issue.knowledgeEntry && issue.knowledgeEntry.categoryId !== category.id;
+    const changes: AuditChange[] = [];
+    if (description !== issue.description) {
+      changes.push({
+        field: 'description',
+        before: issue.description,
+        after: description,
+      });
+    }
+    if (category.id !== issue.categoryId) {
+      changes.push({
+        field: 'system',
+        before: issue.category?.name ?? null,
+        after: category.name,
+      });
+    }
+    if (clearsFix) {
+      changes.push({
+        field: 'knowledgeEntry',
+        before: issue.knowledgeEntry!.name,
+        after: null,
+      });
+    }
+    // AC-8b: nothing changed, so no audit row and no stamp
+    if (changes.length === 0) return this.repairs.present(ticket, ability);
+
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await stampEdit(tx, ticket, user, now);
+      if (clearsFix) {
+        await tx.repairIssueStep.deleteMany({
+          where: { repairIssueId: issueId },
+        });
+      }
+      await tx.repairIssue.update({
+        where: { id: issueId },
+        data: {
+          description,
+          categoryId: category.id,
+          ...(clearsFix && { knowledgeEntryId: null }),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          repairTicketId: id,
+          ...auditData(user, issueEditedEvent(issueId, changes, note), now),
+        },
+      });
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+    });
+
+    if (description !== issue.description) {
+      void this.embeddings.embedIssuesInBackground([issueId]);
+    }
+    this.logger.log(
+      `Ticket ${ticket.repairNumber}: issue ${issueId} edited by ${user.email}`,
+    );
+    return this.repairs.present(updated, ability);
+  }
+
+  // ticket.edit is checked by the route's guard
+  async removeIssue(
+    id: string,
+    issueId: string,
+    dto: TicketEditDto,
+    user: Actor,
+    ability: AppAbility,
+  ) {
+    const { ticket, note } = await this.loadForEdit(id, dto, ability);
+    const issue = ticket.issues.find((i) => i.id === issueId);
+    if (!issue) throw new NotFoundException('Issue not found on this ticket');
+    // AC-17: a ticket always keeps at least one issue
+    if (ticket.issues.length <= 1) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'LAST_ISSUE',
+        message: 'Add the right issue first, or reword this one.',
+      });
+    }
+
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await stampEdit(tx, ticket, user, now);
+      // Steps and the embedding cascade; photos and knowledge suggestions lose the link (SetNull)
+      await tx.repairIssue.delete({ where: { id: issueId } });
+      await tx.auditLog.create({
+        data: {
+          repairTicketId: id,
+          ...auditData(
+            user,
+            issueRemovedEvent(
+              {
+                id: issueId,
+                description: issue.description,
+                system: issue.category?.name ?? null,
+                resolutionNote: issue.resolutionNote,
+              },
+              note,
+            ),
+            now,
+          ),
+        },
+      });
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+    });
+
+    this.logger.log(
+      `Ticket ${ticket.repairNumber}: issue ${issueId} removed by ${user.email}`,
     );
     return this.repairs.present(updated, ability);
   }

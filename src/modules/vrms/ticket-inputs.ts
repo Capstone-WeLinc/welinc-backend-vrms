@@ -80,6 +80,27 @@ export async function driverForLicense(
 }
 
 /**
+ * Spec 0019, AC-14: an issue's stored description, built the one way create builds it. A blank
+ * description with a linked entry takes the entry's name (spec 0016, AC-5).
+ */
+export function issueDescription(
+  system: string,
+  rootCause: string,
+  description: string | undefined,
+  entryName: string | undefined,
+): string {
+  return `[${system}] ${rootCause}: ${description || entryName || ''}`;
+}
+
+/**
+ * Spec 0019, AC-15: the text after a stored description's leading "[System] " (root cause
+ * included), which the edit dialog prefills; the system goes back on in front when it saves.
+ */
+export function issueText(description: string): string {
+  return description.replace(/^\[[^\]]*\]\s*/, '');
+}
+
+/**
  * The corporation name to store (spec 0016, AC-4): the active lookup value's name, a snapshot.
  * 400 when none is chosen or it is no longer active.
  */

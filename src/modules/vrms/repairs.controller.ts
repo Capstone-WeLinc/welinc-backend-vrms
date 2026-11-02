@@ -16,7 +16,13 @@ import { CurrentAbility } from '../../auth/permissions/current-ability.decorator
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
 import { TicketEditsService } from './ticket-edits.service';
-import { EditTicketDetailsDto, SetMechanicsDto } from './dto/edit-ticket.dto';
+import {
+  AddIssueDto,
+  EditIssueDto,
+  EditTicketDetailsDto,
+  SetMechanicsDto,
+  TicketEditDto,
+} from './dto/edit-ticket.dto';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -195,6 +201,44 @@ export class RepairsController {
     @CurrentAbility() ability: AppAbility,
   ) {
     return this.editsService.editDetails(id, dto, req.user, ability);
+  }
+
+  // Add an issue after create (spec 0019, AC-14)
+  @RequirePermission('ticket.edit')
+  @Post(':id/issues')
+  addIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddIssueDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.addIssue(id, dto, req.user, ability);
+  }
+
+  // Reword an issue or change its system (spec 0019, AC-15)
+  @RequirePermission('ticket.edit')
+  @Patch(':id/issues/:issueId')
+  editIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Body() dto: EditIssueDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.editIssue(id, issueId, dto, req.user, ability);
+  }
+
+  // Remove an issue; a POST, since proxies may drop a DELETE body (spec 0019, AC-16, AC-17)
+  @RequirePermission('ticket.edit')
+  @Post(':id/issues/:issueId/remove')
+  removeIssue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Body() dto: TicketEditDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.removeIssue(id, issueId, dto, req.user, ability);
   }
 
   // Unlock a terminal (closed/cancelled) ticket for editing

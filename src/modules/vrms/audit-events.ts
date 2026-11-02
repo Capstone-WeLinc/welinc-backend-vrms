@@ -26,6 +26,9 @@ export const AUDIT_ACTIONS = [
   'ATTACHMENT_REMOVED',
   'ATTACHMENT_MOVED',
   'TICKET_EDITED',
+  'ISSUE_ADDED',
+  'ISSUE_EDITED',
+  'ISSUE_REMOVED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -256,6 +259,67 @@ export function ticketEditedEvent(
       .filter(([, b, a]) => b !== a)
       .map(([field, b, a]) => ({ field, before: b, after: a })),
     note: note?.trim() || null,
+  };
+}
+
+/** Spec 0019, AC-14: the stored description of the new issue, plus its id. */
+export function issueAddedEvent(
+  issueId: string,
+  description: string,
+  note: string | null = null,
+): AuditEventData {
+  return {
+    action: 'ISSUE_ADDED',
+    changes: [
+      { field: 'issue', before: null, after: description },
+      { field: 'issueId', before: null, after: issueId },
+    ],
+    note,
+  };
+}
+
+/** Spec 0019, AC-15: the issue fields that changed (description, system, a cleared known fix). */
+export function issueEditedEvent(
+  issueId: string,
+  changes: AuditChange[],
+  note: string | null = null,
+): AuditEventData {
+  return {
+    action: 'ISSUE_EDITED',
+    changes: [...changes, { field: 'issueId', before: null, after: issueId }],
+    note,
+  };
+}
+
+/** Spec 0019, AC-16: what the removed issue said, so the record outlives the row. */
+export function issueRemovedEvent(
+  issue: {
+    id: string;
+    description: string;
+    system: string | null;
+    resolutionNote: string | null;
+  },
+  note: string | null = null,
+): AuditEventData {
+  return {
+    action: 'ISSUE_REMOVED',
+    changes: [
+      { field: 'issue', before: issue.description, after: null },
+      ...(issue.system
+        ? [{ field: 'system', before: issue.system, after: null }]
+        : []),
+      ...(issue.resolutionNote
+        ? [
+            {
+              field: 'resolutionNote',
+              before: issue.resolutionNote,
+              after: null,
+            },
+          ]
+        : []),
+      { field: 'issueId', before: null, after: issue.id },
+    ],
+    note,
   };
 }
 

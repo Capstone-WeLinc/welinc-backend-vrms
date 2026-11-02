@@ -64,6 +64,7 @@ import {
   activeDriver,
   corporationName,
   driverForLicense,
+  issueDescription,
 } from './ticket-inputs';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
@@ -506,7 +507,12 @@ export class RepairsService {
               : undefined;
             return {
               // A blank description with a linked entry takes the entry's name (spec 0016, AC-5)
-              description: `[${categories.get(issue.categoryId)!.name}] ${issue.rootCause}: ${issue.description || entry?.name || ''}`,
+              description: issueDescription(
+                categories.get(issue.categoryId)!.name,
+                issue.rootCause,
+                issue.description,
+                entry?.name,
+              ),
               categoryId: issue.categoryId,
               knowledgeEntryId: entry?.id ?? null,
               ...(entry

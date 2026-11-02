@@ -9,6 +9,7 @@ import { UserRole } from '../../auth/roles';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { PrismaService } from '../../shared/prisma.service';
 import { FakeSettings } from '../../settings/settings.fake';
+import { FakeEmbeddings } from '../ai/embedding.fake';
 import { RepairsService } from './repairs.service';
 import { editNote } from './ticket-edits';
 import { TicketEditsService } from './ticket-edits.service';
@@ -103,12 +104,14 @@ function setup(
     $transaction: jest.fn((run: (c: typeof tx) => unknown) => run(tx)),
   };
   const repairs = { present: jest.fn((t: unknown) => Promise.resolve(t)) };
+  const embeddings = new FakeEmbeddings();
   const service = new TicketEditsService(
     prisma as unknown as PrismaService,
     repairs as unknown as RepairsService,
     new FakeSettings({ 'tickets.odometer_jump_warn_km': 5000 }),
+    embeddings.asService(),
   );
-  return { service, tx, prisma, repairs };
+  return { service, tx, prisma, repairs, embeddings };
 }
 
 type UpdateCall = [{ where: unknown; data: Record<string, unknown> }];
@@ -655,5 +658,204 @@ describe('TicketEditsService mechanics (AC-9 to AC-12)', () => {
     );
     expect(tx.ticketAssignment.deleteMany).not.toHaveBeenCalled();
     expect(audits(tx).map((r) => r.action)).toEqual(['MECHANIC_ASSIGNED']);
+  });
+});
+
+describe('TicketEditsService issues (AC-14 to AC-17)', () => {
+  const BRAKES = { id: 'cat-brakes', name: 'Brakes', isActive: true };
+  const ENGINE = { id: 'cat-engine', name: 'Engine', isActive: true };
+  const issue = (over: Record<string, unknown> = {}) => ({
+    id: 'i1',
+    description: '[Brakes] Wear and tear: Pads worn',
+    categoryId: BRAKES.id,
+    category: { name: 'Brakes' },
+    knowledgeEntry: null,
+    resolutionNote: null,
+    steps: [],
+    ...over,
+  });
+
+  function issuesSetup(issues: unknown[], extra: Record<string, unknown> = {}) {
+    const ctx = setup(ticketRow({ issues, ...extra }));
+    Object.assign(ctx.prisma, {
+      issueCategory: {
+        findFirst: jest.fn(({ where }: { where: { id: string } }) =>
+          Promise.resolve(
+            [BRAKES, ENGINE].find((c) => c.id === where.id) ?? null,
+          ),
+        ),
+      },
+      knowledgeEntry: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'k1',
+          name: 'Replace brake pads',
+          steps: [
+            { position: 1, text: 'Lift the truck' },
+            { position: 2, text: 'Swap the pads' },
+          ],
+        }),
+      },
+    });
+    Object.assign(ctx.tx, {
+      repairIssue: {
+        create: jest.fn().mockResolvedValue({ id: 'i-new' }),
+        update: jest.fn().mockResolvedValue({}),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+      repairIssueStep: { deleteMany: jest.fn().mockResolvedValue({}) },
+    });
+    return ctx as typeof ctx & {
+      tx: typeof ctx.tx & {
+        repairIssue: {
+          create: jest.Mock;
+          update: jest.Mock;
+          delete: jest.Mock;
+        };
+        repairIssueStep: { deleteMany: jest.Mock };
+      };
+    };
+  }
+
+  const auditOf = (tx: { auditLog: { create: jest.Mock } }) =>
+    (tx.auditLog.create.mock.calls[0] as AuditCall)[0].data;
+
+  it('adds an issue the way create builds it, with the copied steps and an ISSUE_ADDED row (AC-14)', async () => {
+    const { service, tx, embeddings } = issuesSetup([issue()]);
+    await service.addIssue(
+      't1',
+      {
+        lastUpdatedAt: AT,
+        categoryId: BRAKES.id,
+        rootCause: 'Hydraulic leak',
+        knowledgeEntryId: 'k1',
+      },
+      admin,
+      defaultAbility(admin),
+    );
+    const [created] = tx.repairIssue.create.mock.calls[0] as [
+      { data: { description: string; steps: { create: unknown[] } } },
+    ];
+    // A blank description with a known fix takes the entry's name
+    expect(created.data.description).toBe(
+      '[Brakes] Hydraulic leak: Replace brake pads',
+    );
+    expect(created.data.steps.create).toHaveLength(2);
+    expect(auditOf(tx).action).toBe('ISSUE_ADDED');
+    expect(embeddings.calls).toEqual([['i-new']]);
+  });
+
+  it('rewords an issue under a new system and clears a known fix from the old one (AC-15)', async () => {
+    const linked = issue({
+      knowledgeEntry: { name: 'Replace brake pads', categoryId: BRAKES.id },
+    });
+    const { service, tx, embeddings } = issuesSetup([
+      linked,
+      issue({ id: 'i2' }),
+    ]);
+    await service.editIssue(
+      't1',
+      'i1',
+      {
+        lastUpdatedAt: AT,
+        categoryId: ENGINE.id,
+        text: 'Overheating: Fan stuck',
+      },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(tx.repairIssueStep.deleteMany).toHaveBeenCalledWith({
+      where: { repairIssueId: 'i1' },
+    });
+    expect(tx.repairIssue.update).toHaveBeenCalledWith({
+      where: { id: 'i1' },
+      data: {
+        description: '[Engine] Overheating: Fan stuck',
+        categoryId: ENGINE.id,
+        knowledgeEntryId: null,
+      },
+    });
+    const audit = auditOf(tx);
+    expect(audit.action).toBe('ISSUE_EDITED');
+    expect(audit.changes).toEqual([
+      {
+        field: 'description',
+        before: '[Brakes] Wear and tear: Pads worn',
+        after: '[Engine] Overheating: Fan stuck',
+      },
+      { field: 'system', before: 'Brakes', after: 'Engine' },
+      { field: 'knowledgeEntry', before: 'Replace brake pads', after: null },
+      { field: 'issueId', before: null, after: 'i1' },
+    ]);
+    expect(embeddings.calls).toEqual([['i1']]);
+  });
+
+  it('keeps the known fix when the system stays, and writes nothing for the same text (AC-8b)', async () => {
+    const linked = issue({
+      knowledgeEntry: { name: 'Replace brake pads', categoryId: BRAKES.id },
+    });
+    const { service, prisma } = issuesSetup([linked]);
+    await service.editIssue(
+      't1',
+      'i1',
+      {
+        lastUpdatedAt: AT,
+        categoryId: BRAKES.id,
+        text: 'Wear and tear: Pads worn',
+      },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('removes an issue with its record kept in ISSUE_REMOVED (AC-16)', async () => {
+    const worked = issue({ resolutionNote: 'Bled the lines' });
+    const { service, tx } = issuesSetup([worked, issue({ id: 'i2' })]);
+    await service.removeIssue(
+      't1',
+      'i1',
+      { lastUpdatedAt: AT },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(tx.repairIssue.delete).toHaveBeenCalledWith({ where: { id: 'i1' } });
+    const audit = auditOf(tx);
+    expect(audit.action).toBe('ISSUE_REMOVED');
+    expect(audit.changes).toEqual([
+      {
+        field: 'issue',
+        before: '[Brakes] Wear and tear: Pads worn',
+        after: null,
+      },
+      { field: 'system', before: 'Brakes', after: null },
+      { field: 'resolutionNote', before: 'Bled the lines', after: null },
+      { field: 'issueId', before: null, after: 'i1' },
+    ]);
+  });
+
+  it('refuses to remove the last issue (AC-17) and an issue from another ticket', async () => {
+    const last = issuesSetup([issue()]);
+    expect(
+      await rejectedCode(
+        last.service.removeIssue(
+          't1',
+          'i1',
+          { lastUpdatedAt: AT },
+          admin,
+          defaultAbility(admin),
+        ),
+      ),
+    ).toBe('LAST_ISSUE');
+
+    const other = issuesSetup([issue(), issue({ id: 'i2' })]);
+    await expect(
+      other.service.removeIssue(
+        't1',
+        'i9',
+        { lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
