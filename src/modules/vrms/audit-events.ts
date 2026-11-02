@@ -25,6 +25,7 @@ export const AUDIT_ACTIONS = [
   'ATTACHMENT_ADDED',
   'ATTACHMENT_REMOVED',
   'ATTACHMENT_MOVED',
+  'TICKET_EDITED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -205,6 +206,43 @@ export function mechanicAssignedEvent(names: string[]): AuditEventData {
       { field: 'repairStatus', before: 'OPEN', after: 'ASSIGNED' },
     ],
     note: null,
+  };
+}
+
+/**
+ * Spec 0019, AC-8: the details a ticket edit can change, as the audit row shows them. The driver
+ * is "name (license)", the corporation its name, the rest their raw values.
+ */
+export type TicketDetailValues = {
+  driver: string;
+  odometer: number;
+  priority: string;
+  accountType: string | null;
+  corporation: string | null;
+};
+
+/**
+ * Spec 0019, AC-8: one row per details save, listing only the fields that changed. The note is the
+ * reason on an unlocked closed ticket (AC-3).
+ */
+export function ticketEditedEvent(
+  before: TicketDetailValues,
+  after: TicketDetailValues,
+  note?: string | null,
+): AuditEventData {
+  const pairs: [keyof TicketDetailValues, string | null, string | null][] = [
+    ['driver', before.driver, after.driver],
+    ['odometer', String(before.odometer), String(after.odometer)],
+    ['priority', before.priority, after.priority],
+    ['accountType', before.accountType, after.accountType],
+    ['corporation', before.corporation, after.corporation],
+  ];
+  return {
+    action: 'TICKET_EDITED',
+    changes: pairs
+      .filter(([, b, a]) => b !== a)
+      .map(([field, b, a]) => ({ field, before: b, after: a })),
+    note: note?.trim() || null,
   };
 }
 

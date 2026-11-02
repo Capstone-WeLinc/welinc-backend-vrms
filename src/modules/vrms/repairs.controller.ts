@@ -14,6 +14,8 @@ import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
+import { TicketEditsService } from './ticket-edits.service';
+import { EditTicketDetailsDto } from './dto/edit-ticket.dto';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -32,7 +34,10 @@ type AuthRequest = { user: AuthUser };
 // Spec 0011, Route to key mapping. Ownership and hidden fields come from the ability.
 @Controller('vrms/repairs')
 export class RepairsController {
-  constructor(private readonly repairsService: RepairsService) {}
+  constructor(
+    private readonly repairsService: RepairsService,
+    private readonly editsService: TicketEditsService,
+  ) {}
 
   @RequirePermission('ticket.create')
   @Post()
@@ -165,6 +170,18 @@ export class RepairsController {
     @CurrentAbility() ability: AppAbility,
   ) {
     return this.repairsService.assignMechanics(id, dto, req.user, ability);
+  }
+
+  // Fix the driver, odometer, priority or account after create (spec 0019, AC-4 to AC-8)
+  @RequirePermission('ticket.edit')
+  @Patch(':id/details')
+  editDetails(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EditTicketDetailsDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.editDetails(id, dto, req.user, ability);
   }
 
   // Unlock a terminal (closed/cancelled) ticket for editing

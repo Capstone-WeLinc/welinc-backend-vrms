@@ -104,8 +104,19 @@ export const PERMISSION_CATALOG = [
     key: 'ticket.assign',
     label: 'Assign mechanics',
     group: 'Tickets',
-    description: 'Assign in house mechanics to an Open ticket.',
+    // Spec 0019, AC-9: any open status, adding, removing or swapping
+    description:
+      'Add, remove or swap the in house mechanics on any open ticket.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
+  },
+  {
+    // Spec 0019, AC-1: details and issues after create; mechanics stay on ticket.assign
+    key: 'ticket.edit',
+    label: 'Edit ticket details and issues',
+    group: 'Tickets',
+    description:
+      'Fix the driver, odometer, priority and account of a ticket, and add, reword or remove its issues.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
     key: 'ticket.unlock',

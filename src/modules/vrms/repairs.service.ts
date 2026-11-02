@@ -275,7 +275,7 @@ function generateRepairNumber(): string {
 // ── Service ───────────────────────────────────────────────────────────────────
 
 /** The relations a ticket is loaded with, for formatTicket. */
-const ticketInclude = {
+export const ticketInclude = {
   vehicle: { select: { plateNumber: true, model: true, status: true } },
   driver: { select: { name: true, licenseNumber: true, isVerified: true } },
   garage: { select: { name: true } },
@@ -293,7 +293,7 @@ const ticketInclude = {
   repairParts: { orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.RepairTicketInclude;
 
-type TicketRow = Prisma.RepairTicketGetPayload<{
+export type TicketRow = Prisma.RepairTicketGetPayload<{
   include: typeof ticketInclude;
 }>;
 
@@ -1513,8 +1513,11 @@ export class RepairsService {
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
-  /** formatTicket plus each linked entry's typical hours, for one ticket (spec 0007, AC-27). */
-  private async present(ticket: TicketRow, ability: AppAbility) {
+  /**
+   * formatTicket plus each linked entry's typical hours, for one ticket (spec 0007, AC-27). The
+   * edit endpoints (spec 0019) answer with it too, so every write returns the same shape.
+   */
+  async present(ticket: TicketRow, ability: AppAbility) {
     const issues = ticket.issues;
     const entryIds = [
       ...new Set(
@@ -1648,6 +1651,9 @@ export class RepairsService {
       corporation: ticket.corporation,
       verifiedByName: ticket.verifiedByName,
       verifiedAt: ticket.verifiedAt?.toISOString() ?? null,
+      // Spec 0019, AC-19: the last edit after create; null until someone edits
+      editedAt: ticket.editedAt?.toISOString() ?? null,
+      editedByName: ticket.editedByName,
       issueDescription:
         ticket.issues && ticket.issues.length > 0
           ? ticket.issues.map((i) => i.description).join(', ')
@@ -1682,6 +1688,8 @@ export class RepairsService {
         editCosts: ability.can('editCosts', target),
         unlock: ability.can('unlock', target),
         assign: ability.can('assign', target),
+        // Spec 0019, AC-1: the details and issue Edit controls
+        edit: ability.can('edit', target),
       },
     };
 
