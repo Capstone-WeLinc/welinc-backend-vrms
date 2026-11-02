@@ -469,3 +469,191 @@ describe('TicketEditsService.editDetails (driver, odometer, account)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
+
+describe('TicketEditsService mechanics (AC-9 to AC-12)', () => {
+  const ANA = { id: 'm1', name: 'Ana', authUserId: 'u-ana', isActive: true };
+  const BEN = { id: 'm2', name: 'Ben', authUserId: 'u-ben', isActive: true };
+  const CHIEF = {
+    id: 'm3',
+    name: 'Ramon',
+    authUserId: 'u-chief',
+    isActive: true,
+  };
+
+  function mechanicsSetup(
+    status: RepairStatus,
+    assigned: (typeof ANA)[],
+    extra: Record<string, unknown> = {},
+  ) {
+    const row = ticketRow({
+      repairStatus: status,
+      priorVehicleStatus: null,
+      verifiedByUserId: null,
+      assignments: assigned.map((m) => ({ mechanicId: m.id, mechanic: m })),
+      ...extra,
+    });
+    const ctx = setup(row);
+    const all = [ANA, BEN, CHIEF];
+    Object.assign(ctx.prisma, {
+      mechanic: {
+        findMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(all.filter((m) => where.id.in.includes(m.id))),
+        ),
+      },
+    });
+    Object.assign(ctx.tx, {
+      ticketAssignment: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      repairIssue: { updateMany: jest.fn() },
+      vehicle: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
+    });
+    return ctx as typeof ctx & {
+      tx: typeof ctx.tx & {
+        ticketAssignment: { deleteMany: jest.Mock; createMany: jest.Mock };
+      };
+    };
+  }
+
+  const put = (service: TicketEditsService, ids: string[], user = admin) =>
+    service.setMechanics(
+      't1',
+      { lastUpdatedAt: AT, mechanics: ids.map((id) => ({ id })) },
+      user,
+      defaultAbility(user),
+    );
+
+  const audits = (tx: { auditLog: { create: jest.Mock } }) =>
+    (tx.auditLog.create.mock.calls as AuditCall[]).map(([c]) => c.data);
+
+  it('moves an Open ticket to Assigned on its first mechanic, with one MECHANIC_ASSIGNED row (M1)', async () => {
+    const { service, tx } = mechanicsSetup(RepairStatus.OPEN, []);
+    await put(service, ['m1', 'm2']);
+    const rows = audits(tx);
+    expect(rows.map((r) => r.action)).toEqual(['MECHANIC_ASSIGNED']);
+    expect(rows[0].changes).toEqual([
+      { field: 'mechanic', before: null, after: 'Ana' },
+      { field: 'mechanic', before: null, after: 'Ben' },
+      { field: 'repairStatus', before: 'OPEN', after: 'ASSIGNED' },
+    ]);
+    const updates = tx.repairTicket.updateMany.mock.calls as UpdateCall[];
+    // The stamp first, then the move's own guarded update on the stamped version
+    expect(updates[0][0].data).toHaveProperty('editedByUserId', admin.sub);
+    expect(updates[1][0].data).toMatchObject({ repairStatus: 'ASSIGNED' });
+    expect(updates[1][0].where).toEqual({
+      id: 't1',
+      updatedAt: updates[0][0].data.updatedAt,
+    });
+  });
+
+  it('sends an Assigned ticket back to Open when its last mechanic leaves (M2)', async () => {
+    const { service, tx } = mechanicsSetup(RepairStatus.ASSIGNED, [ANA]);
+    await put(service, []);
+    const rows = audits(tx);
+    expect(rows.map((r) => r.action)).toEqual(['MECHANIC_UNASSIGNED']);
+    expect(rows[0].changes).toEqual([
+      { field: 'mechanic', before: 'Ana', after: null },
+      { field: 'repairStatus', before: 'ASSIGNED', after: 'OPEN' },
+    ]);
+    expect(tx.ticketAssignment.deleteMany).toHaveBeenCalledWith({
+      where: { repairTicketId: 't1', mechanicId: { in: ['m1'] } },
+    });
+  });
+
+  it('swaps on Assigned with no move: unassigned then assigned, one timestamp', async () => {
+    const { service, tx } = mechanicsSetup(RepairStatus.ASSIGNED, [ANA]);
+    await put(service, ['m2']);
+    const rows = audits(tx);
+    expect(rows.map((r) => r.action)).toEqual([
+      'MECHANIC_UNASSIGNED',
+      'MECHANIC_ASSIGNED',
+    ]);
+    expect(rows[0].changes).toEqual([
+      { field: 'mechanic', before: 'Ana', after: null },
+    ]);
+    expect((rows[0] as { createdAt?: Date }).createdAt).toBe(
+      (rows[1] as { createdAt?: Date }).createdAt,
+    );
+    // Only the stamp updates the ticket: no status write
+    expect(tx.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('empties an In progress ticket without changing its status (AC-10)', async () => {
+    const { service, tx } = mechanicsSetup(RepairStatus.IN_PROGRESS, [ANA]);
+    await put(service, []);
+    expect(audits(tx).map((r) => r.action)).toEqual(['MECHANIC_UNASSIGNED']);
+    const [stamp] = tx.repairTicket.updateMany.mock.calls[0] as UpdateCall;
+    expect(stamp.data).not.toHaveProperty('repairStatus');
+    expect(tx.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing for the same list (AC-8b)', async () => {
+    const { service, prisma } = mechanicsSetup(RepairStatus.IN_PROGRESS, [ANA]);
+    await put(service, ['m1']);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses a duplicate, an unknown or inactive mechanic (AC-9)', async () => {
+    const dup = mechanicsSetup(RepairStatus.OPEN, []);
+    await expect(put(dup.service, ['m1', 'm1'])).rejects.toThrow(
+      'Choose each mechanic only once.',
+    );
+    const unknown = mechanicsSetup(RepairStatus.OPEN, []);
+    await expect(put(unknown.service, ['m9'])).rejects.toThrow(
+      'In house mechanic not found',
+    );
+  });
+
+  it('never adds the verifier, but keeps the closed status and takes the reason (AC-3, AC-11)', async () => {
+    const closed = {
+      isUnlocked: true,
+      verifiedByUserId: 'u-chief',
+    };
+    const blocked = mechanicsSetup(RepairStatus.CLOSED, [ANA], closed);
+    await expect(
+      blocked.service.setMechanics(
+        't1',
+        {
+          lastUpdatedAt: AT,
+          reason: 'Wrong mechanic recorded',
+          mechanics: [{ id: 'm1' }, { id: 'm3' }],
+        },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toThrow(
+      "The person who verified this ticket can't be added to it.",
+    );
+
+    const ok = mechanicsSetup(RepairStatus.CLOSED, [ANA], closed);
+    await ok.service.setMechanics(
+      't1',
+      {
+        lastUpdatedAt: AT,
+        reason: 'Wrong mechanic recorded',
+        mechanics: [{ id: 'm2' }],
+      },
+      admin,
+      defaultAbility(admin),
+    );
+    const rows = audits(ok.tx);
+    expect(rows.map((r) => r.note)).toEqual([
+      'Wrong mechanic recorded',
+      'Wrong mechanic recorded',
+    ]);
+    expect(ok.tx.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the old POST working: it adds to the current list (alias)', async () => {
+    const { service, tx } = mechanicsSetup(RepairStatus.ASSIGNED, [ANA]);
+    await service.addMechanics(
+      't1',
+      { lastUpdatedAt: AT, mechanics: [{ id: 'm2' }] },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(tx.ticketAssignment.deleteMany).not.toHaveBeenCalled();
+    expect(audits(tx).map((r) => r.action)).toEqual(['MECHANIC_ASSIGNED']);
+  });
+});

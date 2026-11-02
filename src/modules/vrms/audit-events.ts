@@ -193,19 +193,32 @@ export function mechanicUnassignedEvent(
   };
 }
 
-/** Mechanics assigned to an Open ticket, which then goes Assigned (spec 0016, AC-17). */
-export function mechanicAssignedEvent(names: string[]): AuditEventData {
+/**
+ * Spec 0019, AC-12: one side of a mechanics save, the names removed (MECHANIC_UNASSIGNED) or
+ * added (MECHANIC_ASSIGNED). A status move the save makes rides on the side that triggered it (M1
+ * on the added row, M2 on the removed row, the spec 0016 pattern). The note is the reason on an
+ * unlocked closed ticket.
+ */
+export function mechanicsChangedEvent(
+  side: 'removed' | 'added',
+  names: string[],
+  move: { from: string; to: string } | null = null,
+  note: string | null = null,
+): AuditEventData {
+  const added = side === 'added';
   return {
-    action: 'MECHANIC_ASSIGNED',
+    action: added ? 'MECHANIC_ASSIGNED' : 'MECHANIC_UNASSIGNED',
     changes: [
       ...names.map((name) => ({
         field: 'mechanic',
-        before: null,
-        after: name,
+        before: added ? null : name,
+        after: added ? name : null,
       })),
-      { field: 'repairStatus', before: 'OPEN', after: 'ASSIGNED' },
+      ...(move
+        ? [{ field: 'repairStatus', before: move.from, after: move.to }]
+        : []),
     ],
-    note: null,
+    note,
   };
 }
 

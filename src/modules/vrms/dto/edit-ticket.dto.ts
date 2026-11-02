@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -10,7 +11,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { NewDriverDto } from './create-repair.dto';
+import { MechanicAssignmentDto, NewDriverDto } from './create-repair.dto';
 
 // Spec 0019: the edit endpoints after create (details, mechanics, issues).
 
@@ -25,6 +26,14 @@ export class TicketEditDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+/** PUT /vrms/repairs/:id/assignments: the full mechanic list, which may be empty (AC-9). */
+export class SetMechanicsDto extends TicketEditDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MechanicAssignmentDto)
+  mechanics: MechanicAssignmentDto[];
 }
 
 /** PATCH /vrms/repairs/:id/details. Omitted fields keep their value. */

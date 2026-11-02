@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { CreateRepairDto } from './create-repair.dto';
-import { mechanicAssignedEvent } from '../audit-events';
+import { mechanicsChangedEvent } from '../audit-events';
 
 // Spec 0016, AC-5 and AC-6: the body rules that need no database.
 
@@ -127,9 +127,14 @@ describe('CreateRepairDto', () => {
   });
 });
 
-describe('mechanicAssignedEvent (AC-17)', () => {
+describe('mechanicsChangedEvent (spec 0016, AC-17; spec 0019, AC-12)', () => {
   it('lists one mechanic change per name, then the status move', () => {
-    expect(mechanicAssignedEvent(['Ana', 'Ben'])).toEqual({
+    expect(
+      mechanicsChangedEvent('added', ['Ana', 'Ben'], {
+        from: 'OPEN',
+        to: 'ASSIGNED',
+      }),
+    ).toEqual({
       action: 'MECHANIC_ASSIGNED',
       changes: [
         { field: 'mechanic', before: null, after: 'Ana' },
@@ -137,6 +142,16 @@ describe('mechanicAssignedEvent (AC-17)', () => {
         { field: 'repairStatus', before: 'OPEN', after: 'ASSIGNED' },
       ],
       note: null,
+    });
+  });
+
+  it('lists the removed names with no move, and carries the note', () => {
+    expect(
+      mechanicsChangedEvent('removed', ['Ana'], null, 'Wrong mechanic'),
+    ).toEqual({
+      action: 'MECHANIC_UNASSIGNED',
+      changes: [{ field: 'mechanic', before: 'Ana', after: null }],
+      note: 'Wrong mechanic',
     });
   });
 });

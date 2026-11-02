@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   ParseUUIDPipe,
@@ -15,7 +16,7 @@ import { CurrentAbility } from '../../auth/permissions/current-ability.decorator
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
 import { TicketEditsService } from './ticket-edits.service';
-import { EditTicketDetailsDto } from './dto/edit-ticket.dto';
+import { EditTicketDetailsDto, SetMechanicsDto } from './dto/edit-ticket.dto';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -160,7 +161,19 @@ export class RepairsController {
     return this.repairsService.updateCosts(id, dto, req.user, ability);
   }
 
-  // Assign mechanics to an Open ticket, moving it to Assigned (spec 0016, AC-17)
+  // Set the full mechanic list on any open ticket (spec 0019, AC-9 to AC-12)
+  @RequirePermission('ticket.assign')
+  @Put(':id/assignments')
+  setMechanics(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetMechanicsDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.setMechanics(id, dto, req.user, ability);
+  }
+
+  // Spec 0016, AC-17, kept as a thin alias of the PUT that adds to the current list (spec 0019)
   @RequirePermission('ticket.assign')
   @Post(':id/assignments')
   assignMechanics(
@@ -169,7 +182,7 @@ export class RepairsController {
     @Req() req: AuthRequest,
     @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.assignMechanics(id, dto, req.user, ability);
+    return this.editsService.addMechanics(id, dto, req.user, ability);
   }
 
   // Fix the driver, odometer, priority or account after create (spec 0019, AC-4 to AC-8)
