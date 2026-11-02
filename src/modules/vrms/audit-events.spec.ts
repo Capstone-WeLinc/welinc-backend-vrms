@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   actorFields,
+  attachmentMovedEvent,
   auditData,
   costEvent,
   decodeCursor,
@@ -189,6 +190,29 @@ describe('event builders (spec 0010, Audit events)', () => {
       changes: [{ field: 'isUnlocked', before: 'false', after: 'true' }],
       note: 'Late invoice',
     });
+  });
+
+  it('records a photo move as a kind change with the file name (spec 0018, AC-18)', () => {
+    const event = attachmentMovedEvent(
+      { id: 'a1', kind: 'PROOF', kindLabel: 'After photo', fileName: 'x.jpg' },
+      {
+        id: 'a1',
+        kind: 'VEHICLE_PHOTO',
+        kindLabel: 'Before photo',
+        fileName: 'x.jpg',
+      },
+    );
+    expect(event.action).toBe('ATTACHMENT_MOVED');
+    expect(event.changes).toEqual([
+      { field: 'kind', before: 'PROOF', after: 'VEHICLE_PHOTO' },
+      {
+        field: 'attachment',
+        before: 'After photo: x.jpg',
+        after: 'Before photo: x.jpg',
+      },
+      { field: 'attachmentId', before: null, after: 'a1' },
+    ]);
+    expect(event.note).toBeNull();
   });
 
   it('names the issue on a known fix link', () => {

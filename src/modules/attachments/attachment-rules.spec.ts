@@ -2,6 +2,7 @@ import {
   canMove,
   canRemove,
   cleanFileName,
+  isProtectedBefore,
   type RemoveRights,
 } from './attachments.service';
 import { blobLink, storageConfig } from './blob-file-store';
@@ -190,6 +191,26 @@ describe('canMove (spec 0018, AC-9 to AC-11)', () => {
     expect(canMove(after, rights({ open: false, removeAny: true }))).toBe(
       false,
     );
+  });
+});
+
+describe('isProtectedBefore (spec 0018, AC-10)', () => {
+  it('protects only a Before photo, only after work started, only while the switch is on', () => {
+    const on = { workStarted: true, protectBefore: true };
+    expect(isProtectedBefore({ kind: 'VEHICLE_PHOTO' }, on)).toBe(true);
+    expect(isProtectedBefore({ kind: 'PROOF' }, on)).toBe(false);
+    expect(
+      isProtectedBefore(
+        { kind: 'VEHICLE_PHOTO' },
+        { ...on, workStarted: false },
+      ),
+    ).toBe(false);
+    expect(
+      isProtectedBefore(
+        { kind: 'VEHICLE_PHOTO' },
+        { ...on, protectBefore: false },
+      ),
+    ).toBe(false);
   });
 });
 
