@@ -24,6 +24,7 @@ export const AUDIT_ACTIONS = [
   'MECHANIC_ASSIGNED',
   'ATTACHMENT_ADDED',
   'ATTACHMENT_REMOVED',
+  'ATTACHMENT_MOVED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -241,6 +242,29 @@ export function attachmentRemovedEvent(file: AttachmentRef): AuditEventData {
   return {
     action: 'ATTACHMENT_REMOVED',
     changes: attachmentChanges(file, false),
+    note: null,
+  };
+}
+
+/**
+ * Spec 0018, AC-9 and AC-18: a photo moved between Before and After. `kind` carries the move;
+ * the file name with its group label and the id ride along like the add and remove events.
+ */
+export function attachmentMovedEvent(
+  before: AttachmentRef,
+  after: AttachmentRef,
+): AuditEventData {
+  return {
+    action: 'ATTACHMENT_MOVED',
+    changes: [
+      { field: 'kind', before: before.kind, after: after.kind },
+      {
+        field: 'attachment',
+        before: `${before.kindLabel}: ${before.fileName}`,
+        after: `${after.kindLabel}: ${after.fileName}`,
+      },
+      { field: 'attachmentId', before: null, after: after.id },
+    ],
     note: null,
   };
 }

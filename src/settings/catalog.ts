@@ -221,6 +221,17 @@ export const SETTINGS_CATALOG = [
     default: false,
   },
   {
+    // Spec 0018, AC-10
+    key: 'tickets.protect_before_photos',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Protect before photos once work starts',
+    description:
+      'After work starts, only a Chief Mechanic or Admin can remove a before photo or move it to after.',
+    type: 'boolean',
+    default: true,
+  },
+  {
     // Spec 0017, AC-5
     key: 'uploads.max_file_mb',
     kind: 'value',

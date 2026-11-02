@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   ParseUUIDPipe,
   Post,
   Req,
@@ -22,6 +23,7 @@ import { CurrentAbility } from '../../auth/permissions/current-ability.decorator
 import { Authenticated } from '../../auth/permissions/permission.decorators';
 import { UploadAccessGuard, UserThrottlerGuard } from './attachments.guard';
 import { AttachmentsService } from './attachments.service';
+import { MoveAttachmentDto } from './dto/move-attachment.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 import { SingleFileInterceptor } from './upload.interceptor';
 
@@ -53,6 +55,19 @@ export class AttachmentsController {
     @CurrentAbility() ability: AppAbility,
   ) {
     return this.attachments.remove(id, attachmentId, req.user, ability);
+  }
+
+  // Spec 0018, AC-9: move a photo between Before and After; the rules are in the service
+  @Authenticated()
+  @Patch(':attachmentId')
+  move(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+    @Body() dto: MoveAttachmentDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.attachments.move(id, attachmentId, dto.kind, req.user, ability);
   }
 
   // AC-12 and AC-12a: visibility (404), then the per user rate limit (429), and only then is the

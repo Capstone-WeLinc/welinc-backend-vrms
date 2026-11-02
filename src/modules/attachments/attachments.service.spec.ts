@@ -104,6 +104,8 @@ type Setup = {
   lockedWorkStartedAt?: Date | null;
   failCreateWith?: Error;
   lockedGone?: boolean;
+  /** Spec 0018, AC-10: tickets.protect_before_photos (default on). */
+  protectBefore?: boolean;
 };
 
 function setup(opts: Setup = {}) {
@@ -167,6 +169,11 @@ function setup(opts: Setup = {}) {
         return Promise.resolve(r);
       }),
       updateMany: jest.fn(() => Promise.resolve({ count: 1 })),
+      // Spec 0018: the fresh read under the lock, and the move's write
+      findUnique: jest.fn(() => Promise.resolve(null as Row | null)),
+      update: jest.fn((args: { where: { id: string }; data: Partial<Row> }) =>
+        Promise.resolve(row({ id: args.where.id, ...args.data })),
+      ),
     },
     auditLog: {
       create: jest.fn((args: unknown) => {
@@ -195,7 +202,8 @@ function setup(opts: Setup = {}) {
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
 
-  const values: Record<string, number> = {
+  const values: Record<string, number | boolean> = {
+    'tickets.protect_before_photos': opts.protectBefore ?? true,
     'uploads.max_file_mb': opts.limits?.maxFileMb ?? 10,
     'uploads.max_vehicle_photos': opts.limits?.photos ?? 5,
     'uploads.max_after_photos': opts.limits?.afterPhotos ?? 10,
@@ -936,6 +944,7 @@ describe('AttachmentsService.remove (AC-17, AC-18)', () => {
   function removeSetup(attachment: Row | null, opts: Setup = {}) {
     const s = setup(opts);
     s.prisma.attachment.findFirst.mockResolvedValue(attachment);
+    s.tx.attachment.findUnique.mockResolvedValue(attachment);
     return s;
   }
 
@@ -1033,6 +1042,263 @@ describe('AttachmentsService.remove (AC-17, AC-18)', () => {
     expect(
       await codeOf(s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS))),
     ).toEqual({ status: 503, code: 'STORAGE_UNAVAILABLE' });
+  });
+
+  describe('Before protection (spec 0018, AC-10)', () => {
+    const started = { workStartedAt: new Date('2026-11-01T02:00:00Z') };
+
+    it('answers 403 BEFORE_PHOTO_PROTECTED for your own Before photo once work started', async () => {
+      const s = removeSetup(row(), started);
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+      expect(s.audits).toHaveLength(0);
+    });
+
+    it('answers NOT_YOUR_FILE first for someone else’s protected Before photo', async () => {
+      const s = removeSetup(row({ uploadedByUserId: 'chief' }), started);
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'NOT_YOUR_FILE' });
+    });
+
+    it('lets remove_any remove it, and the uploader with the switch off or before work starts', async () => {
+      const chief = removeSetup(row(), started);
+      await chief.service.remove(TICKET, ATT, ME, abilityOf(CHIEF_KEYS));
+      expect(chief.audits).toHaveLength(1);
+
+      const off = removeSetup(row(), { ...started, protectBefore: false });
+      await off.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
+      expect(off.audits).toHaveLength(1);
+
+      const early = removeSetup(row());
+      await early.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
+      expect(early.audits).toHaveLength(1);
+    });
+
+    it('checks again under the lock: work started after the first read', async () => {
+      const s = removeSetup(row(), {
+        lockedWorkStartedAt: started.workStartedAt,
+      });
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+      expect(s.tx.attachment.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('never protects an After photo', async () => {
+      const s = removeSetup(row({ kind: 'PROOF' }), started);
+      await s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
+      expect(s.audits).toHaveLength(1);
+    });
+  });
+});
+
+describe('AttachmentsService.move (spec 0018, AC-9 to AC-11, AC-21)', () => {
+  const ATT = 'dddddddd-0000-4000-8000-000000000004';
+  const started = { workStartedAt: new Date('2026-11-01T02:00:00Z') };
+
+  function moveSetup(attachment: Row | null, opts: Setup = {}) {
+    const s = setup(opts);
+    // The visibility read, then the duplicate check (none unless a test says so)
+    s.prisma.attachment.findFirst
+      .mockResolvedValueOnce(attachment)
+      .mockResolvedValue(null);
+    s.tx.attachment.findUnique.mockResolvedValue(attachment);
+    return s;
+  }
+
+  it('moves your own After photo to Before with one ATTACHMENT_MOVED row', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }), started);
+    const view = await s.service.move(
+      TICKET,
+      ATT,
+      'VEHICLE_PHOTO',
+      ME,
+      abilityOf(MECHANIC_KEYS),
+    );
+    expect(view.kind).toBe('VEHICLE_PHOTO');
+    expect(s.tx.attachment.update).toHaveBeenCalledWith({
+      where: { id: ATT },
+      data: { kind: 'VEHICLE_PHOTO' },
+    });
+    expect(s.audits).toEqual([
+      {
+        data: expect.objectContaining({
+          action: 'ATTACHMENT_MOVED',
+          changes: expect.arrayContaining([
+            { field: 'kind', before: 'PROOF', after: 'VEHICLE_PHOTO' },
+            {
+              field: 'attachment',
+              before: 'After photo: front.jpg',
+              after: 'Before photo: front.jpg',
+            },
+          ]) as unknown,
+        }) as unknown,
+      },
+    ]);
+    // Now a protected Before photo: the mechanic can no longer move or remove it
+    expect(view).toMatchObject({ canMove: false, canRemove: false });
+  });
+
+  it('answers 200 with no audit row when the photo is already in that group', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }));
+    const view = await s.service.move(
+      TICKET,
+      ATT,
+      'PROOF',
+      ME,
+      abilityOf(MECHANIC_KEYS),
+    );
+    expect(view.kind).toBe('PROOF');
+    expect(s.prisma.$transaction).not.toHaveBeenCalled();
+    expect(s.audits).toHaveLength(0);
+  });
+
+  it('answers 400 NOT_A_PHOTO for a document or a non photo target, after 404', async () => {
+    const doc = moveSetup(row({ kind: 'RECEIPT' }));
+    expect(
+      await codeOf(
+        doc.service.move(TICKET, ATT, 'PROOF', ME, abilityOf(CHIEF_KEYS)),
+      ),
+    ).toEqual({ status: 400, code: 'NOT_A_PHOTO' });
+    const target = moveSetup(row());
+    expect(
+      await codeOf(
+        target.service.move(TICKET, ATT, 'RECEIPT', ME, abilityOf(CHIEF_KEYS)),
+      ),
+    ).toEqual({ status: 400, code: 'NOT_A_PHOTO' });
+    const gone = moveSetup(null);
+    await expect(
+      gone.service.move(TICKET, ATT, 'NOPE', ME, abilityOf(CHIEF_KEYS)),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('answers 403 NOT_YOUR_FILE with the move wording for someone else’s photo', async () => {
+    const s = moveSetup(row({ kind: 'PROOF', uploadedByUserId: 'chief' }));
+    await expect(
+      s.service.move(
+        TICKET,
+        ATT,
+        'VEHICLE_PHOTO',
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'NOT_YOUR_FILE',
+        message: 'You can only move photos you added yourself.',
+      },
+    });
+  });
+
+  it('protects a Before photo from moving to After once work started, except for remove_any', async () => {
+    const s = moveSetup(row(), started);
+    expect(
+      await codeOf(
+        s.service.move(TICKET, ATT, 'PROOF', ME, abilityOf(MECHANIC_KEYS)),
+      ),
+    ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+
+    const chief = moveSetup(row(), started);
+    const view = await chief.service.move(
+      TICKET,
+      ATT,
+      'PROOF',
+      ME,
+      abilityOf(CHIEF_KEYS),
+    );
+    expect(view.kind).toBe('PROOF');
+  });
+
+  it('answers 409 TICKET_FINISHED after the 403s, and under the lock', async () => {
+    const closed = moveSetup(row({ kind: 'PROOF' }), { status: 'CLOSED' });
+    expect(
+      await codeOf(
+        closed.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(CHIEF_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'TICKET_FINISHED' });
+    const raced = moveSetup(row({ kind: 'PROOF' }), {
+      lockedStatus: 'CLOSED',
+    });
+    expect(
+      await codeOf(
+        raced.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(CHIEF_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'TICKET_FINISHED' });
+    expect(raced.audits).toHaveLength(0);
+  });
+
+  it('answers 409 PHOTO_LIMIT_REACHED when the target group is full (AC-3)', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }), {
+      photoCount: 5,
+      limits: { photos: 5 },
+    });
+    expect(
+      await codeOf(
+        s.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'PHOTO_LIMIT_REACHED' });
+    expect(s.tx.attachment.update).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 DUPLICATE_PHOTO for a live copy in the target group, and for an index race', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }));
+    s.tx.attachment.findFirst.mockResolvedValue(row({ id: 'other' }));
+    expect(
+      await codeOf(
+        s.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'DUPLICATE_PHOTO' });
+
+    const raced = moveSetup(row({ kind: 'PROOF' }));
+    raced.tx.attachment.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('unique', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+    expect(
+      await codeOf(
+        raced.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'DUPLICATE_PHOTO' });
   });
 });
 

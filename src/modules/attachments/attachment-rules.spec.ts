@@ -1,4 +1,5 @@
 import {
+  canMove,
   canRemove,
   cleanFileName,
   type RemoveRights,
@@ -99,6 +100,8 @@ describe('canRemove (AC-17)', () => {
     open: true,
     removeAny: false,
     add: { addFiles: true, addDocuments: false },
+    workStarted: false,
+    protectBefore: true,
     ...over,
   });
   const photo = { kind: 'VEHICLE_PHOTO' as const, uploadedByUserId: 'me' };
@@ -135,6 +138,56 @@ describe('canRemove (AC-17)', () => {
 
   it('allows nothing on a finished ticket', () => {
     expect(canRemove(photo, rights({ open: false, removeAny: true }))).toBe(
+      false,
+    );
+  });
+
+  it('protects a Before photo once work started, unless remove_any or the switch is off (spec 0018, AC-10)', () => {
+    expect(canRemove(photo, rights({ workStarted: true }))).toBe(false);
+    expect(
+      canRemove(photo, rights({ workStarted: true, removeAny: true })),
+    ).toBe(true);
+    expect(
+      canRemove(photo, rights({ workStarted: true, protectBefore: false })),
+    ).toBe(true);
+    const after = { ...photo, kind: 'PROOF' as const };
+    expect(canRemove(after, rights({ workStarted: true }))).toBe(true);
+  });
+});
+
+describe('canMove (spec 0018, AC-9 to AC-11)', () => {
+  const rights = (over: Partial<RemoveRights> = {}): RemoveRights => ({
+    userId: 'me',
+    open: true,
+    removeAny: false,
+    add: { addFiles: true, addDocuments: false },
+    workStarted: true,
+    protectBefore: true,
+    ...over,
+  });
+  const after = { kind: 'PROOF' as const, uploadedByUserId: 'me' };
+  const before = { kind: 'VEHICLE_PHOTO' as const, uploadedByUserId: 'me' };
+
+  it('lets the uploader with ticket.files.add move their own After photo', () => {
+    expect(canMove(after, rights())).toBe(true);
+    expect(
+      canMove(after, rights({ add: { addFiles: false, addDocuments: false } })),
+    ).toBe(false);
+    expect(canMove({ ...after, uploadedByUserId: 'chief' }, rights())).toBe(
+      false,
+    );
+  });
+
+  it('keeps a protected Before photo for remove_any, and frees it before work starts', () => {
+    expect(canMove(before, rights())).toBe(false);
+    expect(canMove(before, rights({ removeAny: true }))).toBe(true);
+    expect(canMove(before, rights({ workStarted: false }))).toBe(true);
+  });
+
+  it('never moves a document, and nothing on a finished ticket', () => {
+    const doc = { kind: 'RECEIPT' as const, uploadedByUserId: 'me' };
+    expect(canMove(doc, rights({ removeAny: true }))).toBe(false);
+    expect(canMove(after, rights({ open: false, removeAny: true }))).toBe(
       false,
     );
   });

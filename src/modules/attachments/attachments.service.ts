@@ -16,6 +16,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { SettingsService } from '../../settings/settings.service';
 import {
   attachmentAddedEvent,
+  attachmentMovedEvent,
   attachmentRemovedEvent,
   auditData,
   whoName,
@@ -35,6 +36,9 @@ import {
 } from './attachment-kinds';
 import {
   attachmentNotFound,
+  beforePhotoProtected,
+  notAPhotoMove,
+  photoAlreadyThere,
   fileTooLarge,
   fileEncrypted,
   fileTypeNotAllowed,
@@ -87,6 +91,8 @@ export type AttachmentView = {
   url: string;
   thumbnailUrl: string | null;
   canRemove: boolean;
+  /** Spec 0018, AC-11. */
+  canMove: boolean;
 };
 
 type Ticket = {
@@ -106,12 +112,51 @@ export type RemoveRights = {
   removeAny: boolean;
   /** The add right for each add action on this ticket (AC-15), documents including costs. */
   add: Record<AddAction, boolean>;
+  /** Spec 0018: work has started on the ticket (`workStartedAt` set). */
+  workStarted: boolean;
+  /** Spec 0018, AC-10: `tickets.protect_before_photos`. */
+  protectBefore: boolean;
 };
+
+/** The caller's side of RemoveRights; the ticket side comes from the row read (or locked). */
+type ChangeRights = Omit<RemoveRights, 'open' | 'workStarted'>;
+
+/** The full rights against one read of the ticket. */
+function rightsOn(rights: ChangeRights, ticket: LockedTicket): RemoveRights {
+  return {
+    ...rights,
+    open: !isFinished(ticket.repairStatus),
+    workStarted: workStarted(ticket),
+  };
+}
+
+/** Spec 0018, AC-10: a Before photo, after work started, while the switch is on. */
+export function isProtectedBefore(
+  row: Pick<Attachment, 'kind'>,
+  rights: Pick<RemoveRights, 'workStarted' | 'protectBefore'>,
+): boolean {
+  return (
+    rights.protectBefore &&
+    rights.workStarted &&
+    row.kind === AttachmentKind.VEHICLE_PHOTO
+  );
+}
+
+/** The uploader, while they still hold the add right for the file's kind (spec 0017, AC-17). */
+function ownsWithRight(
+  row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
+  rights: RemoveRights,
+): boolean {
+  return (
+    row.uploadedByUserId === rights.userId &&
+    rights.add[KIND_RULES[row.kind].addAction]
+  );
+}
 
 /**
  * Spec 0017, AC-17: anyone with ticket.files.remove_any removes any file they can see; the
  * uploader removes their own while they still hold the add right for its kind. Never on a
- * finished ticket.
+ * finished ticket. Spec 0018, AC-10: a protected Before photo needs remove_any.
  */
 export function canRemove(
   row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
@@ -119,10 +164,21 @@ export function canRemove(
 ): boolean {
   if (!rights.open) return false;
   if (rights.removeAny) return true;
-  return (
-    row.uploadedByUserId === rights.userId &&
-    rights.add[KIND_RULES[row.kind].addAction]
-  );
+  return ownsWithRight(row, rights) && !isProtectedBefore(row, rights);
+}
+
+/**
+ * Spec 0018, AC-9 and AC-10: a photo moves between Before and After for the uploader holding
+ * ticket.files.add, or for anyone holding ticket.files.remove_any. Moving out of a protected
+ * Before needs remove_any; moving into Before never does.
+ */
+export function canMove(
+  row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
+  rights: RemoveRights,
+): boolean {
+  if (!rights.open || !isPhotoKind(row.kind)) return false;
+  if (rights.removeAny) return true;
+  return ownsWithRight(row, rights) && !isProtectedBefore(row, rights);
 }
 
 function attachmentRef(row: Pick<Attachment, 'id' | 'kind' | 'fileName'>) {
@@ -264,9 +320,11 @@ export class AttachmentsService {
       open,
       removeAny: ability.can('removeAny', 'RepairTicket'),
       add: { addFiles, addDocuments },
+      workStarted: workStarted(ticket),
+      protectBefore: this.settings.get('tickets.protect_before_photos'),
     };
     const items = await Promise.all(
-      rows.map((row) => this.view(row, now, canRemove(row, rights))),
+      rows.map((row) => this.view(row, now, rights)),
     );
 
     return {
@@ -343,14 +401,18 @@ export class AttachmentsService {
     // document never took one (spec 0017, AC-11)
     if (dto.issueId && !photo) throw issueNotOnTicket();
 
-    // AC-17 here: the caller just passed the add check on an open ticket
-    const removeAny = ability.can('removeAny', 'RepairTicket');
+    // AC-17 here: the caller just passed the add check for this kind on an open ticket. Spec
+    // 0018: the work start is the one read under the lock once the transaction ran.
+    let started = workStarted(ticket);
     const answer = async (row: Attachment, duplicate: boolean) => ({
-      attachment: await this.view(
-        row,
-        new Date(),
-        removeAny || row.uploadedByUserId === user.sub,
-      ),
+      attachment: await this.view(row, new Date(), {
+        userId: user.sub,
+        open: true,
+        removeAny: ability.can('removeAny', 'RepairTicket'),
+        add: { addFiles: photo, addDocuments: !photo },
+        workStarted: started,
+        protectBefore: this.settings.get('tickets.protect_before_photos'),
+      }),
       duplicate,
     });
 
@@ -398,7 +460,8 @@ export class AttachmentsService {
         async (tx) => {
           const locked = await this.lockOpenTicket(tx, ticketId);
           // Spec 0018, AC-1: the kind again from the locked row; the checks below run for it
-          kind = photo ? photoKindFor(workStarted(locked)) : earlyKind;
+          started = workStarted(locked);
+          kind = photo ? photoKindFor(started) : earlyKind;
           const duplicate = await this.findDuplicate(
             tx,
             ticketId,
@@ -470,30 +533,21 @@ export class AttachmentsService {
   ): Promise<void> {
     this.requireStore();
     const ticket = await this.findVisibleTicket(ability, ticketId);
-    const row = await this.prisma.attachment.findFirst({
-      where: {
-        id: attachmentId,
-        repairTicketId: ticketId,
-        // A receipt or other document is 404 without ticket.costs.view (AC-16)
-        kind: { in: visibleKinds(canViewCosts(ability)) },
-      },
-    });
-    if (!row) throw attachmentNotFound();
+    const row = await this.findVisibleRow(ability, ticketId, attachmentId);
     if (row.deletedAt) return;
 
-    const mayRemove =
-      ability.can('removeAny', 'RepairTicket') ||
-      (row.uploadedByUserId === user.sub &&
-        (await this.canAdd(ability, ticketId, row.kind)));
-    if (!mayRemove) throw notYourFile();
-    if (isFinished(ticket.repairStatus)) {
-      throw ticketFinished(STATUS_LABELS[ticket.repairStatus]);
-    }
+    // Spec 0018, AC-10: 403 NOT_YOUR_FILE, then 403 BEFORE_PHOTO_PROTECTED, then 409
+    const rights = await this.changeRights(user, ability, ticketId, row.kind);
+    this.checkChange(row, ticket, rights, 'remove');
 
     const now = new Date();
     await this.prisma.$transaction(
       async (tx) => {
-        await this.lockOpenTicket(tx, ticketId);
+        const locked = await this.lockTicket(tx, ticketId);
+        // Spec 0018, AC-11: the checks again on fresh values; a move may have changed the kind
+        const fresh = await tx.attachment.findUnique({ where: { id: row.id } });
+        if (!fresh || fresh.deletedAt) return;
+        this.checkChange(fresh, locked, rights, 'remove');
         // Only a live row changes, so a second remove racing this one writes nothing (idempotent)
         const { count } = await tx.attachment.updateMany({
           where: { id: row.id, deletedAt: null },
@@ -507,12 +561,156 @@ export class AttachmentsService {
         await tx.auditLog.create({
           data: {
             repairTicketId: ticketId,
-            ...auditData(user, attachmentRemovedEvent(attachmentRef(row)), now),
+            ...auditData(
+              user,
+              attachmentRemovedEvent(attachmentRef(fresh)),
+              now,
+            ),
           },
         });
       },
       { timeout: 10_000 },
     );
+  }
+
+  /**
+   * Spec 0018, AC-9: moves a photo between Before and After. Error order (first failing check
+   * wins): 404 not visible, 400 not a photo kind, 200 no op when already there, 403
+   * NOT_YOUR_FILE, 403 BEFORE_PHOTO_PROTECTED, 409 TICKET_FINISHED, 409 duplicate, 409 limit.
+   */
+  async move(
+    ticketId: string,
+    attachmentId: string,
+    target: string,
+    user: AuthUser,
+    ability: AppAbility,
+  ): Promise<AttachmentView> {
+    this.requireStore();
+    const ticket = await this.findVisibleTicket(ability, ticketId);
+    const row = await this.findVisibleRow(ability, ticketId, attachmentId);
+    if (row.deletedAt) throw attachmentNotFound();
+    if (
+      !isPhotoKind(row.kind) ||
+      !PHOTO_KINDS.includes(target as AttachmentKind)
+    ) {
+      throw notAPhotoMove();
+    }
+    const to = target as AttachmentKind;
+    const rights = await this.changeRights(user, ability, ticketId, row.kind);
+    if (row.kind === to)
+      return this.view(row, new Date(), rightsOn(rights, ticket));
+    this.checkChange(row, ticket, rights, 'move');
+
+    const limits = this.limits();
+    try {
+      const moved = await this.prisma.$transaction(
+        async (tx) => {
+          // Lock order as everywhere: ticket, attachment, audit
+          const locked = await this.lockTicket(tx, ticketId);
+          const fresh = await tx.attachment.findUnique({
+            where: { id: row.id },
+          });
+          if (!fresh || fresh.deletedAt) throw attachmentNotFound();
+          if (fresh.kind === to) return { row: fresh, locked };
+          this.checkChange(fresh, locked, rights, 'move');
+          // AC-21: a move never makes a second live copy in the target group
+          const duplicate = await tx.attachment.findFirst({
+            where: {
+              repairTicketId: ticketId,
+              kind: to,
+              sha256: fresh.sha256,
+              deletedAt: null,
+              id: { not: fresh.id },
+            },
+            select: { id: true },
+          });
+          if (duplicate) throw photoAlreadyThere(to);
+          await this.checkCaps(tx, ticketId, to, limits);
+
+          const now = new Date();
+          const updated = await tx.attachment.update({
+            where: { id: fresh.id },
+            data: { kind: to },
+          });
+          await tx.auditLog.create({
+            data: {
+              repairTicketId: ticketId,
+              ...auditData(
+                user,
+                attachmentMovedEvent(
+                  attachmentRef(fresh),
+                  attachmentRef(updated),
+                ),
+                now,
+              ),
+            },
+          });
+          return { row: updated, locked };
+        },
+        { timeout: 10_000 },
+      );
+      return this.view(moved.row, new Date(), rightsOn(rights, moved.locked));
+    } catch (error) {
+      // A race the index caught answers like the duplicate check, never 500
+      if (isUniqueViolation(error)) throw photoAlreadyThere(to);
+      throw error;
+    }
+  }
+
+  /** The attachment when the caller may see it, deleted or not; else 404 (AC-16). */
+  private async findVisibleRow(
+    ability: AppAbility,
+    ticketId: string,
+    attachmentId: string,
+  ): Promise<Attachment> {
+    const row = await this.prisma.attachment.findFirst({
+      where: {
+        id: attachmentId,
+        repairTicketId: ticketId,
+        // A receipt or other document is 404 without ticket.costs.view (AC-16)
+        kind: { in: visibleKinds(canViewCosts(ability)) },
+      },
+    });
+    if (!row) throw attachmentNotFound();
+    return row;
+  }
+
+  /** What a remove or move checks against, worked out once before the lock. */
+  private async changeRights(
+    user: AuthUser,
+    ability: AppAbility,
+    ticketId: string,
+    kind: AttachmentKind,
+  ): Promise<ChangeRights> {
+    const removeAny = ability.can('removeAny', 'RepairTicket');
+    // The add right only matters to an uploader without remove_any
+    const hasAdd = removeAny
+      ? false
+      : await this.canAdd(ability, ticketId, kind);
+    const action = KIND_RULES[kind].addAction;
+    return {
+      userId: user.sub,
+      removeAny,
+      add: { addFiles: false, addDocuments: false, [action]: hasAdd },
+      protectBefore: this.settings.get('tickets.protect_before_photos'),
+    };
+  }
+
+  /** The 403s and the 409 of a remove or move, in their order (spec 0018, AC-10). */
+  private checkChange(
+    row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
+    ticket: LockedTicket,
+    rights: ChangeRights,
+    action: 'remove' | 'move',
+  ) {
+    const full = rightsOn(rights, ticket);
+    if (!rights.removeAny) {
+      if (!ownsWithRight(row, full)) throw notYourFile(action);
+      if (isProtectedBefore(row, full)) throw beforePhotoProtected();
+    }
+    if (isFinished(ticket.repairStatus)) {
+      throw ticketFinished(STATUS_LABELS[ticket.repairStatus]);
+    }
   }
 
   /** AC-6 and AC-7: the bytes that get stored. No uploaded bytes are stored unchanged. */
@@ -566,6 +764,21 @@ export class AttachmentsService {
     tx: Prisma.TransactionClient,
     ticketId: string,
   ): Promise<LockedTicket> {
+    const locked = await this.lockTicket(tx, ticketId);
+    if (isFinished(locked.repairStatus)) {
+      throw ticketFinished(STATUS_LABELS[locked.repairStatus]);
+    }
+    return locked;
+  }
+
+  /**
+   * The ticket row lock alone, for a caller that checks the finished status in its own error
+   * order (spec 0018, the remove and move paths).
+   */
+  private async lockTicket(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+  ): Promise<LockedTicket> {
     const [locked] = await tx.$queryRaw<
       {
         id: string;
@@ -574,9 +787,6 @@ export class AttachmentsService {
       }[]
     >`SELECT id, repair_status, work_started_at FROM repair_tickets WHERE id = ${ticketId}::uuid FOR NO KEY UPDATE`;
     if (!locked) throw new NotFoundException('Repair ticket not found');
-    if (isFinished(locked.repair_status)) {
-      throw ticketFinished(STATUS_LABELS[locked.repair_status]);
-    }
     return {
       repairStatus: locked.repair_status,
       workStartedAt: locked.work_started_at,
@@ -633,7 +843,7 @@ export class AttachmentsService {
   private async view(
     row: Attachment,
     now: Date,
-    removable: boolean,
+    rights: RemoveRights,
   ): Promise<AttachmentView> {
     const [url, thumbnailUrl] = await Promise.all([
       this.store.readUrl(row.storageKey, row.fileName, row.mimeType, now),
@@ -659,7 +869,8 @@ export class AttachmentsService {
       createdAt: row.createdAt,
       url,
       thumbnailUrl,
-      canRemove: removable,
+      canRemove: canRemove(row, rights),
+      canMove: canMove(row, rights),
     };
   }
 

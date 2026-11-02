@@ -126,12 +126,13 @@ describe('Route decorators (AC-7)', () => {
     expect(wrong.map(label)).toEqual([]);
   });
 
-  it('opens only the health check to everyone, and only /permissions/me and the attachment routes (spec 0017, AC-12) to any signed in user', () => {
+  it('opens only the health check to everyone, and only /permissions/me and the attachment routes (spec 0017, AC-12; spec 0018, AC-9) to any signed in user', () => {
     expect(routes.filter((r) => r.isPublic).map(label)).toEqual(['GET /']);
     expect(routes.filter((r) => r.authenticated).map(label)).toEqual([
       'GET /vrms/permissions/me',
       'GET /vrms/repairs/:id/attachments',
       'DELETE /vrms/repairs/:id/attachments/:attachmentId',
+      'PATCH /vrms/repairs/:id/attachments/:attachmentId',
       'POST /vrms/repairs/:id/attachments',
     ]);
   });
