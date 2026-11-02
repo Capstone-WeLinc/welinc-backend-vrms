@@ -5,6 +5,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { photoRows } from './photo-rules.fake';
 import { RepairsService } from './repairs.service';
 
 // Spec 0016, AC-16 and AC-17: assign mechanics to an Open ticket (move M1).
@@ -82,6 +83,7 @@ function setup(
       findUnique: jest.fn().mockResolvedValue(ticketRow(status)),
     },
     mechanic: { findMany: jest.fn().mockResolvedValue(mechanics) },
+    attachment: { groupBy: jest.fn().mockResolvedValue(photoRows()) },
     $transaction: jest.fn((run: (c: typeof tx) => unknown) => run(tx)),
   };
   const service = new RepairsService(

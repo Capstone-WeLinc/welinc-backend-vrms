@@ -10,7 +10,7 @@ import {
 // Spec 0012, AC-1: the one definition of settings
 
 describe('SETTINGS_CATALOG', () => {
-  it('holds exactly the 14 entries of the specs, in order (0012 AC-1, 0013 AC-18, 0015 AC-4, 0016 AC-8, 0017 AC-5 and AC-9, 0018 AC-3)', () => {
+  it('holds exactly the 17 entries of the specs, in order (0012 AC-1, 0013 AC-18, 0015 AC-4, 0016 AC-8, 0017 AC-5 and AC-9, 0018 AC-3 to AC-6)', () => {
     expect(SETTINGS_CATALOG.map((entry) => entry.key)).toEqual([
       'module.ai',
       'module.analytics',
@@ -22,6 +22,9 @@ describe('SETTINGS_CATALOG', () => {
       'ai.embed_catchup_days',
       'tickets.require_costs_to_close',
       'tickets.odometer_jump_warn_km',
+      'tickets.require_before_photo_to_start',
+      'tickets.require_after_photo_to_send',
+      'tickets.require_after_photo_to_close',
       'uploads.max_file_mb',
       'uploads.max_vehicle_photos',
       'uploads.max_after_photos',

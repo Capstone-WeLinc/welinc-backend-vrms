@@ -19,6 +19,12 @@ import {
 } from '@prisma/client';
 import { applyStatusMove } from './apply-status-move';
 import {
+  livePhotoCounts,
+  PhotoCounts,
+  photoNeedUnmet,
+  PhotoSwitches,
+} from './photo-rules';
+import {
   findMove,
   invalidMoveMessage,
   statusMovesFrom,
@@ -926,7 +932,8 @@ export class RepairsService {
         user,
         move.to === RepairStatus.CANCELLED ? reason : remarks,
         now,
-        { data, issues },
+        // Spec 0018, AC-7: the photo rules run last, under the row lock the move takes
+        { data, issues, photoRules: this.photoSwitches() },
       );
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
@@ -1473,13 +1480,14 @@ export class RepairsService {
         issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
       ),
     ];
-    const [stats, lastRejection] = await Promise.all([
+    const [stats, lastRejection, photoCounts] = await Promise.all([
       loadStats(
         this.prisma,
         entryIds,
         this.settings.get('knowledge.min_samples'),
       ),
       this.lastRejection(ticket),
+      livePhotoCounts(this.prisma, ticket.id),
     ]);
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
@@ -1487,7 +1495,7 @@ export class RepairsService {
     return {
       ...this.formatTicket(ticket, ability, hours),
       // Single ticket responses only; list rows carry neither (spec 0014, AC-13, AC-14)
-      moves: this.movesOut(ticket, ability),
+      moves: this.movesOut(ticket, ability, photoCounts),
       lastRejection,
       // Spec 0018: whether work has started decides the photo strip's group order (AC-16)
       workStartedAt: ticket.workStartedAt?.toISOString() ?? null,
@@ -1520,8 +1528,13 @@ export class RepairsService {
   }
 
   /** The moves the web app offers: the status endpoint moves this caller may make now (AC-13). */
-  private movesOut(ticket: TicketRow, ability: AppAbility) {
+  private movesOut(
+    ticket: TicketRow,
+    ability: AppAbility,
+    photoCounts: PhotoCounts,
+  ) {
     const knowledgeOn = this.settings.isModuleOn('knowledge');
+    const switches = this.photoSwitches();
     return movesFor(ticket, ability).map((m) => {
       const need = m.needs?.[0] ?? null;
       // Spec 0015, AC-5: the close needs costs while the setting is on and none are recorded
@@ -1538,8 +1551,26 @@ export class RepairsService {
           : need === 'resolutions' && !knowledgeOn
             ? null
             : need,
+        // Spec 0018: a photo can't be added inside the move dialog, so it is not a need; the
+        // same check as the server's (AC-4 to AC-6)
+        blockedBy: photoNeedUnmet(m, switches, photoCounts),
       };
     });
+  }
+
+  /** Spec 0018, AC-4 to AC-6: the three photo switches, read per request. */
+  private photoSwitches(): PhotoSwitches {
+    return {
+      requireBeforeToStart: this.settings.get(
+        'tickets.require_before_photo_to_start',
+      ),
+      requireAfterToSend: this.settings.get(
+        'tickets.require_after_photo_to_send',
+      ),
+      requireAfterToClose: this.settings.get(
+        'tickets.require_after_photo_to_close',
+      ),
+    };
   }
 
   private formatTicket(

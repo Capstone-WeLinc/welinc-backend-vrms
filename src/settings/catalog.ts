@@ -188,6 +188,39 @@ export const SETTINGS_CATALOG = [
     unit: 'km',
   },
   {
+    // Spec 0018, AC-4
+    key: 'tickets.require_before_photo_to_start',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Require a before photo to start work',
+    description:
+      'Work on a ticket cannot start until it has at least one before photo.',
+    type: 'boolean',
+    default: true,
+  },
+  {
+    // Spec 0018, AC-5
+    key: 'tickets.require_after_photo_to_send',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Require an after photo to send for verification',
+    description:
+      'A ticket cannot be sent for verification until it has at least one after photo.',
+    type: 'boolean',
+    default: true,
+  },
+  {
+    // Spec 0018, AC-6
+    key: 'tickets.require_after_photo_to_close',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Require an after photo to close',
+    description:
+      'A ticket cannot be verified and closed until it has at least one after photo.',
+    type: 'boolean',
+    default: false,
+  },
+  {
     // Spec 0017, AC-5
     key: 'uploads.max_file_mb',
     kind: 'value',

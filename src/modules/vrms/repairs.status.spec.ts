@@ -10,7 +10,9 @@ import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
 import { FINISHED_STATUSES, OPEN_STATUSES } from './ticket-statuses';
 import { FakeSettings } from '../../settings/settings.fake';
+import type { SettingKey } from '../../settings/catalog';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { photoRows } from './photo-rules.fake';
 
 // Spec 0014 on the status endpoint: the table, the check order, every effect of a move inside
 // one transaction, and the required stale check. Spec 0010, AC-4a and AC-10 still hold.
@@ -92,10 +94,19 @@ function fullTicket(status: RepairStatus) {
 function setup(
   status: RepairStatus,
   over: Record<string, unknown> = {},
-  opts: { stale?: boolean; requireCosts?: boolean } = {},
+  opts: {
+    stale?: boolean;
+    requireCosts?: boolean;
+    /** Spec 0018: live Before and After photos, one of each unless given. */
+    photos?: { before: number; after: number };
+    settings?: Partial<Record<SettingKey, number | boolean>>;
+  } = {},
 ) {
   const loaded = { ...fullTicket(status), ...over };
+  // Separate mocks: the transaction's count is the rule check, prisma's is the response read
+  const rows = photoRows(opts.photos?.before ?? 1, opts.photos?.after ?? 1);
   const tx = {
+    attachment: { groupBy: jest.fn().mockResolvedValue(rows) },
     repairPart: {
       deleteMany: jest.fn().mockResolvedValue({}),
       createMany: jest.fn().mockResolvedValue({}),
@@ -117,6 +128,7 @@ function setup(
   };
   const prisma = {
     repairTicket: { findUnique: jest.fn().mockResolvedValue(loaded) },
+    attachment: { groupBy: jest.fn().mockResolvedValue(rows) },
     auditLog: {
       create: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
@@ -128,9 +140,10 @@ function setup(
     tx,
     service: new RepairsService(
       prisma as unknown as PrismaService,
-      new FakeSettings(
-        opts.requireCosts ? { 'tickets.require_costs_to_close': true } : {},
-      ),
+      new FakeSettings({
+        ...(opts.requireCosts && { 'tickets.require_costs_to_close': true }),
+        ...opts.settings,
+      }),
       new FakeEmbeddings().asService(),
     ),
   };
@@ -639,5 +652,184 @@ describe('lastRejection on the detail read (AC-14)', () => {
     const res = await service.findOne(TICKET, defaultAbility(admin));
     expect(res.lastRejection).toBeNull();
     expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('photo rules on the moves (spec 0018, AC-4 to AC-8)', () => {
+  const none = { before: 0, after: 0 };
+
+  it('refuses Start work with 400 BEFORE_PHOTO_REQUIRED after the row lock, writing no audit row', async () => {
+    const { tx, service } = setup(RepairStatus.ASSIGNED, {}, { photos: none });
+    await expect(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.IN_PROGRESS, lastUpdatedAt: AT },
+        chief,
+        defaultAbility(chief),
+      ),
+    ).rejects.toMatchObject({
+      response: { statusCode: 400, code: 'BEFORE_PHOTO_REQUIRED' },
+    });
+    // Counted inside the transaction, after the conditional update took the lock (AC-7)
+    expect(tx.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.attachment.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          repairTicketId: TICKET,
+          deletedAt: null,
+        }) as unknown,
+      }),
+    );
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('lets Start work through with the switch off', async () => {
+    const { tx, service } = setup(
+      RepairStatus.ASSIGNED,
+      {},
+      {
+        photos: none,
+        settings: { 'tickets.require_before_photo_to_start': false },
+      },
+    );
+    await service.updateStatus(
+      TICKET,
+      { status: RepairStatus.IN_PROGRESS, lastUpdatedAt: AT },
+      chief,
+      defaultAbility(chief),
+    );
+    expect(tx.attachment.groupBy).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses Send for verification with 400 AFTER_PHOTO_REQUIRED when only Before photos exist', async () => {
+    const { service } = setup(
+      RepairStatus.IN_PROGRESS,
+      {},
+      { photos: { before: 2, after: 0 } },
+    );
+    await expect(
+      service.updateStatus(
+        TICKET,
+        {
+          status: RepairStatus.FOR_VERIFICATION,
+          lastUpdatedAt: AT,
+          resolutions: [],
+        },
+        chief,
+        defaultAbility(chief),
+      ),
+    ).rejects.toMatchObject({
+      response: { statusCode: 400, code: 'AFTER_PHOTO_REQUIRED' },
+    });
+  });
+
+  it('answers the "What fixed it" error before the photo rule (AC-7)', async () => {
+    const issue = {
+      id: 'issue-1',
+      description: 'Brakes squeal',
+      knowledgeEntryId: null,
+    };
+    const { tx, service } = setup(
+      RepairStatus.IN_PROGRESS,
+      { issues: [issue] },
+      { photos: none },
+    );
+    await expect(
+      service.updateStatus(
+        TICKET,
+        {
+          status: RepairStatus.FOR_VERIFICATION,
+          lastUpdatedAt: AT,
+          resolutions: [],
+        },
+        chief,
+        defaultAbility(chief),
+      ),
+    ).rejects.toThrow(/Add what fixed each issue/);
+    expect(tx.attachment.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('closes without an After photo by default, and refuses with the close switch on', async () => {
+    const open = setup(RepairStatus.FOR_VERIFICATION, {}, { photos: none });
+    await open.service.updateStatus(
+      TICKET,
+      { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(open.tx.auditLog.create).toHaveBeenCalledTimes(1);
+
+    const strict = setup(
+      RepairStatus.FOR_VERIFICATION,
+      {},
+      {
+        photos: none,
+        settings: { 'tickets.require_after_photo_to_close': true },
+      },
+    );
+    await expect(
+      strict.service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'AFTER_PHOTO_REQUIRED',
+        message: 'Add an after photo before closing.',
+      },
+    });
+  });
+
+  it('answers COSTS_REQUIRED before the close photo rule (AC-7)', async () => {
+    const { tx, service } = setup(
+      RepairStatus.FOR_VERIFICATION,
+      {},
+      {
+        photos: none,
+        requireCosts: true,
+        settings: { 'tickets.require_after_photo_to_close': true },
+      },
+    );
+    await expect(
+      service.updateStatus(
+        TICKET,
+        { status: RepairStatus.CLOSED, lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'COSTS_REQUIRED' } });
+    expect(tx.attachment.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('carries no photo rule on Cancel (AC-8)', async () => {
+    const { tx, service } = setup(RepairStatus.ASSIGNED, {}, { photos: none });
+    await service.updateStatus(
+      TICKET,
+      {
+        status: RepairStatus.CANCELLED,
+        lastUpdatedAt: AT,
+        cancellationReason: 'Duplicate ticket',
+      },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(tx.attachment.groupBy).not.toHaveBeenCalled();
+  });
+
+  it('marks the blocked move in moves[].blockedBy, from the same check (AC-4)', async () => {
+    const blocked = setup(RepairStatus.ASSIGNED, {}, { photos: none });
+    const res = await blocked.service.findOne(TICKET, defaultAbility(chief));
+    expect(res.moves).toEqual([
+      expect.objectContaining({ to: 'IN_PROGRESS', blockedBy: 'beforePhoto' }),
+    ]);
+
+    const ready = setup(RepairStatus.ASSIGNED);
+    const ok = await ready.service.findOne(TICKET, defaultAbility(chief));
+    expect(ok.moves).toEqual([
+      expect.objectContaining({ to: 'IN_PROGRESS', blockedBy: null }),
+    ]);
   });
 });

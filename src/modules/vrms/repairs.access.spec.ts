@@ -10,6 +10,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { RepairsService } from './repairs.service';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { photoRows } from './photo-rules.fake';
 
 // Spec 0011, AC-11, AC-12 and AC-12a under the default matrix: who may work or administer a
 // ticket, what costs they see, and the per ticket flags the web app shows buttons from.
@@ -83,6 +84,7 @@ function ticketOf(owner: string, status: RepairStatus) {
 function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
   const row = ticketOf(owner, status);
   const tx = {
+    attachment: { groupBy: jest.fn().mockResolvedValue(photoRows()) },
     repairTicket: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue(row),
@@ -103,6 +105,7 @@ function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
       findMany: jest.fn().mockResolvedValue([row]),
       count: jest.fn().mockResolvedValue(1),
     },
+    attachment: { groupBy: jest.fn().mockResolvedValue(photoRows()) },
     auditLog: { findMany: jest.fn().mockResolvedValue([]) },
     // Typical hours for linked entries; this ticket has none
     $queryRaw: jest.fn().mockResolvedValue([]),
@@ -171,7 +174,13 @@ describe('ticket can flags (AC-12a)', () => {
       defaultAbility(chief),
     );
     expect(own.moves).toEqual([
-      { to: 'IN_PROGRESS', label: 'Start work', kind: 'forward', needs: null },
+      {
+        to: 'IN_PROGRESS',
+        label: 'Start work',
+        kind: 'forward',
+        needs: null,
+        blockedBy: null,
+      },
     ]);
     expect(other.moves).toEqual([]);
   });
@@ -187,6 +196,7 @@ describe('ticket can flags (AC-12a)', () => {
         label: 'Send for verification',
         kind: 'forward',
         needs: 'resolutions',
+        blockedBy: null,
       },
     ]);
   });

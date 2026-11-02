@@ -7,6 +7,13 @@ import {
   statusEvent,
   whoName,
 } from './audit-events';
+import {
+  livePhotoCounts,
+  photoNeedOf,
+  photoNeedUnmet,
+  photoRequired,
+  PhotoSwitches,
+} from './photo-rules';
 import { STALE_TICKET } from './ticket-knowledge';
 import { isFinished } from './ticket-statuses';
 import type { TicketMove } from './ticket-transitions';
@@ -45,6 +52,11 @@ export type MoveOptions = {
   issues?: { id: string; data: Prisma.RepairIssueUpdateInput }[];
   /** The audit row to write instead of STATUS_CHANGE (the unassign release keeps its own). */
   audit?: AuditEventData;
+  /**
+   * Spec 0018, AC-7: the photo switches, passed only by the status endpoint. Other callers (the
+   * mechanic release) leave it out, so no photo rule ever runs for them.
+   */
+  photoRules?: PhotoSwitches;
 };
 
 export async function applyStatusMove(
@@ -84,6 +96,18 @@ export async function applyStatusMove(
     },
   });
   if (count === 0) throw new ConflictException(STALE_TICKET);
+
+  // Spec 0018, AC-7: the photo rule, counted after the update above took the ticket row lock.
+  // Upload, remove and move take the same lock, so the count is the one at commit; a failure
+  // throws and the caller's transaction rolls the move back.
+  if (options.photoRules && photoNeedOf(move, options.photoRules)) {
+    const unmet = photoNeedUnmet(
+      move,
+      options.photoRules,
+      await livePhotoCounts(tx, ticket.id),
+    );
+    if (unmet) throw photoRequired(move, unmet);
+  }
 
   // Spec 0018: the first move into a started status (M3, or M9) records when work started. Only
   // a null column is written, under the row lock just taken, so it is set once and never cleared.
