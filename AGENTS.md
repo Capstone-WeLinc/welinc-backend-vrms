@@ -17,7 +17,8 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/modules/vrms/repairs.controller.ts`, `repairs.service.ts` | Repair ticket endpoints and business rules |
 | `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline; each event carries a `changes` list of field, before and after |
 | `src/modules/vrms/ticket-statuses.ts` | The one definition of open and finished ticket statuses (spec 0010); queries read it, never a list of their own |
-| `src/modules/vrms/odometer.ts` | The odometer floor (`vehicleOdometerFloor`) and the below last and jump rules for a new ticket (spec 0016); create and the vehicle summary both read it |
+| `src/modules/vrms/odometer.ts` | The odometer floor (`vehicleOdometerFloor`) and the below last and jump rules for a new ticket (spec 0016); create and the vehicle summary both read it. `ticketOdometerBounds` gives an edited ticket its floor and ceiling from the truck's other tickets, ordered by `(createdAt, id)` (spec 0019) |
+| `src/modules/vrms/ticket-edits.service.ts`, `ticket-edits.ts`, `ticket-inputs.ts` | Editing a ticket after create (spec 0019): details, the full mechanic list and issues; `ticket-edits.ts` holds the lock, stale and stamp helpers, `ticket-inputs.ts` the driver, corporation and issue text helpers that create shares |
 | `src/modules/vrms/lookups/`, `src/modules/vrms/vehicles/` | Generic lookup lists (`vehicle_type`, `corporation`) behind `lookups.manage` with a `LookupValueChange` history, and the Settings Vehicles endpoints behind `vehicle.manage` with a `VehicleChange` history (spec 0016) |
 | `src/modules/vrms/config/` | VRMS configuration endpoints (dropdown lists and settings) |
 | `src/modules/vrms/dto/` | Request DTOs validated with `class-validator` |
@@ -55,6 +56,8 @@ npx prisma migrate dev   # asks first, see root rules
 - Repair updates use optimistic locking. The client sends `lastUpdatedAt` and a stale write is rejected. Keep that check on any new update path (see `update-costs.dto.ts` and `update-repair-status.dto.ts`).
 - Any path that changes a ticket's `repairStatus` must also set `statusChangedAt` in the same update (spec 0015); `applyStatusMove` does, so go through it. The For verification list sorts on it.
 - Ticket changes write audit events through `audit-events.ts`, so a new state change should add one.
+- A ticket edit (spec 0019) runs `assertFresh`, then `stampEdit` from `ticket-edits.ts` as the first write in its transaction: the guarded `updateMany where { id, updatedAt }` that sets `editedAt`, `editedByUserId` and `editedByName` from the token (`count === 0` answers 409). A save that changes nothing writes no audit row and no stamp. Locked Closed and Cancelled tickets answer `TICKET_LOCKED`; unlocked ones need a `reason`.
+- An issue's stored `description` is always built by `issueDescription` in `ticket-inputs.ts` (`[System] rootCause: text`), on create and on edit alike.
 - The photo rules on Start work, Send for verification and Close (spec 0018) run inside `applyStatusMove` through `modules/vrms/photo-rules.ts`, after the conditional update takes the row lock, never in a controller. A new move that needs a photo rule goes through the same place, and `blockedBy` on each move comes from the same check.
 - `workStartedAt` on a ticket is written only by `applyStatusMove` (spec 0018). It decides the derived Before or After label on photos, so nothing else should set it.
 - A truck has at most one ticket in an open status, enforced only by `RepairsService.create` (a row lock on the vehicle, then the check). Any new path that inserts a ticket must go through `create` (spec 0016).
