@@ -19,6 +19,8 @@ import {
   attachmentMovedEvent,
   attachmentRemovedEvent,
   auditData,
+  lastReturnAt,
+  REJECTION_SCAN_ROWS,
   whoName,
 } from '../vrms/audit-events';
 import { workStarted } from '../vrms/apply-status-move';
@@ -93,7 +95,66 @@ export type AttachmentView = {
   canRemove: boolean;
   /** Spec 0018, AC-11. */
   canMove: boolean;
+  /** Spec 0018, AC-14: an After photo added after the ticket's latest Return to mechanic. */
+  returnedAfter: boolean;
+  /** Spec 0018, AC-13: verifiers only; the key is absent for everyone else. */
+  takenAt?: Date | null;
+  /** Spec 0018, AC-13: verifiers only; the key is absent for everyone else. */
+  takenBeforeWork?: boolean;
 };
+
+/** What the evidence signals of a view read, once per request (spec 0018, AC-13 and AC-14). */
+type Evidence = {
+  /** The caller holds the verify right, ignoring the per ticket "not your own ticket" rule. */
+  verifier: boolean;
+  workStartedAt: Date | null;
+  /** The ticket's latest Return to mechanic (M6), or null. */
+  returnedAt: Date | null;
+};
+
+const MINUTE = 60_000;
+/** AC-12 and AC-13: the clock slack on a phone's recorded time. */
+const TAKEN_AT_SLACK_MS = 5 * MINUTE;
+const TAKEN_AT_FLOOR = Date.UTC(2000, 0, 1);
+
+/**
+ * Spec 0018, AC-12: the phone's recorded time when it parses and lies between 2000-01-01 and five
+ * minutes after now; anything else is null. Never throws, so a bad value never fails an upload.
+ */
+export function parseTakenAt(value: unknown, now: Date): Date | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  if (ms < TAKEN_AT_FLOOR || ms > now.getTime() + TAKEN_AT_SLACK_MS) {
+    return null;
+  }
+  return new Date(ms);
+}
+
+/** Spec 0018, AC-13: an After photo the phone took more than five minutes before work started. */
+export function isTakenBeforeWork(
+  row: Pick<Attachment, 'kind' | 'takenAt'>,
+  workStartedAt: Date | null,
+): boolean {
+  return (
+    row.kind === AttachmentKind.PROOF &&
+    row.takenAt != null &&
+    workStartedAt != null &&
+    row.takenAt.getTime() < workStartedAt.getTime() - TAKEN_AT_SLACK_MS
+  );
+}
+
+/** Spec 0018, AC-14: an After photo uploaded strictly after the latest Return to mechanic. */
+export function isReturnedAfter(
+  row: Pick<Attachment, 'kind' | 'createdAt'>,
+  returnedAt: Date | null,
+): boolean {
+  return (
+    row.kind === AttachmentKind.PROOF &&
+    returnedAt != null &&
+    row.createdAt.getTime() > returnedAt.getTime()
+  );
+}
 
 type Ticket = {
   id: string;
@@ -297,6 +358,7 @@ export class AttachmentsService {
       documentCount,
       addFiles,
       addDocuments,
+      evidence,
     ] = await Promise.all([
       this.prisma.attachment.findMany({
         where: {
@@ -312,6 +374,7 @@ export class AttachmentsService {
       this.liveCount(this.prisma, ticketId, DOCUMENT_KINDS),
       this.canAdd(ability, ticketId, 'VEHICLE_PHOTO'),
       this.canAdd(ability, ticketId, 'OTHER_DOCUMENT'),
+      this.evidence(ticketId, ticket.workStartedAt, ability),
     ]);
 
     const open = !isFinished(ticket.repairStatus);
@@ -324,7 +387,7 @@ export class AttachmentsService {
       protectBefore: this.settings.get('tickets.protect_before_photos'),
     };
     const items = await Promise.all(
-      rows.map((row) => this.view(row, now, rights)),
+      rows.map((row) => this.view(row, now, rights, evidence)),
     );
 
     return {
@@ -403,18 +466,25 @@ export class AttachmentsService {
 
     // AC-17 here: the caller just passed the add check for this kind on an open ticket. Spec
     // 0018: the work start is the one read under the lock once the transaction ran.
-    let started = workStarted(ticket);
+    let startedAt = ticket.workStartedAt;
     const answer = async (row: Attachment, duplicate: boolean) => ({
-      attachment: await this.view(row, new Date(), {
-        userId: user.sub,
-        open: true,
-        removeAny: ability.can('removeAny', 'RepairTicket'),
-        add: { addFiles: photo, addDocuments: !photo },
-        workStarted: started,
-        protectBefore: this.settings.get('tickets.protect_before_photos'),
-      }),
+      attachment: await this.view(
+        row,
+        new Date(),
+        {
+          userId: user.sub,
+          open: true,
+          removeAny: ability.can('removeAny', 'RepairTicket'),
+          add: { addFiles: photo, addDocuments: !photo },
+          workStarted: startedAt != null,
+          protectBefore: this.settings.get('tickets.protect_before_photos'),
+        },
+        await this.evidence(ticketId, startedAt, ability),
+      ),
       duplicate,
     });
+    // Spec 0018, AC-12: photos only; a bad or missing value is dropped, never an error
+    const takenAt = photo ? parseTakenAt(dto.takenAt, new Date()) : null;
 
     const sha256 = sha256Hex(file.buffer);
     const existing = await this.findDuplicate(
@@ -460,8 +530,8 @@ export class AttachmentsService {
         async (tx) => {
           const locked = await this.lockOpenTicket(tx, ticketId);
           // Spec 0018, AC-1: the kind again from the locked row; the checks below run for it
-          started = workStarted(locked);
-          kind = photo ? photoKindFor(started) : earlyKind;
+          startedAt = locked.workStartedAt;
+          kind = photo ? photoKindFor(workStarted(locked)) : earlyKind;
           const duplicate = await this.findDuplicate(
             tx,
             ticketId,
@@ -487,6 +557,7 @@ export class AttachmentsService {
               width: prepared.width,
               height: prepared.height,
               sha256,
+              takenAt,
               uploadedByUserId: user.sub,
               uploadedByName: whoName(user),
             },
@@ -597,8 +668,14 @@ export class AttachmentsService {
     }
     const to = target as AttachmentKind;
     const rights = await this.changeRights(user, ability, ticketId, row.kind);
-    if (row.kind === to)
-      return this.view(row, new Date(), rightsOn(rights, ticket));
+    if (row.kind === to) {
+      return this.view(
+        row,
+        new Date(),
+        rightsOn(rights, ticket),
+        await this.evidence(ticketId, ticket.workStartedAt, ability),
+      );
+    }
     this.checkChange(row, ticket, rights, 'move');
 
     const limits = this.limits();
@@ -649,7 +726,12 @@ export class AttachmentsService {
         },
         { timeout: 10_000 },
       );
-      return this.view(moved.row, new Date(), rightsOn(rights, moved.locked));
+      return this.view(
+        moved.row,
+        new Date(),
+        rightsOn(rights, moved.locked),
+        await this.evidence(ticketId, moved.locked.workStartedAt, ability),
+      );
     } catch (error) {
       // A race the index caught answers like the duplicate check, never 500
       if (isUniqueViolation(error)) throw photoAlreadyThere(to);
@@ -840,10 +922,35 @@ export class AttachmentsService {
     }
   }
 
+  /**
+   * Spec 0018, AC-13 and AC-14: whether the caller sees the taken time flag, plus the two times the
+   * signals compare against. The latest return uses the same newest first window as spec 0014's
+   * rejection banner, without stopping at a resend.
+   */
+  private async evidence(
+    ticketId: string,
+    workStartedAt: Date | null,
+    ability: AppAbility,
+  ): Promise<Evidence> {
+    const rows = await this.prisma.auditLog.findMany({
+      where: { repairTicketId: ticketId, action: 'STATUS_CHANGE' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { changes: true, createdAt: true },
+      take: REJECTION_SCAN_ROWS,
+    });
+    return {
+      // The role level check: CASL's "not your own ticket" rule only applies to a ticket instance
+      verifier: ability.can('verify', 'RepairTicket'),
+      workStartedAt,
+      returnedAt: lastReturnAt(rows),
+    };
+  }
+
   private async view(
     row: Attachment,
     now: Date,
     rights: RemoveRights,
+    evidence: Evidence,
   ): Promise<AttachmentView> {
     const [url, thumbnailUrl] = await Promise.all([
       this.store.readUrl(row.storageKey, row.fileName, row.mimeType, now),
@@ -871,6 +978,12 @@ export class AttachmentsService {
       thumbnailUrl,
       canRemove: canRemove(row, rights),
       canMove: canMove(row, rights),
+      returnedAfter: isReturnedAfter(row, evidence.returnedAt),
+      // AC-13: the time and the flag never leave the server for a caller without the verify right
+      ...(evidence.verifier && {
+        takenAt: row.takenAt,
+        takenBeforeWork: isTakenBeforeWork(row, evidence.workStartedAt),
+      }),
     };
   }
 

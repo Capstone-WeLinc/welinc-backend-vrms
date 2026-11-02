@@ -49,6 +49,7 @@ import {
   mechanicAssignedEvent,
   lastRejectionFrom,
   olderThan,
+  REJECTION_SCAN_ROWS,
   toAuditEvent,
   unlockEvent,
   whoName,
@@ -99,9 +100,6 @@ type JwtUser = {
 const AUDIT_PAGE_SIZE = 50;
 
 const LIST_PAGE_SIZE = 20;
-
-/** How many STATUS_CHANGE rows the lastRejection scan reads, newest first (spec 0014, AC-14). */
-const REJECTION_SCAN_ROWS = 20;
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 

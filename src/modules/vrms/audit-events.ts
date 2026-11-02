@@ -410,6 +410,31 @@ export function lastRejectionFrom(rows: StatusRow[]): LastRejection | null {
   return null;
 }
 
+/**
+ * How many STATUS_CHANGE rows, newest first, the rejection and return scans read. Hold moves are
+ * the only rows between a send and a return, so a short window is enough.
+ */
+export const REJECTION_SCAN_ROWS = 20;
+
+/**
+ * Spec 0018, AC-14: when the ticket was last returned to the mechanic (M6, For verification to
+ * In progress), or null. Unlike lastRejectionFrom it does not stop at a resend, so the mark on
+ * photos added after the return stays once the ticket is sent again. Rows come newest first.
+ */
+export function lastReturnAt(
+  rows: Pick<StatusRow, 'changes' | 'createdAt'>[],
+): Date | null {
+  for (const row of rows) {
+    const move = readChanges(row.changes).find(
+      (c) => c.field === 'repairStatus',
+    );
+    if (move?.before === 'FOR_VERIFICATION' && move.after === 'IN_PROGRESS') {
+      return row.createdAt;
+    }
+  }
+  return null;
+}
+
 /** The actor is stored on the row itself: welinc-auth id, email, name and role at write time. */
 export function toAuditEvent(row: AuditRow): AuditEvent {
   return {

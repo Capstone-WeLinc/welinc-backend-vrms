@@ -82,7 +82,8 @@ export const TICKET_MOVES: readonly TicketMove[] = [
     right: 'verify',
     needs: ['remarks'],
     kind: 'back',
-    label: 'Send back',
+    // Spec 0018, AC-15: the label only; the move id, the API and the audit data are unchanged
+    label: 'Return to mechanic',
   },
   {
     id: 'M7',

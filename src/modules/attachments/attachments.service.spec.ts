@@ -106,6 +106,8 @@ type Setup = {
   lockedGone?: boolean;
   /** Spec 0018, AC-10: tickets.protect_before_photos (default on). */
   protectBefore?: boolean;
+  /** Spec 0018, AC-14: STATUS_CHANGE rows, newest first. */
+  statusRows?: { changes: unknown; createdAt: Date }[];
 };
 
 function setup(opts: Setup = {}) {
@@ -180,6 +182,8 @@ function setup(opts: Setup = {}) {
         audits.push(args);
         return Promise.resolve({});
       }),
+      // Spec 0018, AC-14: the latest Return to mechanic scan (none by default)
+      findMany: jest.fn(() => Promise.resolve(opts.statusRows ?? [])),
     },
   };
 
