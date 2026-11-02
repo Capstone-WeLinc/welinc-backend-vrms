@@ -4,7 +4,12 @@ import sharp from 'sharp';
 import type { AuthUser } from '../../auth/account-check';
 import type { PermissionKey } from '../../auth/permissions/catalog';
 import { buildAbility } from '../../auth/permissions/ability.factory';
-import { AttachmentsService } from './attachments.service';
+import {
+  AttachmentsService,
+  isReturnedAfter,
+  isTakenBeforeWork,
+  parseTakenAt,
+} from './attachments.service';
 import type { FileStore } from './file-store';
 import type { PrismaService } from '../../shared/prisma.service';
 import type { SettingsService } from '../../settings/settings.service';
@@ -58,6 +63,7 @@ type Row = {
   uploadedByName: string;
   createdAt: Date;
   deletedAt: Date | null;
+  takenAt: Date | null;
 };
 
 function row(over: Partial<Row> = {}): Row {
@@ -78,6 +84,7 @@ function row(over: Partial<Row> = {}): Row {
     uploadedByName: 'Mia Mechanic',
     createdAt: new Date('2026-11-01T01:00:00Z'),
     deletedAt: null,
+    takenAt: null,
     ...over,
   };
 }
@@ -1426,5 +1433,243 @@ describe('AttachmentsService.list (AC-16, Value sourcing)', () => {
     expect(
       await codeOf(s.service.list(TICKET, ME, abilityOf(MECHANIC_KEYS))),
     ).toEqual({ status: 503, code: 'STORAGE_UNAVAILABLE' });
+  });
+});
+
+// Spec 0018, AC-12 to AC-14: the evidence signals, and the release case of AC-1 and AC-10
+describe('evidence signals (spec 0018, AC-12 to AC-14)', () => {
+  const NOW = new Date('2026-11-02T08:00:00Z');
+  const STARTED = new Date('2026-11-02T02:00:00Z');
+  const minutes = (n: number) => n * 60_000;
+  const VERIFIER_KEYS: PermissionKey[] = [...CHIEF_KEYS, 'ticket.verify'];
+
+  describe('parseTakenAt (AC-12)', () => {
+    it('keeps a valid time between 2000 and five minutes from now', () => {
+      expect(parseTakenAt('2026-11-02T01:30:00.000Z', NOW)).toEqual(
+        new Date('2026-11-02T01:30:00.000Z'),
+      );
+      expect(parseTakenAt('2000-01-01T00:00:00.000Z', NOW)).toEqual(
+        new Date('2000-01-01T00:00:00.000Z'),
+      );
+      expect(
+        parseTakenAt(new Date(NOW.getTime() + minutes(5)).toISOString(), NOW),
+      ).not.toBeNull();
+    });
+
+    it('drops anything else to null without throwing', () => {
+      for (const value of [
+        undefined,
+        null,
+        '',
+        '   ',
+        'garbage',
+        42,
+        ['2026-11-02T01:30:00Z'],
+        '1999-12-31T23:59:59.000Z',
+        new Date(NOW.getTime() + minutes(5) + 1000).toISOString(),
+      ]) {
+        expect(parseTakenAt(value, NOW)).toBeNull();
+      }
+    });
+  });
+
+  describe('isTakenBeforeWork (AC-13)', () => {
+    const at = (offset: number) => new Date(STARTED.getTime() + offset);
+
+    it('flags an After photo taken more than five minutes before work started', () => {
+      expect(
+        isTakenBeforeWork(
+          { kind: 'PROOF', takenAt: at(-minutes(10)) },
+          STARTED,
+        ),
+      ).toBe(true);
+    });
+
+    it('allows the five minute slack, and never flags a Before photo', () => {
+      expect(
+        isTakenBeforeWork({ kind: 'PROOF', takenAt: at(-minutes(2)) }, STARTED),
+      ).toBe(false);
+      expect(
+        isTakenBeforeWork({ kind: 'PROOF', takenAt: at(-minutes(5)) }, STARTED),
+      ).toBe(false);
+      expect(
+        isTakenBeforeWork(
+          { kind: 'VEHICLE_PHOTO', takenAt: at(-minutes(60)) },
+          STARTED,
+        ),
+      ).toBe(false);
+    });
+
+    it('shows no flag without a taken time or a work start', () => {
+      expect(isTakenBeforeWork({ kind: 'PROOF', takenAt: null }, STARTED)).toBe(
+        false,
+      );
+      expect(
+        isTakenBeforeWork({ kind: 'PROOF', takenAt: at(-minutes(60)) }, null),
+      ).toBe(false);
+    });
+  });
+
+  describe('isReturnedAfter (AC-14)', () => {
+    const RETURNED = new Date('2026-11-02T05:00:00Z');
+
+    it('marks an After photo uploaded strictly after the latest return', () => {
+      expect(
+        isReturnedAfter(
+          { kind: 'PROOF', createdAt: new Date(RETURNED.getTime() + 1) },
+          RETURNED,
+        ),
+      ).toBe(true);
+      expect(
+        isReturnedAfter({ kind: 'PROOF', createdAt: RETURNED }, RETURNED),
+      ).toBe(false);
+    });
+
+    it('never marks a Before photo, or any photo without a return', () => {
+      expect(
+        isReturnedAfter(
+          {
+            kind: 'VEHICLE_PHOTO',
+            createdAt: new Date(RETURNED.getTime() + 1),
+          },
+          RETURNED,
+        ),
+      ).toBe(false);
+      expect(isReturnedAfter({ kind: 'PROOF', createdAt: NOW }, null)).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('upload stores takenAt (AC-12)', () => {
+    it('stores a valid taken time on a photo', async () => {
+      const s = setup();
+      await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO', takenAt: '2026-11-01T01:30:00.000Z' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(s.created[0].takenAt).toEqual(
+        new Date('2026-11-01T01:30:00.000Z'),
+      );
+    });
+
+    it('still uploads with a bad taken time, storing null', async () => {
+      const s = setup();
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO', takenAt: 'not a date' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.duplicate).toBe(false);
+      expect(s.created[0].takenAt).toBeNull();
+    });
+  });
+
+  describe('list (AC-13, AC-14)', () => {
+    const proof = (over: Partial<Row> = {}) =>
+      row({
+        id: 'eeeeeeee-0000-4000-8000-000000000005',
+        kind: 'PROOF',
+        takenAt: new Date(STARTED.getTime() - minutes(10)),
+        createdAt: new Date('2026-11-02T06:00:00Z'),
+        ...over,
+      });
+    const statusRow = (before: string, after: string, at: string) => ({
+      changes: [{ field: 'repairStatus', before, after }],
+      createdAt: new Date(at),
+    });
+    // Newest first: returned at 05:00, resent at 07:00
+    const returned = [
+      statusRow('IN_PROGRESS', 'FOR_VERIFICATION', '2026-11-02T07:00:00Z'),
+      statusRow('FOR_VERIFICATION', 'IN_PROGRESS', '2026-11-02T05:00:00Z'),
+    ];
+
+    function listOf(rows: Row[], opts: Setup = {}) {
+      const s = setup({ workStartedAt: STARTED, ...opts });
+      s.prisma.attachment.findMany.mockResolvedValue(rows);
+      return s;
+    }
+
+    it('gives a verifier takenAt and the flag', async () => {
+      const s = listOf([proof()]);
+      const { items } = await s.service.list(
+        TICKET,
+        ME,
+        abilityOf(VERIFIER_KEYS),
+      );
+      expect(items[0]).toMatchObject({
+        takenAt: new Date(STARTED.getTime() - minutes(10)),
+        takenBeforeWork: true,
+      });
+    });
+
+    it('leaves both keys out for a caller without the verify right', async () => {
+      const s = listOf([proof()]);
+      const { items } = await s.service.list(TICKET, ME, abilityOf(CHIEF_KEYS));
+      expect(items[0]).not.toHaveProperty('takenAt');
+      expect(items[0]).not.toHaveProperty('takenBeforeWork');
+    });
+
+    it('marks After photos added after the latest return, kept after the resend', async () => {
+      const older = proof({
+        id: 'eeeeeeee-0000-4000-8000-000000000006',
+        createdAt: new Date('2026-11-02T04:00:00Z'),
+      });
+      const s = listOf([older, proof()], { statusRows: returned });
+      const { items } = await s.service.list(
+        TICKET,
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(items.map((item) => item.returnedAfter)).toEqual([false, true]);
+    });
+
+    it('reads the return from the newest STATUS_CHANGE rows of this ticket', async () => {
+      const s = listOf([]);
+      await s.service.list(TICKET, ME, abilityOf(MECHANIC_KEYS));
+      expect(s.prisma.auditLog.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { repairTicketId: TICKET, action: 'STATUS_CHANGE' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 20,
+        }),
+      );
+    });
+  });
+
+  describe('a ticket released after work started (Release, AC-1 and AC-10)', () => {
+    const released: Setup = {
+      status: 'OPEN',
+      lockedStatus: 'OPEN',
+      workStartedAt: STARTED,
+    };
+
+    it('files a new photo as After', async () => {
+      const s = setup(released);
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('PROOF');
+    });
+
+    it('keeps Before photos protected', async () => {
+      const s = setup(released);
+      s.prisma.attachment.findFirst.mockResolvedValue(row());
+      s.tx.attachment.findUnique.mockResolvedValue(row());
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, row().id, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+    });
   });
 });

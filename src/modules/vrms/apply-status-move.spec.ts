@@ -2,7 +2,15 @@ import { ConflictException } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
 import { applyStatusMove, MovingTicket } from './apply-status-move';
 import { Actor, createdEvent } from './audit-events';
+import { photoRows } from './photo-rules.fake';
+import type { PhotoSwitches } from './photo-rules';
 import { findMove } from './ticket-transitions';
+
+const ALL_ON: PhotoSwitches = {
+  requireBeforeToStart: true,
+  requireAfterToSend: true,
+  requireAfterToClose: true,
+};
 
 // Spec 0014: every effect of one status move, inside the caller's transaction.
 
@@ -28,7 +36,11 @@ function ticket(status: RepairStatus, odometer = 200000): MovingTicket {
   };
 }
 
-function makeTx(updateCount = 1, vehicleOdometer = 150000) {
+function makeTx(
+  updateCount = 1,
+  vehicleOdometer = 150000,
+  photos = photoRows(),
+) {
   const calls: string[] = [];
   const tx = {
     repairTicket: {
@@ -51,6 +63,13 @@ function makeTx(updateCount = 1, vehicleOdometer = 150000) {
       create: jest.fn(() => {
         calls.push('audit');
         return Promise.resolve();
+      }),
+    },
+    // Spec 0018, AC-7: the live photo counts the photo rule reads
+    attachment: {
+      groupBy: jest.fn(() => {
+        calls.push('photos');
+        return Promise.resolve(photos);
       }),
     },
     vehicle: {
@@ -134,6 +153,80 @@ describe('applyStatusMove', () => {
       NOW,
     );
     expect(raw.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  describe('photo rules under the row lock (spec 0018, AC-7)', () => {
+    const SEND = () =>
+      move(RepairStatus.IN_PROGRESS, RepairStatus.FOR_VERIFICATION);
+
+    it('counts photos only after the conditional update took the lock, and writes nothing more when unmet', async () => {
+      // The race: the last After photo was removed before this move took the lock, so the count
+      // under the lock is zero and the move rolls back
+      const { tx, raw, calls } = makeTx(1, 150000, photoRows(1, 0));
+      await expect(
+        applyStatusMove(
+          tx,
+          ticket(RepairStatus.IN_PROGRESS),
+          SEND(),
+          actor,
+          null,
+          NOW,
+          { photoRules: ALL_ON },
+        ),
+      ).rejects.toMatchObject({
+        response: { statusCode: 400, code: 'AFTER_PHOTO_REQUIRED' },
+      });
+      expect(calls).toEqual(['ticket', 'photos']);
+      expect(raw.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('goes through when the photo is still live at the lock', async () => {
+      const { tx, calls } = makeTx(1, 150000, photoRows(1, 1));
+      await applyStatusMove(
+        tx,
+        ticket(RepairStatus.IN_PROGRESS),
+        SEND(),
+        actor,
+        null,
+        NOW,
+        { photoRules: ALL_ON },
+      );
+      expect(calls.slice(0, 2)).toEqual(['ticket', 'photos']);
+      expect(calls).toContain('audit');
+    });
+
+    it('does not count photos for a move with no photo need, even with every switch on', async () => {
+      const { tx, calls } = makeTx();
+      await applyStatusMove(
+        tx,
+        ticket(RepairStatus.FOR_VERIFICATION),
+        move(RepairStatus.FOR_VERIFICATION, RepairStatus.IN_PROGRESS),
+        actor,
+        'Redo the brakes',
+        NOW,
+        { photoRules: ALL_ON },
+      );
+      expect(calls).not.toContain('photos');
+    });
+
+    it('runs no photo rule on the mechanic release and keeps work started (Release)', async () => {
+      // The release passes no photoRules: no Before photo, yet it goes through
+      const { tx, raw, calls } = makeTx(1, 150000, photoRows(0, 0));
+      await applyStatusMove(
+        tx,
+        ticket(RepairStatus.ASSIGNED),
+        move(RepairStatus.ASSIGNED, RepairStatus.OPEN),
+        actor,
+        null,
+        NOW,
+      );
+      expect(calls).not.toContain('photos');
+      // One write only, and it never touches workStartedAt, so it is never cleared
+      expect(raw.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+      const [{ data }] = raw.repairTicket.updateMany.mock
+        .calls[0] as unknown as [{ data: Record<string, unknown> }];
+      expect(data).not.toHaveProperty('workStartedAt');
+    });
   });
 
   it('writes in the order ticket, issues, audit, vehicle (AC-12)', async () => {
