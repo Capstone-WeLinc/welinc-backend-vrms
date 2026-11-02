@@ -179,6 +179,165 @@ describe('RepairsService.findHistory', () => {
     });
   });
 
+  describe('the verifier (feature 23)', () => {
+    const RAMON = '00000000-0000-4000-8000-000000000020';
+    const VICTOR = '00000000-0000-4000-8000-000000000002';
+
+    const STATUS_GROUPS = [
+      {
+        repairStatus: RepairStatus.CLOSED,
+        _count: { _all: 30 },
+        _sum: { totalCost: 120000 },
+      },
+      {
+        repairStatus: RepairStatus.CANCELLED,
+        _count: { _all: 5 },
+        _sum: { totalCost: 999 },
+      },
+    ];
+
+    /** setup() whose groupBy by verifier answers `verifierGroups`; the status groupBy keeps its totals. */
+    function setupWithVerifiers(
+      verifierGroups: {
+        verifiedByUserId: string | null;
+        verifiedByName: string | null;
+        _max: { verifiedAt: Date | null };
+      }[],
+    ) {
+      const made = setup();
+      made.prisma.repairTicket.groupBy.mockImplementation(
+        (args: { by: string[] }) =>
+          Promise.resolve(
+            args.by.includes('verifiedByUserId')
+              ? verifierGroups
+              : STATUS_GROUPS,
+          ),
+      );
+      return made;
+    }
+
+    const at = (iso: string) => ({ verifiedAt: new Date(iso) });
+
+    it('returns who verified a closed row and when, and null for a cancelled row', async () => {
+      const { prisma, service } = setupWithVerifiers([]);
+      prisma.repairTicket.findMany.mockResolvedValue([
+        {
+          ...ticket(RepairStatus.CLOSED, 4000),
+          verifiedByName: 'Ramon Villanueva',
+          ...at('2026-10-02T08:30:00Z'),
+        },
+        {
+          ...ticket(RepairStatus.CANCELLED, null),
+          verifiedByName: null,
+          verifiedAt: null,
+        },
+      ]);
+      const res = await service.findHistory({}, asAdmin);
+      expect(res.data[0]).toMatchObject({
+        verifiedByName: 'Ramon Villanueva',
+        verifiedAt: '2026-10-02T08:30:00.000Z',
+      });
+      expect(res.data[1]).toMatchObject({
+        verifiedByName: null,
+        verifiedAt: null,
+      });
+    });
+
+    it('narrows rows, count and summary by verifiedBy with one shared where', async () => {
+      const { prisma, service } = setupWithVerifiers([]);
+      await service.findHistory({ verifiedBy: RAMON }, asAdmin);
+      const listWhere = whereOf(prisma.repairTicket.findMany);
+      expect(listWhere.verifiedByUserId).toBe(RAMON);
+      expect(whereOf(prisma.repairTicket.groupBy)).toBe(listWhere);
+    });
+
+    it('leaves the verifier out of the where when none is asked for', async () => {
+      const { prisma, service } = setupWithVerifiers([]);
+      await service.findHistory({}, asAdmin);
+      expect(
+        whereOf(prisma.repairTicket.findMany).verifiedByUserId,
+      ).toBeUndefined();
+    });
+
+    it('lists every verifier by name, ignoring the other filters', async () => {
+      const { prisma, service } = setupWithVerifiers([
+        {
+          verifiedByUserId: VICTOR,
+          verifiedByName: 'Victor Ramos',
+          _max: at('2026-10-01T00:00:00Z'),
+        },
+        {
+          verifiedByUserId: RAMON,
+          verifiedByName: 'Ramon Villanueva',
+          _max: at('2026-10-02T00:00:00Z'),
+        },
+      ]);
+      const res = await service.findHistory(
+        { verifiedBy: RAMON, garageId: '00000000-0000-4000-8000-000000000001' },
+        asAdmin,
+      );
+      expect(res.verifiers).toEqual([
+        { id: RAMON, name: 'Ramon Villanueva' },
+        { id: VICTOR, name: 'Victor Ramos' },
+      ]);
+      const calls = prisma.repairTicket.groupBy.mock.calls as [
+        { by: string[]; where: Prisma.RepairTicketWhereInput },
+      ][];
+      const verifierWhere = calls.find(([a]) =>
+        a.by.includes('verifiedByUserId'),
+      )![0].where;
+      expect(verifierWhere.garageId).toBeUndefined();
+      expect(verifierWhere.verifiedByUserId).toEqual({ not: null });
+      expect(verifierWhere.repairStatus).toBe(RepairStatus.CLOSED);
+    });
+
+    it('shows a renamed verifier once, under the name from the latest verification', async () => {
+      const { service } = setupWithVerifiers([
+        {
+          verifiedByUserId: RAMON,
+          verifiedByName: 'Ramon V.',
+          _max: at('2026-09-01T00:00:00Z'),
+        },
+        {
+          verifiedByUserId: RAMON,
+          verifiedByName: 'Ramon Villanueva',
+          _max: at('2026-10-01T00:00:00Z'),
+        },
+      ]);
+      const res = await service.findHistory({}, asAdmin);
+      expect(res.verifiers).toEqual([{ id: RAMON, name: 'Ramon Villanueva' }]);
+    });
+
+    it('skips a group with no verifier id or no name', async () => {
+      const { service } = setupWithVerifiers([
+        {
+          verifiedByUserId: null,
+          verifiedByName: null,
+          _max: { verifiedAt: null },
+        },
+        {
+          verifiedByUserId: RAMON,
+          verifiedByName: null,
+          _max: { verifiedAt: null },
+        },
+      ]);
+      const res = await service.findHistory({}, asAdmin);
+      expect(res.verifiers).toEqual([]);
+    });
+
+    it('limits a mechanic to the verifiers of tickets they can read', async () => {
+      const { prisma, service } = setupWithVerifiers([]);
+      await service.findHistory({}, asMechanic);
+      const calls = prisma.repairTicket.groupBy.mock.calls as [
+        { by: string[]; where: Prisma.RepairTicketWhereInput },
+      ][];
+      const verifierWhere = calls.find(([a]) =>
+        a.by.includes('verifiedByUserId'),
+      )![0].where;
+      expect(verifierWhere.AND).toEqual([MINE]);
+    });
+  });
+
   it('rejects a range where from is not before to', async () => {
     const { service } = setup();
     await expect(
