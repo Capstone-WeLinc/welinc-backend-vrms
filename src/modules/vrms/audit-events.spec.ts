@@ -1,12 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   actorFields,
+  attachmentMovedEvent,
   auditData,
   costEvent,
   decodeCursor,
   encodeCursor,
   knowledgeLinkEvent,
   lastRejectionFrom,
+  lastReturnAt,
   olderThan,
   readChanges,
   statusEvent,
@@ -190,6 +192,29 @@ describe('event builders (spec 0010, Audit events)', () => {
     });
   });
 
+  it('records a photo move as a kind change with the file name (spec 0018, AC-18)', () => {
+    const event = attachmentMovedEvent(
+      { id: 'a1', kind: 'PROOF', kindLabel: 'After photo', fileName: 'x.jpg' },
+      {
+        id: 'a1',
+        kind: 'VEHICLE_PHOTO',
+        kindLabel: 'Before photo',
+        fileName: 'x.jpg',
+      },
+    );
+    expect(event.action).toBe('ATTACHMENT_MOVED');
+    expect(event.changes).toEqual([
+      { field: 'kind', before: 'PROOF', after: 'VEHICLE_PHOTO' },
+      {
+        field: 'attachment',
+        before: 'After photo: x.jpg',
+        after: 'Before photo: x.jpg',
+      },
+      { field: 'attachmentId', before: null, after: 'a1' },
+    ]);
+    expect(event.note).toBeNull();
+  });
+
   it('names the issue on a known fix link', () => {
     expect(
       knowledgeLinkEvent(uuid(3), null, 'Brake pads worn').changes,
@@ -281,5 +306,45 @@ describe('lastRejectionFrom', () => {
         { ...row('FOR_VERIFICATION', 'IN_PROGRESS', 1, 'x'), actorName: null },
       ])?.byName,
     ).toBe('vrms.chief@welinc.com');
+  });
+});
+
+// Spec 0018, AC-14: the latest Return to mechanic, kept after a resend
+describe('lastReturnAt', () => {
+  const row = (before: string, after: string, minute: number) => ({
+    changes: [{ field: 'repairStatus', before, after }],
+    createdAt: new Date(Date.UTC(2026, 10, 2, 8, minute)),
+  });
+
+  it('keeps the return after the ticket was sent for verification again', () => {
+    expect(
+      lastReturnAt([
+        row('IN_PROGRESS', 'FOR_VERIFICATION', 20),
+        row('FOR_VERIFICATION', 'IN_PROGRESS', 10),
+      ]),
+    ).toEqual(new Date(Date.UTC(2026, 10, 2, 8, 10)));
+  });
+
+  it('answers the latest return when there were two', () => {
+    expect(
+      lastReturnAt([
+        row('FOR_VERIFICATION', 'IN_PROGRESS', 40),
+        row('IN_PROGRESS', 'FOR_VERIFICATION', 30),
+        row('FOR_VERIFICATION', 'IN_PROGRESS', 10),
+      ]),
+    ).toEqual(new Date(Date.UTC(2026, 10, 2, 8, 40)));
+  });
+
+  it('is null with no return, and skips rows without a status change', () => {
+    expect(
+      lastReturnAt([
+        {
+          changes: [{ field: 'remarks', before: null, after: 'x' }],
+          createdAt: new Date(),
+        },
+        row('ASSIGNED', 'IN_PROGRESS', 1),
+      ]),
+    ).toBeNull();
+    expect(lastReturnAt([])).toBeNull();
   });
 });

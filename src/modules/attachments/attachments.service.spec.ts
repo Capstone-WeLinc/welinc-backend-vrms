@@ -4,7 +4,12 @@ import sharp from 'sharp';
 import type { AuthUser } from '../../auth/account-check';
 import type { PermissionKey } from '../../auth/permissions/catalog';
 import { buildAbility } from '../../auth/permissions/ability.factory';
-import { AttachmentsService } from './attachments.service';
+import {
+  AttachmentsService,
+  isReturnedAfter,
+  isTakenBeforeWork,
+  parseTakenAt,
+} from './attachments.service';
 import type { FileStore } from './file-store';
 import type { PrismaService } from '../../shared/prisma.service';
 import type { SettingsService } from '../../settings/settings.service';
@@ -58,6 +63,7 @@ type Row = {
   uploadedByName: string;
   createdAt: Date;
   deletedAt: Date | null;
+  takenAt: Date | null;
 };
 
 function row(over: Partial<Row> = {}): Row {
@@ -78,6 +84,7 @@ function row(over: Partial<Row> = {}): Row {
     uploadedByName: 'Mia Mechanic',
     createdAt: new Date('2026-11-01T01:00:00Z'),
     deletedAt: null,
+    takenAt: null,
     ...over,
   };
 }
@@ -89,12 +96,25 @@ type Setup = {
   addCount?: number;
   existing?: Row | null;
   photoCount?: number;
+  afterCount?: number;
   documentCount?: number;
   issueOnTicket?: boolean;
   configured?: boolean;
-  limits?: { maxFileMb?: number; photos?: number; documents?: number };
+  limits?: {
+    maxFileMb?: number;
+    photos?: number;
+    afterPhotos?: number;
+    documents?: number;
+  };
+  /** Spec 0018: when work started, as first read and as read under the lock. */
+  workStartedAt?: Date | null;
+  lockedWorkStartedAt?: Date | null;
   failCreateWith?: Error;
   lockedGone?: boolean;
+  /** Spec 0018, AC-10: tickets.protect_before_photos (default on). */
+  protectBefore?: boolean;
+  /** Spec 0018, AC-14: STATUS_CHANGE rows, newest first. */
+  statusRows?: { changes: unknown; createdAt: Date }[];
 };
 
 function setup(opts: Setup = {}) {
@@ -122,7 +142,16 @@ function setup(opts: Setup = {}) {
       Promise.resolve(
         opts.lockedGone
           ? []
-          : [{ id: TICKET, repair_status: opts.lockedStatus ?? 'IN_PROGRESS' }],
+          : [
+              {
+                id: TICKET,
+                repair_status: opts.lockedStatus ?? 'IN_PROGRESS',
+                work_started_at:
+                  opts.lockedWorkStartedAt !== undefined
+                    ? opts.lockedWorkStartedAt
+                    : (opts.workStartedAt ?? null),
+              },
+            ],
       ),
     ),
     repairIssue: {
@@ -137,7 +166,9 @@ function setup(opts: Setup = {}) {
         Promise.resolve(
           args.where.kind.in.includes('VEHICLE_PHOTO')
             ? (opts.photoCount ?? 0)
-            : (opts.documentCount ?? 0),
+            : args.where.kind.in.includes('PROOF')
+              ? (opts.afterCount ?? 0)
+              : (opts.documentCount ?? 0),
         ),
       ),
       create: jest.fn((args: { data: Row }) => {
@@ -147,12 +178,19 @@ function setup(opts: Setup = {}) {
         return Promise.resolve(r);
       }),
       updateMany: jest.fn(() => Promise.resolve({ count: 1 })),
+      // Spec 0018: the fresh read under the lock, and the move's write
+      findUnique: jest.fn(() => Promise.resolve(null as Row | null)),
+      update: jest.fn((args: { where: { id: string }; data: Partial<Row> }) =>
+        Promise.resolve(row({ id: args.where.id, ...args.data })),
+      ),
     },
     auditLog: {
       create: jest.fn((args: unknown) => {
         audits.push(args);
         return Promise.resolve({});
       }),
+      // Spec 0018, AC-14: the latest Return to mechanic scan (none by default)
+      findMany: jest.fn(() => Promise.resolve(opts.statusRows ?? [])),
     },
   };
 
@@ -163,7 +201,11 @@ function setup(opts: Setup = {}) {
         Promise.resolve(
           opts.visible === false
             ? null
-            : { id: TICKET, repairStatus: opts.status ?? 'IN_PROGRESS' },
+            : {
+                id: TICKET,
+                repairStatus: opts.status ?? 'IN_PROGRESS',
+                workStartedAt: opts.workStartedAt ?? null,
+              },
         ),
       ),
       count: jest.fn(() => Promise.resolve(opts.addCount ?? 1)),
@@ -171,9 +213,11 @@ function setup(opts: Setup = {}) {
     $transaction: jest.fn((cb: (t: typeof tx) => Promise<unknown>) => cb(tx)),
   };
 
-  const values: Record<string, number> = {
+  const values: Record<string, number | boolean> = {
+    'tickets.protect_before_photos': opts.protectBefore ?? true,
     'uploads.max_file_mb': opts.limits?.maxFileMb ?? 10,
     'uploads.max_vehicle_photos': opts.limits?.photos ?? 5,
+    'uploads.max_after_photos': opts.limits?.afterPhotos ?? 10,
     'uploads.max_documents': opts.limits?.documents ?? 10,
   };
   const settings = {
@@ -288,16 +332,106 @@ describe('AttachmentsService.upload', () => {
       });
     });
 
-    it('tags a photo to an issue that belongs to the ticket (AC-11)', async () => {
-      const s = setup();
+    it('ignores an issue tag on a photo (spec 0018)', async () => {
+      const s = setup({ issueOnTicket: false });
       await s.service.upload(
         TICKET,
         await photo(),
-        dto({ issueId: ISSUE }),
+        dto({ kind: 'PHOTO', issueId: ISSUE }),
         ME,
         abilityOf(MECHANIC_KEYS),
       );
-      expect(s.created[0].issueId).toBe(ISSUE);
+      expect(s.created[0].issueId).toBeNull();
+    });
+  });
+
+  describe('derived kind (spec 0018, AC-1)', () => {
+    const STARTED = new Date('2026-11-01T02:00:00Z');
+
+    it('files a photo as Before while work has not started', async () => {
+      const s = setup();
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('VEHICLE_PHOTO');
+    });
+
+    it('files a photo as After once work has started', async () => {
+      const s = setup({ workStartedAt: STARTED });
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('PROOF');
+    });
+
+    it('never lets the client choose: an old VEHICLE_PHOTO after start lands in After', async () => {
+      const s = setup({ workStartedAt: STARTED });
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'VEHICLE_PHOTO' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('PROOF');
+    });
+
+    it('reads the kind again under the lock when work started in between', async () => {
+      const s = setup({ workStartedAt: null, lockedWorkStartedAt: STARTED });
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('PROOF');
+    });
+
+    it('checks the After cap again under the lock for the new kind (AC-3)', async () => {
+      const s = setup({
+        workStartedAt: null,
+        lockedWorkStartedAt: STARTED,
+        afterCount: 10,
+      });
+      expect(
+        await codeOf(
+          s.service.upload(
+            TICKET,
+            await photo(),
+            dto({ kind: 'PHOTO' }),
+            ME,
+            abilityOf(MECHANIC_KEYS),
+          ),
+        ),
+      ).toEqual({ status: 409, code: 'PHOTO_LIMIT_REACHED' });
+      expect(s.created).toHaveLength(0);
+      expect(s.deletes).toHaveLength(2);
+    });
+
+    it('refuses a PDF sent as a photo with 415, before or after start (AC-2)', async () => {
+      for (const workStartedAt of [null, STARTED]) {
+        const s = setup({ workStartedAt });
+        expect(
+          await codeOf(
+            s.service.upload(
+              TICKET,
+              { buffer: Buffer.from('%PDF-1.4\n%fake'), originalname: 'a.pdf' },
+              dto({ kind: 'PROOF' }),
+              ME,
+              abilityOf(MECHANIC_KEYS),
+            ),
+          ),
+        ).toEqual({ status: 415, code: 'FILE_TYPE_NOT_ALLOWED' });
+      }
     });
   });
 
@@ -444,8 +578,7 @@ describe('AttachmentsService.upload', () => {
         ),
       ).rejects.toMatchObject({
         response: {
-          message:
-            'Vehicle photo accepts JPEG, PNG or HEIC photos. This file is PDF.',
+          message: 'Photo accepts JPEG, PNG or HEIC photos. This file is PDF.',
         },
       });
     });
@@ -469,21 +602,6 @@ describe('AttachmentsService.upload', () => {
   });
 
   describe('issue tag (AC-11)', () => {
-    it('answers 400 ISSUE_NOT_ON_TICKET for an issue on another ticket', async () => {
-      const s = setup({ issueOnTicket: false });
-      expect(
-        await codeOf(
-          s.service.upload(
-            TICKET,
-            await photo(),
-            dto({ issueId: ISSUE }),
-            ME,
-            abilityOf(MECHANIC_KEYS),
-          ),
-        ),
-      ).toEqual({ status: 400, code: 'ISSUE_NOT_ON_TICKET' });
-    });
-
     it('answers 400 ISSUE_NOT_ON_TICKET when a document names an issue', async () => {
       const s = setup();
       expect(
@@ -565,20 +683,59 @@ describe('AttachmentsService.upload', () => {
   });
 
   describe('caps (AC-8, AC-9)', () => {
-    it('answers 409 PHOTO_LIMIT_REACHED at the photo cap', async () => {
+    it('answers 409 PHOTO_LIMIT_REACHED at the Before cap, naming the group', async () => {
       const s = setup({ photoCount: 5 });
-      expect(
-        await codeOf(
-          s.service.upload(
-            TICKET,
-            await photo(),
-            dto(),
-            ME,
-            abilityOf(MECHANIC_KEYS),
-          ),
+      await expect(
+        s.service.upload(
+          TICKET,
+          await photo(),
+          dto(),
+          ME,
+          abilityOf(MECHANIC_KEYS),
         ),
-      ).toEqual({ status: 409, code: 'PHOTO_LIMIT_REACHED' });
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          code: 'PHOTO_LIMIT_REACHED',
+          message: expect.stringContaining('5 before photos') as unknown,
+        },
+      });
       expect(s.puts).toHaveLength(0);
+    });
+
+    it('counts After photos against their own limit (spec 0018, AC-3)', async () => {
+      const started = new Date('2026-11-01T02:00:00Z');
+      const full = setup({
+        workStartedAt: started,
+        photoCount: 5,
+        afterCount: 3,
+        limits: { afterPhotos: 3 },
+      });
+      await expect(
+        full.service.upload(
+          TICKET,
+          await photo(),
+          dto({ kind: 'PHOTO' }),
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'PHOTO_LIMIT_REACHED',
+          message: expect.stringContaining('3 after photos') as unknown,
+        },
+      });
+      // A full Before group does not block an After photo
+      const room = setup({ workStartedAt: started, photoCount: 5 });
+      await expect(
+        room.service.upload(
+          TICKET,
+          await photo(),
+          dto({ kind: 'PHOTO' }),
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ).resolves.toMatchObject({ attachment: { kind: 'PROOF' } });
     });
 
     it('accepts the last free slot', async () => {
@@ -624,6 +781,41 @@ describe('AttachmentsService.upload', () => {
   });
 
   describe('duplicates (AC-8)', () => {
+    it('looks across Before and After as one pool (spec 0018, AC-21)', async () => {
+      const s = setup({
+        workStartedAt: new Date('2026-11-01T02:00:00Z'),
+        existing: row({ kind: 'VEHICLE_PHOTO' }),
+      });
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result).toMatchObject({
+        duplicate: true,
+        attachment: { kind: 'VEHICLE_PHOTO' },
+      });
+      const [{ where }] = s.prisma.attachment.findFirst.mock
+        .calls[0] as unknown as [{ where: { kind: { in: string[] } } }];
+      expect(where.kind.in).toEqual(['VEHICLE_PHOTO', 'PROOF']);
+    });
+
+    it('keeps documents in a pool of their own kind', async () => {
+      const s = setup();
+      await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'RECEIPT' }),
+        ME,
+        abilityOf(CHIEF_KEYS),
+      );
+      const [{ where }] = s.prisma.attachment.findFirst.mock
+        .calls[0] as unknown as [{ where: { kind: { in: string[] } } }];
+      expect(where.kind.in).toEqual(['RECEIPT']);
+    });
+
     it('answers the existing file with duplicate true and stores nothing', async () => {
       const s = setup({ existing: row({ uploadedByUserId: 'someone-else' }) });
       const result = await s.service.upload(
@@ -763,6 +955,7 @@ describe('AttachmentsService.remove (AC-17, AC-18)', () => {
   function removeSetup(attachment: Row | null, opts: Setup = {}) {
     const s = setup(opts);
     s.prisma.attachment.findFirst.mockResolvedValue(attachment);
+    s.tx.attachment.findUnique.mockResolvedValue(attachment);
     return s;
   }
 
@@ -861,6 +1054,263 @@ describe('AttachmentsService.remove (AC-17, AC-18)', () => {
       await codeOf(s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS))),
     ).toEqual({ status: 503, code: 'STORAGE_UNAVAILABLE' });
   });
+
+  describe('Before protection (spec 0018, AC-10)', () => {
+    const started = { workStartedAt: new Date('2026-11-01T02:00:00Z') };
+
+    it('answers 403 BEFORE_PHOTO_PROTECTED for your own Before photo once work started', async () => {
+      const s = removeSetup(row(), started);
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+      expect(s.audits).toHaveLength(0);
+    });
+
+    it('answers NOT_YOUR_FILE first for someone else’s protected Before photo', async () => {
+      const s = removeSetup(row({ uploadedByUserId: 'chief' }), started);
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'NOT_YOUR_FILE' });
+    });
+
+    it('lets remove_any remove it, and the uploader with the switch off or before work starts', async () => {
+      const chief = removeSetup(row(), started);
+      await chief.service.remove(TICKET, ATT, ME, abilityOf(CHIEF_KEYS));
+      expect(chief.audits).toHaveLength(1);
+
+      const off = removeSetup(row(), { ...started, protectBefore: false });
+      await off.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
+      expect(off.audits).toHaveLength(1);
+
+      const early = removeSetup(row());
+      await early.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
+      expect(early.audits).toHaveLength(1);
+    });
+
+    it('checks again under the lock: work started after the first read', async () => {
+      const s = removeSetup(row(), {
+        lockedWorkStartedAt: started.workStartedAt,
+      });
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+      expect(s.tx.attachment.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('never protects an After photo', async () => {
+      const s = removeSetup(row({ kind: 'PROOF' }), started);
+      await s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
+      expect(s.audits).toHaveLength(1);
+    });
+  });
+});
+
+describe('AttachmentsService.move (spec 0018, AC-9 to AC-11, AC-21)', () => {
+  const ATT = 'dddddddd-0000-4000-8000-000000000004';
+  const started = { workStartedAt: new Date('2026-11-01T02:00:00Z') };
+
+  function moveSetup(attachment: Row | null, opts: Setup = {}) {
+    const s = setup(opts);
+    // The visibility read, then the duplicate check (none unless a test says so)
+    s.prisma.attachment.findFirst
+      .mockResolvedValueOnce(attachment)
+      .mockResolvedValue(null);
+    s.tx.attachment.findUnique.mockResolvedValue(attachment);
+    return s;
+  }
+
+  it('moves your own After photo to Before with one ATTACHMENT_MOVED row', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }), started);
+    const view = await s.service.move(
+      TICKET,
+      ATT,
+      'VEHICLE_PHOTO',
+      ME,
+      abilityOf(MECHANIC_KEYS),
+    );
+    expect(view.kind).toBe('VEHICLE_PHOTO');
+    expect(s.tx.attachment.update).toHaveBeenCalledWith({
+      where: { id: ATT },
+      data: { kind: 'VEHICLE_PHOTO' },
+    });
+    expect(s.audits).toEqual([
+      {
+        data: expect.objectContaining({
+          action: 'ATTACHMENT_MOVED',
+          changes: expect.arrayContaining([
+            { field: 'kind', before: 'PROOF', after: 'VEHICLE_PHOTO' },
+            {
+              field: 'attachment',
+              before: 'After photo: front.jpg',
+              after: 'Before photo: front.jpg',
+            },
+          ]) as unknown,
+        }) as unknown,
+      },
+    ]);
+    // Now a protected Before photo: the mechanic can no longer move or remove it
+    expect(view).toMatchObject({ canMove: false, canRemove: false });
+  });
+
+  it('answers 200 with no audit row when the photo is already in that group', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }));
+    const view = await s.service.move(
+      TICKET,
+      ATT,
+      'PROOF',
+      ME,
+      abilityOf(MECHANIC_KEYS),
+    );
+    expect(view.kind).toBe('PROOF');
+    expect(s.prisma.$transaction).not.toHaveBeenCalled();
+    expect(s.audits).toHaveLength(0);
+  });
+
+  it('answers 400 NOT_A_PHOTO for a document or a non photo target, after 404', async () => {
+    const doc = moveSetup(row({ kind: 'RECEIPT' }));
+    expect(
+      await codeOf(
+        doc.service.move(TICKET, ATT, 'PROOF', ME, abilityOf(CHIEF_KEYS)),
+      ),
+    ).toEqual({ status: 400, code: 'NOT_A_PHOTO' });
+    const target = moveSetup(row());
+    expect(
+      await codeOf(
+        target.service.move(TICKET, ATT, 'RECEIPT', ME, abilityOf(CHIEF_KEYS)),
+      ),
+    ).toEqual({ status: 400, code: 'NOT_A_PHOTO' });
+    const gone = moveSetup(null);
+    await expect(
+      gone.service.move(TICKET, ATT, 'NOPE', ME, abilityOf(CHIEF_KEYS)),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('answers 403 NOT_YOUR_FILE with the move wording for someone else’s photo', async () => {
+    const s = moveSetup(row({ kind: 'PROOF', uploadedByUserId: 'chief' }));
+    await expect(
+      s.service.move(
+        TICKET,
+        ATT,
+        'VEHICLE_PHOTO',
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'NOT_YOUR_FILE',
+        message: 'You can only move photos you added yourself.',
+      },
+    });
+  });
+
+  it('protects a Before photo from moving to After once work started, except for remove_any', async () => {
+    const s = moveSetup(row(), started);
+    expect(
+      await codeOf(
+        s.service.move(TICKET, ATT, 'PROOF', ME, abilityOf(MECHANIC_KEYS)),
+      ),
+    ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+
+    const chief = moveSetup(row(), started);
+    const view = await chief.service.move(
+      TICKET,
+      ATT,
+      'PROOF',
+      ME,
+      abilityOf(CHIEF_KEYS),
+    );
+    expect(view.kind).toBe('PROOF');
+  });
+
+  it('answers 409 TICKET_FINISHED after the 403s, and under the lock', async () => {
+    const closed = moveSetup(row({ kind: 'PROOF' }), { status: 'CLOSED' });
+    expect(
+      await codeOf(
+        closed.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(CHIEF_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'TICKET_FINISHED' });
+    const raced = moveSetup(row({ kind: 'PROOF' }), {
+      lockedStatus: 'CLOSED',
+    });
+    expect(
+      await codeOf(
+        raced.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(CHIEF_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'TICKET_FINISHED' });
+    expect(raced.audits).toHaveLength(0);
+  });
+
+  it('answers 409 PHOTO_LIMIT_REACHED when the target group is full (AC-3)', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }), {
+      photoCount: 5,
+      limits: { photos: 5 },
+    });
+    expect(
+      await codeOf(
+        s.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'PHOTO_LIMIT_REACHED' });
+    expect(s.tx.attachment.update).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 DUPLICATE_PHOTO for a live copy in the target group, and for an index race', async () => {
+    const s = moveSetup(row({ kind: 'PROOF' }));
+    s.tx.attachment.findFirst.mockResolvedValue(row({ id: 'other' }));
+    expect(
+      await codeOf(
+        s.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'DUPLICATE_PHOTO' });
+
+    const raced = moveSetup(row({ kind: 'PROOF' }));
+    raced.tx.attachment.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('unique', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+    expect(
+      await codeOf(
+        raced.service.move(
+          TICKET,
+          ATT,
+          'VEHICLE_PHOTO',
+          ME,
+          abilityOf(MECHANIC_KEYS),
+        ),
+      ),
+    ).toEqual({ status: 409, code: 'DUPLICATE_PHOTO' });
+  });
 });
 
 describe('AttachmentsService.list (AC-16, Value sourcing)', () => {
@@ -887,25 +1337,40 @@ describe('AttachmentsService.list (AC-16, Value sourcing)', () => {
     const s = listSetup([]);
     const result = await s.service.list(TICKET, ME, abilityOf(CHIEF_KEYS));
     expect(result.kinds.map((k) => k.kind)).toEqual([
-      'VEHICLE_PHOTO',
-      'PROOF',
+      'PHOTO',
       'RECEIPT',
       'OTHER_DOCUMENT',
     ]);
   });
 
+  it('lists the photo upload as one PHOTO kind that takes images only (spec 0018)', async () => {
+    const s = listSetup([]);
+    const result = await s.service.list(TICKET, ME, abilityOf(MECHANIC_KEYS));
+    expect(result.kinds).toEqual([
+      {
+        kind: 'PHOTO',
+        label: 'Photo',
+        accepts: ['image/jpeg', 'image/png', 'image/heic'],
+        acceptsLabel: 'JPEG, PNG or HEIC photos',
+      },
+    ]);
+  });
+
   it('reports the limits from the settings and counts documents only with costs.view', async () => {
     const s = listSetup([], {
-      limits: { maxFileMb: 7, photos: 4, documents: 9 },
+      limits: { maxFileMb: 7, photos: 4, afterPhotos: 8, documents: 9 },
       photoCount: 3,
+      afterCount: 6,
       documentCount: 2,
     });
     const mech = await s.service.list(TICKET, ME, abilityOf(MECHANIC_KEYS));
     expect(mech.limits).toEqual({
       maxFileMb: 7,
       maxVehiclePhotos: 4,
+      maxAfterPhotos: 8,
       maxDocuments: 9,
       vehiclePhotoCount: 3,
+      afterPhotoCount: 6,
       documentCount: 0,
     });
     const chief = await s.service.list(TICKET, ME, abilityOf(CHIEF_KEYS));
@@ -968,5 +1433,243 @@ describe('AttachmentsService.list (AC-16, Value sourcing)', () => {
     expect(
       await codeOf(s.service.list(TICKET, ME, abilityOf(MECHANIC_KEYS))),
     ).toEqual({ status: 503, code: 'STORAGE_UNAVAILABLE' });
+  });
+});
+
+// Spec 0018, AC-12 to AC-14: the evidence signals, and the release case of AC-1 and AC-10
+describe('evidence signals (spec 0018, AC-12 to AC-14)', () => {
+  const NOW = new Date('2026-11-02T08:00:00Z');
+  const STARTED = new Date('2026-11-02T02:00:00Z');
+  const minutes = (n: number) => n * 60_000;
+  const VERIFIER_KEYS: PermissionKey[] = [...CHIEF_KEYS, 'ticket.verify'];
+
+  describe('parseTakenAt (AC-12)', () => {
+    it('keeps a valid time between 2000 and five minutes from now', () => {
+      expect(parseTakenAt('2026-11-02T01:30:00.000Z', NOW)).toEqual(
+        new Date('2026-11-02T01:30:00.000Z'),
+      );
+      expect(parseTakenAt('2000-01-01T00:00:00.000Z', NOW)).toEqual(
+        new Date('2000-01-01T00:00:00.000Z'),
+      );
+      expect(
+        parseTakenAt(new Date(NOW.getTime() + minutes(5)).toISOString(), NOW),
+      ).not.toBeNull();
+    });
+
+    it('drops anything else to null without throwing', () => {
+      for (const value of [
+        undefined,
+        null,
+        '',
+        '   ',
+        'garbage',
+        42,
+        ['2026-11-02T01:30:00Z'],
+        '1999-12-31T23:59:59.000Z',
+        new Date(NOW.getTime() + minutes(5) + 1000).toISOString(),
+      ]) {
+        expect(parseTakenAt(value, NOW)).toBeNull();
+      }
+    });
+  });
+
+  describe('isTakenBeforeWork (AC-13)', () => {
+    const at = (offset: number) => new Date(STARTED.getTime() + offset);
+
+    it('flags an After photo taken more than five minutes before work started', () => {
+      expect(
+        isTakenBeforeWork(
+          { kind: 'PROOF', takenAt: at(-minutes(10)) },
+          STARTED,
+        ),
+      ).toBe(true);
+    });
+
+    it('allows the five minute slack, and never flags a Before photo', () => {
+      expect(
+        isTakenBeforeWork({ kind: 'PROOF', takenAt: at(-minutes(2)) }, STARTED),
+      ).toBe(false);
+      expect(
+        isTakenBeforeWork({ kind: 'PROOF', takenAt: at(-minutes(5)) }, STARTED),
+      ).toBe(false);
+      expect(
+        isTakenBeforeWork(
+          { kind: 'VEHICLE_PHOTO', takenAt: at(-minutes(60)) },
+          STARTED,
+        ),
+      ).toBe(false);
+    });
+
+    it('shows no flag without a taken time or a work start', () => {
+      expect(isTakenBeforeWork({ kind: 'PROOF', takenAt: null }, STARTED)).toBe(
+        false,
+      );
+      expect(
+        isTakenBeforeWork({ kind: 'PROOF', takenAt: at(-minutes(60)) }, null),
+      ).toBe(false);
+    });
+  });
+
+  describe('isReturnedAfter (AC-14)', () => {
+    const RETURNED = new Date('2026-11-02T05:00:00Z');
+
+    it('marks an After photo uploaded strictly after the latest return', () => {
+      expect(
+        isReturnedAfter(
+          { kind: 'PROOF', createdAt: new Date(RETURNED.getTime() + 1) },
+          RETURNED,
+        ),
+      ).toBe(true);
+      expect(
+        isReturnedAfter({ kind: 'PROOF', createdAt: RETURNED }, RETURNED),
+      ).toBe(false);
+    });
+
+    it('never marks a Before photo, or any photo without a return', () => {
+      expect(
+        isReturnedAfter(
+          {
+            kind: 'VEHICLE_PHOTO',
+            createdAt: new Date(RETURNED.getTime() + 1),
+          },
+          RETURNED,
+        ),
+      ).toBe(false);
+      expect(isReturnedAfter({ kind: 'PROOF', createdAt: NOW }, null)).toBe(
+        false,
+      );
+    });
+  });
+
+  describe('upload stores takenAt (AC-12)', () => {
+    it('stores a valid taken time on a photo', async () => {
+      const s = setup();
+      await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO', takenAt: '2026-11-01T01:30:00.000Z' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(s.created[0].takenAt).toEqual(
+        new Date('2026-11-01T01:30:00.000Z'),
+      );
+    });
+
+    it('still uploads with a bad taken time, storing null', async () => {
+      const s = setup();
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO', takenAt: 'not a date' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.duplicate).toBe(false);
+      expect(s.created[0].takenAt).toBeNull();
+    });
+  });
+
+  describe('list (AC-13, AC-14)', () => {
+    const proof = (over: Partial<Row> = {}) =>
+      row({
+        id: 'eeeeeeee-0000-4000-8000-000000000005',
+        kind: 'PROOF',
+        takenAt: new Date(STARTED.getTime() - minutes(10)),
+        createdAt: new Date('2026-11-02T06:00:00Z'),
+        ...over,
+      });
+    const statusRow = (before: string, after: string, at: string) => ({
+      changes: [{ field: 'repairStatus', before, after }],
+      createdAt: new Date(at),
+    });
+    // Newest first: returned at 05:00, resent at 07:00
+    const returned = [
+      statusRow('IN_PROGRESS', 'FOR_VERIFICATION', '2026-11-02T07:00:00Z'),
+      statusRow('FOR_VERIFICATION', 'IN_PROGRESS', '2026-11-02T05:00:00Z'),
+    ];
+
+    function listOf(rows: Row[], opts: Setup = {}) {
+      const s = setup({ workStartedAt: STARTED, ...opts });
+      s.prisma.attachment.findMany.mockResolvedValue(rows);
+      return s;
+    }
+
+    it('gives a verifier takenAt and the flag', async () => {
+      const s = listOf([proof()]);
+      const { items } = await s.service.list(
+        TICKET,
+        ME,
+        abilityOf(VERIFIER_KEYS),
+      );
+      expect(items[0]).toMatchObject({
+        takenAt: new Date(STARTED.getTime() - minutes(10)),
+        takenBeforeWork: true,
+      });
+    });
+
+    it('leaves both keys out for a caller without the verify right', async () => {
+      const s = listOf([proof()]);
+      const { items } = await s.service.list(TICKET, ME, abilityOf(CHIEF_KEYS));
+      expect(items[0]).not.toHaveProperty('takenAt');
+      expect(items[0]).not.toHaveProperty('takenBeforeWork');
+    });
+
+    it('marks After photos added after the latest return, kept after the resend', async () => {
+      const older = proof({
+        id: 'eeeeeeee-0000-4000-8000-000000000006',
+        createdAt: new Date('2026-11-02T04:00:00Z'),
+      });
+      const s = listOf([older, proof()], { statusRows: returned });
+      const { items } = await s.service.list(
+        TICKET,
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(items.map((item) => item.returnedAfter)).toEqual([false, true]);
+    });
+
+    it('reads the return from the newest STATUS_CHANGE rows of this ticket', async () => {
+      const s = listOf([]);
+      await s.service.list(TICKET, ME, abilityOf(MECHANIC_KEYS));
+      expect(s.prisma.auditLog.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { repairTicketId: TICKET, action: 'STATUS_CHANGE' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 20,
+        }),
+      );
+    });
+  });
+
+  describe('a ticket released after work started (Release, AC-1 and AC-10)', () => {
+    const released: Setup = {
+      status: 'OPEN',
+      lockedStatus: 'OPEN',
+      workStartedAt: STARTED,
+    };
+
+    it('files a new photo as After', async () => {
+      const s = setup(released);
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('PROOF');
+    });
+
+    it('keeps Before photos protected', async () => {
+      const s = setup(released);
+      s.prisma.attachment.findFirst.mockResolvedValue(row());
+      s.tx.attachment.findUnique.mockResolvedValue(row());
+      expect(
+        await codeOf(
+          s.service.remove(TICKET, row().id, ME, abilityOf(MECHANIC_KEYS)),
+        ),
+      ).toEqual({ status: 403, code: 'BEFORE_PHOTO_PROTECTED' });
+    });
   });
 });

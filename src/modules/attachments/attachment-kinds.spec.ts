@@ -1,7 +1,10 @@
 import {
   ATTACHMENT_KINDS,
   DOCUMENT_KINDS,
+  isPhotoKind,
   KIND_RULES,
+  PHOTO_KINDS,
+  photoKindFor,
 } from './attachment-kinds';
 
 // Spec 0017, AC-4, AC-9, AC-15, AC-16: what each kind accepts and which right and cap it follows.
@@ -19,11 +22,28 @@ describe('KIND_RULES (AC-4)', () => {
     expect(KIND_RULES.OTHER_DOCUMENT.accepts).toEqual(['application/pdf']);
   });
 
-  it('accepts photos and PDF for proof and for a receipt', () => {
-    for (const kind of ['PROOF', 'RECEIPT'] as const) {
-      expect(KIND_RULES[kind].accepts).toContain('application/pdf');
-      expect(KIND_RULES[kind].accepts).toContain('image/jpeg');
+  it('accepts photos and PDF for a receipt', () => {
+    expect(KIND_RULES.RECEIPT.accepts).toContain('application/pdf');
+    expect(KIND_RULES.RECEIPT.accepts).toContain('image/jpeg');
+  });
+
+  it('takes images only for both photo groups and labels them Before and After (spec 0018, AC-2, AC-18)', () => {
+    for (const kind of ['VEHICLE_PHOTO', 'PROOF'] as const) {
+      expect(KIND_RULES[kind].accepts).toEqual([
+        'image/jpeg',
+        'image/png',
+        'image/heic',
+      ]);
     }
+    expect(KIND_RULES.VEHICLE_PHOTO.label).toBe('Before photo');
+    expect(KIND_RULES.PROOF.label).toBe('After photo');
+  });
+
+  it('files a photo as Before until work starts, After once it has (spec 0018, AC-1)', () => {
+    expect(photoKindFor(false)).toBe('VEHICLE_PHOTO');
+    expect(photoKindFor(true)).toBe('PROOF');
+    expect(PHOTO_KINDS.every(isPhotoKind)).toBe(true);
+    expect(isPhotoKind('RECEIPT')).toBe(false);
   });
 
   it('has a rule, a label and a human readable accepts text for every kind', () => {

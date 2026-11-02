@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import type { AttachmentKind } from '@prisma/client';
 
 // Spec 0017, API surface: the error bodies the web reads by `code`, with the message it shows.
 
@@ -24,11 +25,37 @@ export const forbiddenKind = () =>
     'You can’t add this kind of file to this ticket.',
   );
 
-export const notYourFile = () =>
+export const notYourFile = (action: 'remove' | 'move' = 'remove') =>
   attachmentError(
     HttpStatus.FORBIDDEN,
     'NOT_YOUR_FILE',
-    'You can only remove files you added yourself.',
+    action === 'move'
+      ? 'You can only move photos you added yourself.'
+      : 'You can only remove files you added yourself.',
+  );
+
+/** Spec 0018, AC-10. */
+export const beforePhotoProtected = () =>
+  attachmentError(
+    HttpStatus.FORBIDDEN,
+    'BEFORE_PHOTO_PROTECTED',
+    'Before photos are protected once work starts. Ask a Chief Mechanic or Admin.',
+  );
+
+/** Spec 0018, AC-9: only a photo moves, and only to a photo group. */
+export const notAPhotoMove = () =>
+  attachmentError(
+    HttpStatus.BAD_REQUEST,
+    'NOT_A_PHOTO',
+    'Only photos can move between Before and After.',
+  );
+
+/** Spec 0018, AC-9 and AC-21: the same file is already live in the target group. */
+export const photoAlreadyThere = (kind: AttachmentKind) =>
+  attachmentError(
+    HttpStatus.CONFLICT,
+    'DUPLICATE_PHOTO',
+    `This photo is already in ${kind === 'PROOF' ? 'After' : 'Before'}.`,
   );
 
 export const attachmentNotFound = () =>
@@ -48,11 +75,12 @@ export const ticketFinished = (statusLabel: string) =>
     `This ticket is ${statusLabel}. Files can no longer change.`,
   );
 
-export const photoLimitReached = (max: number) =>
+/** Spec 0018, AC-3: the message names the group that is full. */
+export const photoLimitReached = (kind: AttachmentKind, max: number) =>
   attachmentError(
     HttpStatus.CONFLICT,
     'PHOTO_LIMIT_REACHED',
-    `This ticket already has ${max} photos, the most allowed. Remove one to add another.`,
+    `This ticket already has ${max} ${kind === 'PROOF' ? 'after' : 'before'} photos, the most allowed. Remove one to add another.`,
   );
 
 export const documentLimitReached = (max: number) =>

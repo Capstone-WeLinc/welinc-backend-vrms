@@ -6,6 +6,7 @@ import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { photoRows } from './photo-rules.fake';
 
 // Spec 0007, AC-26 (create copies the entry's steps) and AC-29 (link, relink and unlink).
 
@@ -140,6 +141,7 @@ function setupLink(
     $queryRaw: jest.fn().mockResolvedValue([]),
     // lastRejection on an In progress response (spec 0014, AC-14)
     auditLog: { findMany: jest.fn().mockResolvedValue([]) },
+    attachment: { groupBy: jest.fn().mockResolvedValue(photoRows()) },
   };
   return {
     tx,
@@ -335,6 +337,7 @@ describe('RepairsService.create with a common issue', () => {
         .mockResolvedValue([{ id: 'v1', status: 'AVAILABLE' }]),
       // lastRejection, as the fixture ticket is In progress (spec 0014, AC-14)
       auditLog: { findMany: jest.fn().mockResolvedValue([]) },
+      attachment: { groupBy: jest.fn().mockResolvedValue(photoRows()) },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) =>

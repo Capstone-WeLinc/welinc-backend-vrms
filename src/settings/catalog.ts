@@ -188,6 +188,50 @@ export const SETTINGS_CATALOG = [
     unit: 'km',
   },
   {
+    // Spec 0018, AC-4
+    key: 'tickets.require_before_photo_to_start',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Require a before photo to start work',
+    description:
+      'Work on a ticket cannot start until it has at least one before photo.',
+    type: 'boolean',
+    default: true,
+  },
+  {
+    // Spec 0018, AC-5
+    key: 'tickets.require_after_photo_to_send',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Require an after photo to send for verification',
+    description:
+      'A ticket cannot be sent for verification until it has at least one after photo.',
+    type: 'boolean',
+    default: true,
+  },
+  {
+    // Spec 0018, AC-6
+    key: 'tickets.require_after_photo_to_close',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Require an after photo to close',
+    description:
+      'A ticket cannot be verified and closed until it has at least one after photo.',
+    type: 'boolean',
+    default: false,
+  },
+  {
+    // Spec 0018, AC-10
+    key: 'tickets.protect_before_photos',
+    kind: 'value',
+    group: 'Tickets',
+    label: 'Protect before photos once work starts',
+    description:
+      'After work starts, only a Chief Mechanic or Admin can remove a before photo or move it to after.',
+    type: 'boolean',
+    default: true,
+  },
+  {
     // Spec 0017, AC-5
     key: 'uploads.max_file_mb',
     kind: 'value',
@@ -202,16 +246,31 @@ export const SETTINGS_CATALOG = [
     unit: 'MB',
   },
   {
-    // Spec 0017, AC-9
+    // Spec 0017, AC-9; relabelled by spec 0018, AC-3
     key: 'uploads.max_vehicle_photos',
     kind: 'value',
     group: 'Files',
-    label: 'Vehicle photos per ticket',
-    description: 'How many vehicle photos one ticket can hold.',
+    label: 'Before photos per ticket',
+    description:
+      'How many before photos (how the truck arrived) one ticket can hold.',
     type: 'int',
     default: 5,
     min: 1,
     max: 20,
+    unit: 'photos',
+  },
+  {
+    // Spec 0018, AC-3
+    key: 'uploads.max_after_photos',
+    kind: 'value',
+    group: 'Files',
+    label: 'After photos per ticket',
+    description:
+      'How many after photos (proof the fix is done) one ticket can hold.',
+    type: 'int',
+    default: 10,
+    min: 1,
+    max: 30,
     unit: 'photos',
   },
   {
