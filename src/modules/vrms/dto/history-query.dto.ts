@@ -26,6 +26,11 @@ export class HistoryQueryDto {
   @IsUUID()
   garageId?: string;
 
+  // Feature 23: only tickets this user verified (closed ones; cancelled have no verifier)
+  @IsOptional()
+  @IsUUID()
+  verifiedBy?: string;
+
   // On closedAt: `from` inclusive, `to` exclusive
   @IsOptional()
   @IsISO8601({ strict: true })

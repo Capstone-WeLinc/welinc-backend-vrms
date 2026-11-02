@@ -115,6 +115,31 @@ function parseRange(from: string | undefined, to: string | undefined) {
   return range;
 }
 
+/**
+ * One option per verifier, sorted by name. The name is a snapshot per ticket, so a
+ * renamed user can appear under two names; the most recent verification's name wins.
+ */
+function verifierOptions(
+  groups: {
+    verifiedByUserId: string | null;
+    verifiedByName: string | null;
+    _max: { verifiedAt: Date | null };
+  }[],
+): { id: string; name: string }[] {
+  const latest = new Map<string, { name: string; at: number }>();
+  for (const g of groups) {
+    if (!g.verifiedByUserId || !g.verifiedByName) continue;
+    const at = g._max.verifiedAt?.getTime() ?? 0;
+    const seen = latest.get(g.verifiedByUserId);
+    if (!seen || at > seen.at) {
+      latest.set(g.verifiedByUserId, { name: g.verifiedByName, at });
+    }
+  }
+  return [...latest]
+    .map(([id, { name }]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 type CostField = (typeof COST_FIELDS)[number];
 
 /** The cost fields the caller may read; without ticket.costs.view, none (spec 0011, AC-11). */
@@ -695,7 +720,7 @@ export class RepairsService {
   // ── Repair history (closed + cancelled) ──────────────────────────────────
 
   async findHistory(query: HistoryQueryDto, ability: AppAbility) {
-    const { search, status, garageId, page, limit } = query;
+    const { search, status, garageId, verifiedBy, page, limit } = query;
     const { from, to } = parseRange(query.from, query.to);
     const hideCosts = !visibleCostFields(ability).has('totalCost');
     const scope = readableTickets(ability);
@@ -704,6 +729,7 @@ export class RepairsService {
         data: [],
         total: 0,
         summary: { finished: 0, closed: 0, cancelled: 0, spend: null },
+        verifiers: [],
       };
     }
 
@@ -722,10 +748,11 @@ export class RepairsService {
     }
 
     if (garageId) where.garageId = garageId;
+    if (verifiedBy) where.verifiedByUserId = verifiedBy;
     if (from || to)
       where.closedAt = { ...(from && { gte: from }), ...(to && { lt: to }) };
 
-    const [tickets, groups] = await Promise.all([
+    const [tickets, groups, verifierGroups] = await Promise.all([
       this.prisma.repairTicket.findMany({
         where,
         select: {
@@ -738,6 +765,8 @@ export class RepairsService {
           cancellationReason: true,
           isUnlocked: true,
           totalCost: true,
+          verifiedByName: true,
+          verifiedAt: true,
           vehicle: { select: { plateNumber: true, model: true } },
           driver: { select: { name: true } },
           garage: { select: { name: true } },
@@ -754,6 +783,17 @@ export class RepairsService {
         where,
         _count: { _all: true },
         _sum: { totalCost: true },
+      }),
+      // Feature 23: the "Verified by" filter options. Scope only, never the other
+      // filters, so the list stays put while someone narrows the table.
+      this.prisma.repairTicket.groupBy({
+        by: ['verifiedByUserId', 'verifiedByName'],
+        where: {
+          AND: [scope],
+          repairStatus: RepairStatus.CLOSED,
+          verifiedByUserId: { not: null },
+        },
+        _max: { verifiedAt: true },
       }),
     ]);
 
@@ -779,6 +819,8 @@ export class RepairsService {
         closedAt: t.closedAt?.toISOString() ?? null,
         cancellationReason: t.cancellationReason,
         isUnlocked: t.isUnlocked,
+        verifiedByName: t.verifiedByName,
+        verifiedAt: t.verifiedAt?.toISOString() ?? null,
       };
       return {
         ...row,
@@ -797,6 +839,7 @@ export class RepairsService {
         // An aggregate of costs, so it follows the same key
         spend: hideCosts ? null : Number(closedGroup?._sum.totalCost ?? 0),
       },
+      verifiers: verifierOptions(verifierGroups),
     };
   }
 

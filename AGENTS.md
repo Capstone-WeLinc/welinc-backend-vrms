@@ -56,6 +56,7 @@ npx prisma migrate dev   # asks first, see root rules
 - Any path that changes a ticket's `repairStatus` must also set `statusChangedAt` in the same update (spec 0015); `applyStatusMove` does, so go through it. The For verification list sorts on it.
 - Ticket changes write audit events through `audit-events.ts`, so a new state change should add one.
 - The photo rules on Start work, Send for verification and Close (spec 0018) run inside `applyStatusMove` through `modules/vrms/photo-rules.ts`, after the conditional update takes the row lock, never in a controller. A new move that needs a photo rule goes through the same place, and `blockedBy` on each move comes from the same check.
+- `workStartedAt` on a ticket is written only by `applyStatusMove` (spec 0018). It decides the derived Before or After label on photos, so nothing else should set it.
 - A truck has at most one ticket in an open status, enforced only by `RepairsService.create` (a row lock on the vehicle, then the check). Any new path that inserts a ticket must go through `create` (spec 0016).
 - Knowledge entry and category writes log one `KnowledgeEntryChange` row per changed field in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
 - Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp. The history starts at one baseline, `20261029000000_baseline` (spec 0010); add new folders after it.
