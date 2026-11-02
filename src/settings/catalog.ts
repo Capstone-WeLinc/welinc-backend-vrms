@@ -202,16 +202,31 @@ export const SETTINGS_CATALOG = [
     unit: 'MB',
   },
   {
-    // Spec 0017, AC-9
+    // Spec 0017, AC-9; relabelled by spec 0018, AC-3
     key: 'uploads.max_vehicle_photos',
     kind: 'value',
     group: 'Files',
-    label: 'Vehicle photos per ticket',
-    description: 'How many vehicle photos one ticket can hold.',
+    label: 'Before photos per ticket',
+    description:
+      'How many before photos (how the truck arrived) one ticket can hold.',
     type: 'int',
     default: 5,
     min: 1,
     max: 20,
+    unit: 'photos',
+  },
+  {
+    // Spec 0018, AC-3
+    key: 'uploads.max_after_photos',
+    kind: 'value',
+    group: 'Files',
+    label: 'After photos per ticket',
+    description:
+      'How many after photos (proof the fix is done) one ticket can hold.',
+    type: 'int',
+    default: 10,
+    min: 1,
+    max: 30,
     unit: 'photos',
   },
   {

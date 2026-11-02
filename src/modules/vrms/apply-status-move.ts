@@ -16,6 +16,17 @@ import type { TicketMove } from './ticket-transitions';
 
 const logger = new Logger('applyStatusMove');
 
+/** Spec 0018: the statuses whose first entry means work has started (M3 and M9). */
+const WORK_STARTS: RepairStatus[] = [
+  RepairStatus.IN_PROGRESS,
+  RepairStatus.OUTSOURCED,
+];
+
+/** Spec 0018: one helper decides whether work has started on a ticket. */
+export function workStarted(ticket: { workStartedAt: Date | null }): boolean {
+  return ticket.workStartedAt !== null;
+}
+
 /** What a move needs to know about the ticket, as loaded before the transaction. */
 export type MovingTicket = {
   id: string;
@@ -73,6 +84,15 @@ export async function applyStatusMove(
     },
   });
   if (count === 0) throw new ConflictException(STALE_TICKET);
+
+  // Spec 0018: the first move into a started status (M3, or M9) records when work started. Only
+  // a null column is written, under the row lock just taken, so it is set once and never cleared.
+  if (WORK_STARTS.includes(move.to)) {
+    await tx.repairTicket.updateMany({
+      where: { id: ticket.id, workStartedAt: null },
+      data: { workStartedAt: now, updatedAt: now },
+    });
+  }
 
   // 2. Issue writes: the caller's, then the backward rule (AC-9)
   for (const issue of options.issues ?? []) {

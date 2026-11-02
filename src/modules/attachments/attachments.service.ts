@@ -20,12 +20,17 @@ import {
   auditData,
   whoName,
 } from '../vrms/audit-events';
+import { workStarted } from '../vrms/apply-status-move';
 import { readableTickets } from '../vrms/ticket-access';
 import { isFinished, STATUS_LABELS } from '../vrms/ticket-statuses';
 import {
   type AddAction,
   DOCUMENT_KINDS,
+  isPhotoKind,
   KIND_RULES,
+  PHOTO_KINDS,
+  PHOTO_RULE,
+  photoKindFor,
   visibleKinds,
 } from './attachment-kinds';
 import {
@@ -84,7 +89,14 @@ export type AttachmentView = {
   canRemove: boolean;
 };
 
-type Ticket = { id: string; repairStatus: RepairStatus };
+type Ticket = {
+  id: string;
+  repairStatus: RepairStatus;
+  workStartedAt: Date | null;
+};
+
+/** The ticket row as read under its lock. */
+type LockedTicket = { repairStatus: RepairStatus; workStartedAt: Date | null };
 
 /** What AC-17's remove rule reads, worked out once per request. */
 export type RemoveRights = {
@@ -174,11 +186,12 @@ export class AttachmentsService {
     private readonly settings: SettingsService,
   ) {}
 
-  /** AC-5 and AC-9: the three upload settings, read on every request. */
+  /** AC-5 and AC-9 (spec 0018, AC-3): the upload settings, read on every request. */
   limits() {
     return {
       maxFileMb: this.settings.get('uploads.max_file_mb'),
       maxVehiclePhotos: this.settings.get('uploads.max_vehicle_photos'),
+      maxAfterPhotos: this.settings.get('uploads.max_after_photos'),
       maxDocuments: this.settings.get('uploads.max_documents'),
     };
   }
@@ -190,7 +203,7 @@ export class AttachmentsService {
       scope && UUID.test(id)
         ? await this.prisma.repairTicket.findFirst({
             where: { id, AND: [scope] },
-            select: { id: true, repairStatus: true },
+            select: { id: true, repairStatus: true, workStartedAt: true },
           })
         : null;
     if (!ticket) throw new NotFoundException('Repair ticket not found');
@@ -221,22 +234,29 @@ export class AttachmentsService {
     const kinds = visibleKinds(canViewCosts(ability));
     const now = new Date();
 
-    const [rows, vehiclePhotoCount, documentCount, addFiles, addDocuments] =
-      await Promise.all([
-        this.prisma.attachment.findMany({
-          where: {
-            repairTicketId: ticketId,
-            kind: { in: kinds },
-            deletedAt: null,
-            purgedAt: null,
-          },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-        }),
-        this.liveCount(this.prisma, ticketId, ['VEHICLE_PHOTO']),
-        this.liveCount(this.prisma, ticketId, DOCUMENT_KINDS),
-        this.canAdd(ability, ticketId, 'VEHICLE_PHOTO'),
-        this.canAdd(ability, ticketId, 'OTHER_DOCUMENT'),
-      ]);
+    const [
+      rows,
+      vehiclePhotoCount,
+      afterPhotoCount,
+      documentCount,
+      addFiles,
+      addDocuments,
+    ] = await Promise.all([
+      this.prisma.attachment.findMany({
+        where: {
+          repairTicketId: ticketId,
+          kind: { in: kinds },
+          deletedAt: null,
+          purgedAt: null,
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+      this.liveCount(this.prisma, ticketId, ['VEHICLE_PHOTO']),
+      this.liveCount(this.prisma, ticketId, ['PROOF']),
+      this.liveCount(this.prisma, ticketId, DOCUMENT_KINDS),
+      this.canAdd(ability, ticketId, 'VEHICLE_PHOTO'),
+      this.canAdd(ability, ticketId, 'OTHER_DOCUMENT'),
+    ]);
 
     const open = !isFinished(ticket.repairStatus);
     const rights: RemoveRights = {
@@ -255,14 +275,21 @@ export class AttachmentsService {
       limits: {
         ...this.limits(),
         vehiclePhotoCount,
+        afterPhotoCount,
         documentCount: canViewCosts(ability) ? documentCount : 0,
       },
-      kinds: kinds.map((kind) => ({
-        kind,
-        label: KIND_RULES[kind].label,
-        accepts: KIND_RULES[kind].accepts,
-        acceptsLabel: KIND_RULES[kind].acceptsLabel,
-      })),
+      // Spec 0018: the web uploads photos as PHOTO, so the two photo kinds show as one entry
+      kinds: [
+        { kind: 'PHOTO' as const, ...PHOTO_RULE },
+        ...kinds
+          .filter((kind) => !isPhotoKind(kind))
+          .map((kind) => ({
+            kind,
+            label: KIND_RULES[kind].label,
+            accepts: KIND_RULES[kind].accepts,
+            acceptsLabel: KIND_RULES[kind].acceptsLabel,
+          })),
+      ],
       can: {
         addFiles: open && addFiles,
         addDocuments: open && addDocuments,
@@ -280,11 +307,17 @@ export class AttachmentsService {
   ): Promise<{ attachment: AttachmentView; duplicate: boolean }> {
     this.requireStore();
     const ticket = await this.findVisibleTicket(ability, ticketId);
-    const rule = KIND_RULES[dto.kind];
+    // Spec 0018, AC-1: a photo's kind comes from whether work has started, never from the
+    // client. This early kind is checked now; it is derived again under the lock below.
+    const photo = dto.kind === 'PHOTO' || isPhotoKind(dto.kind);
+    const earlyKind: AttachmentKind = photo
+      ? photoKindFor(workStarted(ticket))
+      : (dto.kind as AttachmentKind);
+    const rule = photo ? PHOTO_RULE : KIND_RULES[earlyKind];
     const limits = this.limits();
 
     // AC-12b: the first failing check wins, in this order
-    if (!(await this.canAdd(ability, ticketId, dto.kind))) {
+    if (!(await this.canAdd(ability, ticketId, earlyKind))) {
       throw forbiddenKind();
     }
     if (isFinished(ticket.repairStatus)) {
@@ -306,7 +339,9 @@ export class AttachmentsService {
         type ? TYPE_NAMES[type] : 'not a recognised type',
       );
     }
-    if (dto.issueId) await this.checkIssue(this.prisma, ticketId, dto);
+    // Spec 0018: photos no longer carry an issue tag, so a photo's issueId is ignored; a
+    // document never took one (spec 0017, AC-11)
+    if (dto.issueId && !photo) throw issueNotOnTicket();
 
     // AC-17 here: the caller just passed the add check on an open ticket
     const removeAny = ability.can('removeAny', 'RepairTicket');
@@ -323,11 +358,11 @@ export class AttachmentsService {
     const existing = await this.findDuplicate(
       this.prisma,
       ticketId,
-      dto.kind,
+      earlyKind,
       sha256,
     );
     if (existing) return answer(existing, true);
-    await this.checkCaps(this.prisma, ticketId, dto.kind, limits);
+    await this.checkCaps(this.prisma, ticketId, earlyKind, limits);
 
     const prepared = await this.prepare(file, type);
     const id = randomUUID();
@@ -338,6 +373,7 @@ export class AttachmentsService {
       Boolean(prepared.thumbnail),
     );
     const written: string[] = [];
+    let kind = earlyKind;
 
     try {
       // AC-14: blobs before the insert, so a row never points at nothing
@@ -360,16 +396,17 @@ export class AttachmentsService {
 
       const result = await this.prisma.$transaction(
         async (tx) => {
-          await this.lockOpenTicket(tx, ticketId);
-          if (dto.issueId) await this.checkIssue(tx, ticketId, dto);
+          const locked = await this.lockOpenTicket(tx, ticketId);
+          // Spec 0018, AC-1: the kind again from the locked row; the checks below run for it
+          kind = photo ? photoKindFor(workStarted(locked)) : earlyKind;
           const duplicate = await this.findDuplicate(
             tx,
             ticketId,
-            dto.kind,
+            kind,
             sha256,
           );
           if (duplicate) return { row: duplicate, duplicate: true };
-          await this.checkCaps(tx, ticketId, dto.kind, limits);
+          await this.checkCaps(tx, ticketId, kind, limits);
 
           const now = new Date();
           const row = await tx.attachment.create({
@@ -377,9 +414,8 @@ export class AttachmentsService {
               id,
               createdAt: now,
               repairTicketId: ticketId,
-              issueId:
-                dto.kind === 'VEHICLE_PHOTO' ? (dto.issueId ?? null) : null,
-              kind: dto.kind,
+              issueId: null,
+              kind,
               storageKey: keys.storageKey,
               thumbnailKey: keys.thumbnailKey,
               fileName: prepared.fileName,
@@ -413,7 +449,7 @@ export class AttachmentsService {
         const row = await this.findDuplicate(
           this.prisma,
           ticketId,
-          dto.kind,
+          kind,
           sha256,
         );
         if (row) return answer(row, true);
@@ -522,30 +558,32 @@ export class AttachmentsService {
     }
   }
 
-  /** AC-9 and AC-10: locks the ticket row (never writes it, AC-13) and checks it is still open. */
-  private async lockOpenTicket(tx: Prisma.TransactionClient, ticketId: string) {
+  /**
+   * AC-9 and AC-10: locks the ticket row (never writes it, AC-13) and checks it is still open.
+   * Answers the locked status and work start (spec 0018), the values every check under the lock reads.
+   */
+  private async lockOpenTicket(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+  ): Promise<LockedTicket> {
     const [locked] = await tx.$queryRaw<
-      { id: string; repair_status: RepairStatus }[]
-    >`SELECT id, repair_status FROM repair_tickets WHERE id = ${ticketId}::uuid FOR NO KEY UPDATE`;
+      {
+        id: string;
+        repair_status: RepairStatus;
+        work_started_at: Date | null;
+      }[]
+    >`SELECT id, repair_status, work_started_at FROM repair_tickets WHERE id = ${ticketId}::uuid FOR NO KEY UPDATE`;
     if (!locked) throw new NotFoundException('Repair ticket not found');
     if (isFinished(locked.repair_status)) {
       throw ticketFinished(STATUS_LABELS[locked.repair_status]);
     }
+    return {
+      repairStatus: locked.repair_status,
+      workStartedAt: locked.work_started_at,
+    };
   }
 
-  /** AC-11: issueId only with a vehicle photo, and only an issue on this ticket. */
-  private async checkIssue(
-    db: Prisma.TransactionClient,
-    ticketId: string,
-    dto: UploadAttachmentDto,
-  ) {
-    if (dto.kind !== 'VEHICLE_PHOTO') throw issueNotOnTicket();
-    const found = await db.repairIssue.count({
-      where: { id: dto.issueId, repairTicketId: ticketId },
-    });
-    if (!found) throw issueNotOnTicket();
-  }
-
+  /** AC-8, and spec 0018 AC-21: Before and After are one pool, so a photo matches either kind. */
   private findDuplicate(
     db: Prisma.TransactionClient,
     ticketId: string,
@@ -553,7 +591,12 @@ export class AttachmentsService {
     sha256: string,
   ) {
     return db.attachment.findFirst({
-      where: { repairTicketId: ticketId, kind, sha256, deletedAt: null },
+      where: {
+        repairTicketId: ticketId,
+        kind: { in: isPhotoKind(kind) ? PHOTO_KINDS : [kind] },
+        sha256,
+        deletedAt: null,
+      },
     });
   }
 
@@ -573,11 +616,12 @@ export class AttachmentsService {
     kind: AttachmentKind,
     limits: ReturnType<AttachmentsService['limits']>,
   ) {
-    if (kind === 'VEHICLE_PHOTO') {
-      const count = await this.liveCount(db, ticketId, ['VEHICLE_PHOTO']);
-      if (count >= limits.maxVehiclePhotos) {
-        throw photoLimitReached(limits.maxVehiclePhotos);
-      }
+    // Spec 0018, AC-3: each photo group has its own limit
+    if (isPhotoKind(kind)) {
+      const max =
+        kind === 'PROOF' ? limits.maxAfterPhotos : limits.maxVehiclePhotos;
+      const count = await this.liveCount(db, ticketId, [kind]);
+      if (count >= max) throw photoLimitReached(kind, max);
     } else if (DOCUMENT_KINDS.includes(kind)) {
       const count = await this.liveCount(db, ticketId, DOCUMENT_KINDS);
       if (count >= limits.maxDocuments) {

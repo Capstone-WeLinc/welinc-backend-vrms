@@ -109,6 +109,33 @@ describe('applyStatusMove', () => {
     expect(calls).toEqual(['ticket']);
   });
 
+  it('records when work started on the move into In progress or Outsourced, only once (spec 0018)', async () => {
+    for (const [from, to] of [
+      [RepairStatus.ASSIGNED, RepairStatus.IN_PROGRESS],
+      [RepairStatus.ASSIGNED, RepairStatus.OUTSOURCED],
+    ] as const) {
+      const { tx, raw } = makeTx();
+      await applyStatusMove(tx, ticket(from), move(from, to), actor, null, NOW);
+      expect(raw.repairTicket.updateMany).toHaveBeenNthCalledWith(2, {
+        where: { id: 'ticket-1', workStartedAt: null },
+        data: { workStartedAt: NOW, updatedAt: NOW },
+      });
+    }
+  });
+
+  it('leaves work started alone on every other move (spec 0018)', async () => {
+    const { tx, raw } = makeTx();
+    await applyStatusMove(
+      tx,
+      ticket(RepairStatus.IN_PROGRESS),
+      move(RepairStatus.IN_PROGRESS, RepairStatus.FOR_VERIFICATION),
+      actor,
+      null,
+      NOW,
+    );
+    expect(raw.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('writes in the order ticket, issues, audit, vehicle (AC-12)', async () => {
     const { tx, calls } = makeTx();
     await applyStatusMove(

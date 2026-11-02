@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import type { AttachmentKind } from '@prisma/client';
 
 // Spec 0017, API surface: the error bodies the web reads by `code`, with the message it shows.
 
@@ -48,11 +49,12 @@ export const ticketFinished = (statusLabel: string) =>
     `This ticket is ${statusLabel}. Files can no longer change.`,
   );
 
-export const photoLimitReached = (max: number) =>
+/** Spec 0018, AC-3: the message names the group that is full. */
+export const photoLimitReached = (kind: AttachmentKind, max: number) =>
   attachmentError(
     HttpStatus.CONFLICT,
     'PHOTO_LIMIT_REACHED',
-    `This ticket already has ${max} photos, the most allowed. Remove one to add another.`,
+    `This ticket already has ${max} ${kind === 'PROOF' ? 'after' : 'before'} photos, the most allowed. Remove one to add another.`,
   );
 
 export const documentLimitReached = (max: number) =>

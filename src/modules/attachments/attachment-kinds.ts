@@ -17,17 +17,18 @@ export type KindRule = {
 const IMAGES: SniffedType[] = ['image/jpeg', 'image/png', 'image/heic'];
 
 export const KIND_RULES: Record<AttachmentKind, KindRule> = {
+  // Spec 0018: the two photo kinds are the Before and After groups of one strip (AC-2, AC-18)
   VEHICLE_PHOTO: {
-    label: 'Vehicle photo',
+    label: 'Before photo',
     accepts: IMAGES,
     acceptsLabel: 'JPEG, PNG or HEIC photos',
     addAction: 'addFiles',
     costsOnly: false,
   },
   PROOF: {
-    label: 'Proof of completion',
-    accepts: [...IMAGES, 'application/pdf'],
-    acceptsLabel: 'JPEG, PNG or HEIC photos and PDF files',
+    label: 'After photo',
+    accepts: IMAGES,
+    acceptsLabel: 'JPEG, PNG or HEIC photos',
     addAction: 'addFiles',
     costsOnly: false,
   },
@@ -48,6 +49,38 @@ export const KIND_RULES: Record<AttachmentKind, KindRule> = {
 };
 
 export const ATTACHMENT_KINDS = Object.keys(KIND_RULES) as AttachmentKind[];
+
+/** Spec 0018: the photo kinds, one pool for duplicates (AC-21). The rest are documents. */
+export const PHOTO_KINDS: AttachmentKind[] = ['VEHICLE_PHOTO', 'PROOF'];
+
+export function isPhotoKind(kind: AttachmentKind): boolean {
+  return PHOTO_KINDS.includes(kind);
+}
+
+/** Spec 0018, AC-1: the kind a photo is stored as, from whether work has started. */
+export function photoKindFor(workStarted: boolean): AttachmentKind {
+  return workStarted ? 'PROOF' : 'VEHICLE_PHOTO';
+}
+
+/**
+ * Spec 0018: what the upload form sends. PHOTO lets the server pick Before or After; the two
+ * photo kinds are still accepted from queued uploads in an open tab and treated as PHOTO.
+ */
+export const UPLOAD_KINDS = [
+  'PHOTO',
+  'VEHICLE_PHOTO',
+  'PROOF',
+  'RECEIPT',
+  'OTHER_DOCUMENT',
+] as const;
+export type UploadKind = (typeof UPLOAD_KINDS)[number];
+
+/** The rule a photo upload is checked against before its kind is known: images only (AC-2). */
+export const PHOTO_RULE = {
+  label: 'Photo',
+  accepts: IMAGES,
+  acceptsLabel: 'JPEG, PNG or HEIC photos',
+} as const;
 
 /** Kinds counted against uploads.max_documents (AC-9). */
 export const DOCUMENT_KINDS: AttachmentKind[] = ['RECEIPT', 'OTHER_DOCUMENT'];

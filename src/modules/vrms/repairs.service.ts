@@ -1489,6 +1489,8 @@ export class RepairsService {
       // Single ticket responses only; list rows carry neither (spec 0014, AC-13, AC-14)
       moves: this.movesOut(ticket, ability),
       lastRejection,
+      // Spec 0018: whether work has started decides the photo strip's group order (AC-16)
+      workStartedAt: ticket.workStartedAt?.toISOString() ?? null,
     };
   }
 

@@ -180,6 +180,7 @@ model RepairTicket {
   accountType        TicketAccountType? @map("account_type") // spec 0016
   corporation        String?            @db.VarChar(100) // snapshot of the corporation name, spec 0016
   priorVehicleStatus VehicleStatus?     @map("prior_vehicle_status") // the truck's status just before create, restored on release
+  workStartedAt      DateTime?          @map("work_started_at") @db.Timestamptz(6) // first move into IN_PROGRESS or OUTSOURCED, never cleared (spec 0018)
 
   vehicle     Vehicle            @relation(fields: [vehicleId], references: [id])
   driver      Driver             @relation(fields: [driverId], references: [id])
@@ -297,12 +298,13 @@ model AuditLog {
 
 // Spec 0017: one stored file on a ticket. The bytes live in Blob Storage under storageKey; the row
 // stays after the purge (purgedAt) so the audit trail can still name the file. Two partial indexes
-// live only in the migration SQL: unique (ticket, kind, sha256) while live, and (deleted_at) for the purge.
+// live only in the migration SQL: unique (ticket, photo group, sha256) while live, where both photo
+// kinds share one group (spec 0018, AC-21), and (deleted_at) for the purge.
 model Attachment {
   id               String         @id @db.Uuid // made by the backend before the blob write; part of the key
   repairTicketId   String         @map("repair_ticket_id") @db.Uuid
-  issueId          String?        @map("issue_id") @db.Uuid // VEHICLE_PHOTO only, same ticket
-  kind             AttachmentKind
+  issueId          String?        @map("issue_id") @db.Uuid // VEHICLE_PHOTO only, same ticket; no screen sets it since spec 0018
+  kind             AttachmentKind // VEHICLE_PHOTO is shown as Before, PROOF as After (spec 0018)
   storageKey       String         @unique @map("storage_key") @db.VarChar(300)
   thumbnailKey     String?        @map("thumbnail_key") @db.VarChar(300)
   fileName         String         @map("file_name") @db.VarChar(255)
@@ -311,6 +313,7 @@ model Attachment {
   width            Int?
   height           Int?
   sha256           String         @db.Char(64) // of the bytes as uploaded
+  takenAt          DateTime?      @map("taken_at") @db.Timestamptz(6) // the phone's recorded time, client supplied (spec 0018, AC-12)
   uploadedByUserId String         @map("uploaded_by_user_id") @db.Uuid // welinc-auth id, no FK
   uploadedByName   String         @map("uploaded_by_name") @db.VarChar(100)
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
