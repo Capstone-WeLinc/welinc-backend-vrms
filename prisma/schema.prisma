@@ -185,15 +185,16 @@ model RepairTicket {
   editedByUserId     String?            @map("edited_by_user_id") @db.Uuid // welinc-auth User.id, no FK
   editedByName       String?            @map("edited_by_name") @db.VarChar(100)
 
-  vehicle     Vehicle            @relation(fields: [vehicleId], references: [id])
-  driver      Driver             @relation(fields: [driverId], references: [id])
-  garage      Garage             @relation(fields: [garageId], references: [id])
-  issues      RepairIssue[]
-  assignments TicketAssignment[]
-  repairParts RepairPart[]
-  auditLogs   AuditLog[]
-  aiDiagnoses AiDiagnosis[]
-  attachments Attachment[]
+  vehicle        Vehicle            @relation(fields: [vehicleId], references: [id])
+  driver         Driver             @relation(fields: [driverId], references: [id])
+  garage         Garage             @relation(fields: [garageId], references: [id])
+  issues         RepairIssue[]
+  assignments    TicketAssignment[]
+  repairParts    RepairPart[]
+  auditLogs      AuditLog[]
+  aiDiagnoses    AiDiagnosis[]
+  attachments    Attachment[]
+  vehicleChanges VehicleChange[]
 
   @@index([repairStatus, createdAt])
   @@index([repairStatus, lastActivityAt])
@@ -631,19 +632,22 @@ model LookupValueChange {
 
 // One history per truck; `field` says what changed (vehicleType today, status with feature 25).
 model VehicleChange {
-  id          String   @id @default(uuid()) @db.Uuid
-  vehicleId   String   @map("vehicle_id") @db.Uuid
-  field       String   @db.VarChar(30)
-  before      Json?
-  after       Json?
-  actorUserId String?  @map("actor_user_id") @db.Uuid
-  actorName   String?  @map("actor_name") @db.VarChar(100)
-  actorEmail  String?  @map("actor_email") @db.VarChar(255)
-  note        String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id             String   @id @default(uuid()) @db.Uuid
+  vehicleId      String   @map("vehicle_id") @db.Uuid
+  field          String   @db.VarChar(30)
+  before         Json?
+  after          Json?
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  actorName      String?  @map("actor_name") @db.VarChar(100)
+  actorEmail     String?  @map("actor_email") @db.VarChar(255)
+  note           String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  repairTicketId String?  @map("repair_ticket_id") @db.Uuid // spec 0020: the ticket behind an automatic status row
 
-  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+  vehicle      Vehicle       @relation(fields: [vehicleId], references: [id])
+  repairTicket RepairTicket? @relation(fields: [repairTicketId], references: [id], onDelete: SetNull)
 
   @@index([vehicleId, createdAt])
+  @@index([repairTicketId])
   @@map("vehicle_changes")
 }

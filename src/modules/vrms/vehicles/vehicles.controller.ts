@@ -5,10 +5,12 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Req,
 } from '@nestjs/common';
 import { RequirePermission } from '../../../auth/permissions/permission.decorators';
 import type { AuthUser } from '../../../auth/account-check';
+import { SetVehicleStatusDto } from '../dto/set-vehicle-status.dto';
 import { UpdateVehicleDto } from '../dto/update-vehicle.dto';
 import { VehiclesService } from './vehicles.service';
 
@@ -35,5 +37,16 @@ export class VehiclesController {
     @Req() req: AuthRequest,
   ) {
     return this.vehicles.update(id, dto, req.user);
+  }
+
+  // POST /vrms/vehicles/:id/status (spec 0020, AC-1 to AC-5a)
+  @RequirePermission('vehicle.manage')
+  @Post(':id/status')
+  setStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetVehicleStatusDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.vehicles.setStatus(id, dto, req.user);
   }
 }
