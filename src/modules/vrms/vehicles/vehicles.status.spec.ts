@@ -200,6 +200,17 @@ describe('VehiclesService.setStatus', () => {
     expect(order).toEqual(['lock', 'open']);
     expect(tx.vehicleChange.create).not.toHaveBeenCalled();
   });
+
+  it('compares updatedAt as an instant, so another ISO form of the same time is accepted (AC-5)', async () => {
+    const { service, tx } = setup();
+    const out = await service.setStatus(
+      'v1',
+      { ...DISABLE, updatedAt: '2026-11-01T01:00:00.000+00:00' },
+      admin,
+    );
+    expect(out.status).toBe('DISABLED');
+    expect(tx.vehicleChange.create).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('VehiclesService.list openTicket (spec 0020, AC-8)', () => {
