@@ -7,8 +7,17 @@ import {
 import { Prisma, VehicleStatus } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service';
 import type { AuthUser } from '../../../auth/account-check';
-import { whoName } from '../audit-events';
+import {
+  decodeCursor,
+  encodeCursor,
+  olderThan,
+  whoName,
+} from '../audit-events';
 import type { SetVehicleStatusDto } from '../dto/set-vehicle-status.dto';
+import {
+  VEHICLE_CHANGES_PAGE,
+  type VehicleChangesQueryDto,
+} from '../dto/vehicle-changes-query.dto';
 import type { UpdateVehicleDto } from '../dto/update-vehicle.dto';
 import { VEHICLE_TYPE_LIST } from '../lookups/lookup-lists';
 import { OPEN_STATUSES } from '../ticket-statuses';
@@ -69,6 +78,46 @@ export class VehiclesService {
       orderBy: { plateNumber: 'asc' },
     });
     return rows.map(present);
+  }
+
+  /**
+   * Spec 0020, AC-9: a truck's status and type history, newest first, keyset paged on
+   * (createdAt, id) like the audit timeline. One extra row says whether an older page exists.
+   */
+  async changes(id: string, query: VehicleChangesQueryDto) {
+    const vehicle = await this.prisma.vehicle.findFirst({
+      where: { id, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!vehicle) throw new NotFoundException('Vehicle not found');
+    const limit = query.limit ?? VEHICLE_CHANGES_PAGE;
+    const filters: Prisma.VehicleChangeWhereInput[] = [{ vehicleId: id }];
+    if (query.cursor) filters.push(olderThan(decodeCursor(query.cursor)));
+
+    const rows = await this.prisma.vehicleChange.findMany({
+      where: { AND: filters },
+      select: {
+        id: true,
+        field: true,
+        before: true,
+        after: true,
+        note: true,
+        actorName: true,
+        createdAt: true,
+        repairTicket: { select: { id: true, repairNumber: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+    const page = rows.slice(0, limit);
+    return {
+      items: page.map(({ repairTicket, ...row }) => ({
+        ...row,
+        ticket: repairTicket,
+      })),
+      nextCursor:
+        rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
+    };
   }
 
   /** Sets or clears a truck's type; one VehicleChange row in the same transaction. */
