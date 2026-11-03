@@ -17,7 +17,7 @@ Photos, proof, receipts and other documents on a repair ticket, stored in privat
 
 - No uploaded bytes are stored unchanged. Anything new that accepts a file goes through `AttachmentsService.upload` with a new kind in `attachment-kinds.ts`, never a second upload path.
 - Blobs are written before the database row and deleted again if anything after the first write fails. Keep that order on any new write path.
-- Receipts and other documents are `costsOnly`: without `ticket.costs.view` they are left out of the list, their delete is 404, and their audit events are hidden (`hideDocumentEvents` in the audit readers). Use `visibleKinds()` for any new query.
+- Receipts and other documents are `costsOnly`: without `ticket.costs.view` they are left out of the list, their delete is 404, and their audit events are hidden (`hiddenAuditEvents` in the audit readers, which also hides `COST_UPDATE`). Use `visibleKinds()` for any new query.
 - The four limits (`uploads.max_file_mb`, `uploads.max_vehicle_photos` for Before, `uploads.max_after_photos` for After, `uploads.max_documents`) come from `SettingsService` on every request, never from constants.
 - Links are stable inside a 10 minute window so browsers can cache them. Do not add per request randomness to a link.
 
