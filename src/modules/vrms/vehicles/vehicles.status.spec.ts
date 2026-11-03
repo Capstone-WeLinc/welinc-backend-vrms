@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '../../../auth/roles';
 import { PrismaService } from '../../../shared/prisma.service';
+import { OPEN_STATUSES } from '../ticket-statuses';
 import { VehiclesService } from './vehicles.service';
 
 // Spec 0020, AC-1 to AC-5a: the Admin status toggle.
@@ -92,6 +93,8 @@ describe('VehiclesService.setStatus', () => {
     const { service, tx } = setup();
     const out = await service.setStatus('v1', DISABLE, admin);
     expect(out.status).toBe('DISABLED');
+    // AC-8: after a toggle there is never an open ticket
+    expect(out.openTicket).toBeNull();
     expect(tx.vehicle.update).toHaveBeenCalledWith({
       where: { id: 'v1' },
       data: { status: 'DISABLED' },
@@ -196,5 +199,46 @@ describe('VehiclesService.setStatus', () => {
     expect(code).toBe('STALE_VEHICLE');
     expect(order).toEqual(['lock', 'open']);
     expect(tx.vehicleChange.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('VehiclesService.list openTicket (spec 0020, AC-8)', () => {
+  it('carries the newest open ticket per truck, or null, from one select', async () => {
+    const base = {
+      model: 'Isuzu',
+      updatedAt: LOADED,
+      vehicleType: null,
+    };
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        ...base,
+        id: 'v1',
+        plateNumber: 'ABC 123',
+        status: 'UNDER_REPAIR',
+        repairTickets: [{ id: 't1', repairNumber: 'R-0123' }],
+      },
+      {
+        ...base,
+        id: 'v2',
+        plateNumber: 'XYZ 789',
+        status: 'AVAILABLE',
+        repairTickets: [],
+      },
+    ]);
+    const service = new VehiclesService({
+      vehicle: { findMany },
+    } as unknown as PrismaService);
+    const rows = await service.list();
+    expect(rows.map((r) => r.openTicket)).toEqual([
+      { id: 't1', repairNumber: 'R-0123' },
+      null,
+    ]);
+    const [args] = findMany.mock.calls[0] as [
+      { select: { repairTickets: { take: number; where: unknown } } },
+    ];
+    expect(args.select.repairTickets.take).toBe(1);
+    expect(args.select.repairTickets.where).toEqual({
+      repairStatus: { in: OPEN_STATUSES },
+    });
   });
 });

@@ -31,6 +31,7 @@ function setup(
     status: 'AVAILABLE',
     updatedAt: LOADED,
     vehicleType: null,
+    repairTickets: [],
   };
   const tx = {
     vehicle: {

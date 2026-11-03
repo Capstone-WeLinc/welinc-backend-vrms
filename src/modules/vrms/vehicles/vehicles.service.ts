@@ -33,11 +33,18 @@ const rowSelect = {
   status: true,
   updatedAt: true,
   vehicleType: { select: { id: true, name: true } },
-} as const;
+  // Spec 0020, AC-8: the truck's newest open ticket (at most one by the create rule)
+  repairTickets: {
+    where: { repairStatus: { in: OPEN_STATUSES } },
+    orderBy: { createdAt: 'desc' },
+    take: 1,
+    select: { id: true, repairNumber: true },
+  },
+} satisfies Prisma.VehicleSelect;
 
 type Row = Prisma.VehicleGetPayload<{ select: typeof rowSelect }>;
 
-/** The row the Settings section shows (spec 0016, AC-21). */
+/** The row the Settings section shows (spec 0016, AC-21); every vehicle endpoint answers with it (spec 0020, AC-8). */
 function present(row: Row) {
   return {
     id: row.id,
@@ -46,6 +53,7 @@ function present(row: Row) {
     status: row.status,
     type: row.vehicleType,
     updatedAt: row.updatedAt,
+    openTicket: row.repairTickets[0] ?? null,
   };
 }
 
