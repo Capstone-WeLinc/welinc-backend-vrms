@@ -29,8 +29,83 @@ export const AUDIT_ACTIONS = [
   'ISSUE_ADDED',
   'ISSUE_EDITED',
   'ISSUE_REMOVED',
+  // Spec 0021
+  'LOCKED',
+  'STEP_CHECKED',
+  'STEP_UNCHECKED',
+  // Reserved: in the catalog so filters accept them, written by features 33 and 30
+  'STATUS_OVERRIDE',
+  'TRANSFER_REQUESTED',
+  'TRANSFER_APPROVED',
+  'TRANSFER_DECLINED',
+  'TRANSFER_CANCELLED',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+/** Spec 0021, AC-7: the seven categories, in the order the catalog returns them. */
+export const AUDIT_CATEGORIES = [
+  'STATUS',
+  'ASSIGNMENT',
+  'EDITS',
+  'COSTS',
+  'FILES',
+  'CHECKLIST',
+  'KNOWLEDGE',
+] as const;
+export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
+
+/** A Record over the union, so a new type without a category is a compile error. */
+export const AUDIT_CATEGORY: Record<AuditAction, AuditCategory> = {
+  CREATED: 'STATUS',
+  STATUS_CHANGE: 'STATUS',
+  STATUS_OVERRIDE: 'STATUS',
+  UNLOCK: 'STATUS',
+  LOCKED: 'STATUS',
+  MECHANIC_ASSIGNED: 'ASSIGNMENT',
+  MECHANIC_UNASSIGNED: 'ASSIGNMENT',
+  TRANSFER_REQUESTED: 'ASSIGNMENT',
+  TRANSFER_APPROVED: 'ASSIGNMENT',
+  TRANSFER_DECLINED: 'ASSIGNMENT',
+  TRANSFER_CANCELLED: 'ASSIGNMENT',
+  TICKET_EDITED: 'EDITS',
+  ISSUE_ADDED: 'EDITS',
+  ISSUE_EDITED: 'EDITS',
+  ISSUE_REMOVED: 'EDITS',
+  GARAGE_CHANGE: 'EDITS',
+  COST_UPDATE: 'COSTS',
+  ATTACHMENT_ADDED: 'FILES',
+  ATTACHMENT_REMOVED: 'FILES',
+  ATTACHMENT_MOVED: 'FILES',
+  STEP_CHECKED: 'CHECKLIST',
+  STEP_UNCHECKED: 'CHECKLIST',
+  KNOWLEDGE_LINK: 'KNOWLEDGE',
+};
+
+/** The category of a stored action, or null for one outside the catalog (AC-8). */
+export function categoryOf(action: string): AuditCategory | null {
+  // Own keys only: a stored name like "constructor" must not find an inherited member
+  return Object.hasOwn(AUDIT_CATEGORY, action)
+    ? AUDIT_CATEGORY[action as AuditAction]
+    : null;
+}
+
+/** Spec 0021, AC-11: each category with its types, in AC-7 order. */
+export function auditCatalog(canViewCosts: boolean) {
+  return AUDIT_CATEGORIES.filter((c) => canViewCosts || c !== 'COSTS').map(
+    (category) => ({
+      category,
+      types: AUDIT_ACTIONS.filter((a) => AUDIT_CATEGORY[a] === category),
+    }),
+  );
+}
+
+/**
+ * Spec 0021, AC-3b: rows one action writes are stamped in write order, 1 ms apart from its `now`,
+ * so the timeline order never depends on random ids.
+ */
+export function stampedAt(now: Date, index: number): Date {
+  return new Date(now.getTime() + index);
+}
 
 /** What a builder returns: the action, its changes and its note. */
 export type AuditEventData = {
@@ -121,10 +196,30 @@ function money(value: number | null) {
   return value == null ? null : value.toFixed(2);
 }
 
-/** One row for the whole save, with every cost field that changed. */
+/** A ticket's stored costs, as the cost event compares them. */
+export function storedCosts(ticket: {
+  partsCost: unknown;
+  laborCost: unknown;
+  totalCost: unknown;
+  isLumpSum: boolean;
+}): CostValues {
+  const num = (v: unknown) => (v == null ? null : Number(v));
+  return {
+    partsCost: num(ticket.partsCost),
+    laborCost: num(ticket.laborCost),
+    totalCost: num(ticket.totalCost),
+    isLumpSum: ticket.isLumpSum,
+  };
+}
+
+/**
+ * One row for the whole save, with every cost field that changed. The note is the unlock reason
+ * when the save relocks an unlocked ticket (spec 0021, AC-1).
+ */
 export function costEvent(
   before: CostValues,
   after: CostValues,
+  note: string | null = null,
 ): AuditEventData {
   const pairs: [keyof CostValues, string | null, string | null][] = [
     ['partsCost', money(before.partsCost), money(after.partsCost)],
@@ -137,7 +232,7 @@ export function costEvent(
     changes: pairs
       .filter(([, b, a]) => b !== a)
       .map(([field, b, a]) => ({ field, before: b, after: a })),
-    note: null,
+    note,
   };
 }
 
@@ -146,6 +241,65 @@ export function unlockEvent(reason: string): AuditEventData {
     action: 'UNLOCK',
     changes: [{ field: 'isUnlocked', before: 'false', after: 'true' }],
     note: reason.trim(),
+  };
+}
+
+/** Spec 0021, AC-3: a relocking save closed an unlocked ticket again. */
+export function lockedEvent(): AuditEventData {
+  return {
+    action: 'LOCKED',
+    changes: [{ field: 'isUnlocked', before: 'true', after: 'false' }],
+    note: null,
+  };
+}
+
+export type ClosedTicketText = {
+  remarks: string | null;
+  cancellationReason: string | null;
+};
+
+/**
+ * Spec 0021, AC-2: the TICKET_EDITED row for remarks and the cancel reason on an unlocked closed
+ * ticket, listing only the fields that changed. `after` holds the trimmed sent value, or the
+ * stored one when nothing (or only blank text) was sent. Null when nothing changed.
+ */
+export function closedTicketTextEvent(
+  before: ClosedTicketText,
+  after: ClosedTicketText,
+  note: string | null,
+): AuditEventData | null {
+  const pairs: [keyof ClosedTicketText, string | null, string | null][] = [
+    ['remarks', before.remarks, after.remarks],
+    ['cancellationReason', before.cancellationReason, after.cancellationReason],
+  ];
+  const changes = pairs
+    .filter(([, b, a]) => b !== a)
+    .map(([field, b, a]) => ({ field, before: b, after: a }));
+  return changes.length > 0 ? { action: 'TICKET_EDITED', changes, note } : null;
+}
+
+/**
+ * Spec 0021, AC-4: a checklist step ticked or unticked. The step reads "2. Check brake fluid";
+ * the issue and step ids ride as extras.
+ */
+export function stepTickEvent(
+  checked: boolean,
+  step: { id: string; position: number; text: string },
+  issueId: string,
+): AuditEventData {
+  return {
+    action: checked ? 'STEP_CHECKED' : 'STEP_UNCHECKED',
+    changes: [
+      {
+        field: 'checked',
+        before: String(!checked),
+        after: String(checked),
+      },
+      { field: 'step', before: null, after: `${step.position}. ${step.text}` },
+      { field: 'issueId', before: null, after: issueId },
+      { field: 'stepId', before: null, after: step.id },
+    ],
+    note: null,
   };
 }
 
@@ -385,22 +539,61 @@ export function attachmentMovedEvent(
 }
 
 /**
- * Spec 0017, AC-16: the one where fragment that hides document add and remove events from a
- * caller without ticket.costs.view. Every audit reader applies it. Null means nothing to hide.
+ * Spec 0017, AC-16 and spec 0021, AC-12: the where fragment that hides document add and remove
+ * events and COST_UPDATE rows from a caller without ticket.costs.view. Every reader that shows
+ * rows to a person applies it. Null means nothing to hide.
  */
-export function hideDocumentEvents(
+export function hiddenAuditEvents(
   canViewCosts: boolean,
 ): Prisma.AuditLogWhereInput | null {
   if (canViewCosts) return null;
   return {
-    NOT: {
-      action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
-      // jsonb containment (@>): matches a changes element with this field and value
-      OR: DOCUMENT_KINDS.map((kind) => ({
-        changes: { array_contains: [{ field: 'kind', after: kind }] },
-      })),
-    },
+    AND: [
+      {
+        NOT: {
+          action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
+          // jsonb containment (@>): matches a changes element with this field and value
+          OR: DOCUMENT_KINDS.map((kind) => ({
+            changes: { array_contains: [{ field: 'kind', after: kind }] },
+          })),
+        },
+      },
+      { action: { not: 'COST_UPDATE' } },
+    ],
   };
+}
+
+export const AUDIT_ROLES = [
+  'ADMIN',
+  'CHIEF_MECHANIC',
+  'MECHANIC',
+  'SYSTEM',
+] as const;
+export type AuditRoleFilter = (typeof AUDIT_ROLES)[number];
+
+/**
+ * Spec 0021, AC-9: the category, type and role filters. A row matches when its type is in `types`
+ * or its category is in `categories`, expanded to one `action IN (...)` list. SYSTEM is the "no
+ * actor" rule toAuditEvent uses. Null means no filter.
+ */
+export function auditKindFilter(
+  categories: readonly AuditCategory[] = [],
+  types: readonly AuditAction[] = [],
+): Prisma.AuditLogWhereInput | null {
+  if (categories.length === 0 && types.length === 0) return null;
+  const actions = new Set<string>(types);
+  for (const action of AUDIT_ACTIONS) {
+    if (categories.includes(AUDIT_CATEGORY[action])) actions.add(action);
+  }
+  return { action: { in: [...actions] } };
+}
+
+export function auditRoleFilter(
+  role: AuditRoleFilter | undefined,
+): Prisma.AuditLogWhereInput | null {
+  if (!role) return null;
+  if (role === 'SYSTEM') return { actorUserId: null, actorEmail: null };
+  return { actorRole: role };
 }
 
 // ── Reading: keyset cursor and the timeline item ────────────────────────────────
@@ -415,6 +608,8 @@ export type AuditActor = {
 export type AuditEvent = {
   id: string;
   type: string;
+  /** Spec 0021, AC-8: null for a stored action outside the catalog. */
+  category: AuditCategory | null;
   at: string;
   actor: AuditActor | null;
   ticket: { id: string; repairNumber: string };
@@ -555,6 +750,7 @@ export function toAuditEvent(row: AuditRow): AuditEvent {
   return {
     id: row.id,
     type: row.action,
+    category: categoryOf(row.action),
     at: row.createdAt.toISOString(),
     actor:
       row.actorUserId || row.actorEmail

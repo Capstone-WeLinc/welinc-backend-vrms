@@ -459,20 +459,140 @@ describe('moves outside the table (AC-3, AC-3a, AC-4)', () => {
     expect(tx.vehicle.update).not.toHaveBeenCalled();
   });
 
-  it('saves an unlocked finished ticket with no move, no audit row and no lastActivityAt', async () => {
-    const { tx, service } = setup(RepairStatus.CLOSED, { isUnlocked: true });
-    await service.updateStatus(
-      TICKET,
-      { status: RepairStatus.CLOSED, remarks: 'Fixed note', lastUpdatedAt: AT },
-      admin,
-      defaultAbility(admin),
-    );
-    expect(tx.auditLog.create).not.toHaveBeenCalled();
-    const data = firstData(tx.repairTicket.updateMany);
-    expect(data).toMatchObject({ isUnlocked: false, remarks: 'Fixed note' });
-    expect(data).not.toHaveProperty('lastActivityAt');
-    expect(data).not.toHaveProperty('closedAt');
-    expect(data).not.toHaveProperty('repairStatus');
+  // Spec 0021, AC-1 to AC-3b: the relocking save through the status endpoint
+  describe('saving an unlocked finished ticket', () => {
+    const unlocked = {
+      isUnlocked: true,
+      unlockReason: 'Supplier refund on brake pads',
+      remarks: 'Old note',
+      partsCost: 1000,
+      laborCost: 500,
+      totalCost: 1500,
+    };
+    const rowsOf = (create: jest.Mock) =>
+      create.mock.calls.map(
+        ([arg]) =>
+          (arg as { data: Record<string, unknown> }).data as {
+            action: string;
+            changes: unknown[];
+            note: string | null;
+            createdAt: Date;
+          },
+      );
+
+    it('saves with no move and writes COST_UPDATE, TICKET_EDITED and LOCKED in order', async () => {
+      const { tx, service } = setup(RepairStatus.CLOSED, unlocked);
+      await service.updateStatus(
+        TICKET,
+        {
+          status: RepairStatus.CLOSED,
+          remarks: '  Fixed note ',
+          partsCost: 1200,
+          lastUpdatedAt: AT,
+        },
+        admin,
+        defaultAbility(admin),
+      );
+      const data = firstData(tx.repairTicket.updateMany) as {
+        updatedAt: Date;
+        lastActivityAt: Date;
+      };
+      expect(data).toMatchObject({ isUnlocked: false, remarks: 'Fixed note' });
+      expect(data).not.toHaveProperty('closedAt');
+      expect(data).not.toHaveProperty('repairStatus');
+
+      const rows = rowsOf(tx.auditLog.create);
+      expect(rows.map((r) => r.action)).toEqual([
+        'COST_UPDATE',
+        'TICKET_EDITED',
+        'LOCKED',
+      ]);
+      expect(rows[0].changes).toEqual([
+        { field: 'partsCost', before: '1000.00', after: '1200.00' },
+        { field: 'totalCost', before: '1500.00', after: '1700.00' },
+      ]);
+      expect(rows[1].changes).toEqual([
+        { field: 'remarks', before: 'Old note', after: 'Fixed note' },
+      ]);
+      expect(rows[2]).toMatchObject({
+        changes: [{ field: 'isUnlocked', before: 'true', after: 'false' }],
+        note: null,
+      });
+      expect(rows[0].note).toBe(unlocked.unlockReason);
+      expect(rows[1].note).toBe(unlocked.unlockReason);
+      // AC-3b: 1 ms apart from now, updatedAt is now, lastActivityAt the newest row
+      const now = data.updatedAt.getTime();
+      expect(rows.map((r) => r.createdAt.getTime())).toEqual([
+        now,
+        now + 1,
+        now + 2,
+      ]);
+      expect(data.lastActivityAt.getTime()).toBe(now + 2);
+    });
+
+    it('writes only LOCKED when nothing else changes, and blank text never clears a value', async () => {
+      const { tx, service } = setup(RepairStatus.CANCELLED, unlocked);
+      await service.updateStatus(
+        TICKET,
+        {
+          status: RepairStatus.CANCELLED,
+          remarks: '   ',
+          cancellationReason: ' ',
+          lastUpdatedAt: AT,
+        },
+        admin,
+        defaultAbility(admin),
+      );
+      const data = firstData(tx.repairTicket.updateMany);
+      expect(data).not.toHaveProperty('remarks');
+      expect(data).not.toHaveProperty('cancellationReason');
+      expect(rowsOf(tx.auditLog.create).map((r) => r.action)).toEqual([
+        'LOCKED',
+      ]);
+    });
+
+    it('lists the cancel reason when it changes', async () => {
+      const { tx, service } = setup(RepairStatus.CANCELLED, {
+        ...unlocked,
+        cancellationReason: 'Duplicate',
+      });
+      await service.updateStatus(
+        TICKET,
+        {
+          status: RepairStatus.CANCELLED,
+          cancellationReason: 'Truck sold',
+          lastUpdatedAt: AT,
+        },
+        admin,
+        defaultAbility(admin),
+      );
+      const [edited] = rowsOf(tx.auditLog.create);
+      expect(edited).toMatchObject({
+        action: 'TICKET_EDITED',
+        changes: [
+          {
+            field: 'cancellationReason',
+            before: 'Duplicate',
+            after: 'Truck sold',
+          },
+        ],
+      });
+    });
+
+    it('writes no row when the save loses the stale race (409)', async () => {
+      const { tx, service } = setup(RepairStatus.CLOSED, unlocked, {
+        stale: true,
+      });
+      await expect(
+        service.updateStatus(
+          TICKET,
+          { status: RepairStatus.CLOSED, partsCost: 1200, lastUpdatedAt: AT },
+          admin,
+          defaultAbility(admin),
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -584,6 +704,58 @@ describe('RepairsService.updateCosts (spec 0010, AC-6, AC-10; spec 0014, AC-12)'
       ),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(tx.repairPart.deleteMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  // Spec 0021, AC-1, AC-3 and AC-3b: the costs endpoint relocks an unlocked closed ticket
+  it('on an unlocked closed ticket writes COST_UPDATE with the unlock reason, then LOCKED', async () => {
+    const { tx, service } = setup(RepairStatus.CLOSED, {
+      ...costed,
+      isUnlocked: true,
+      unlockReason: 'Wrong labor amount',
+    });
+    await service.updateCosts(
+      TICKET,
+      {
+        isLumpSum: false,
+        laborCost: 1200,
+        parts: [{ description: 'Pads', unitCost: 3000, quantity: 1 }],
+        lastUpdatedAt: AT,
+      },
+      admin,
+      defaultAbility(admin),
+    );
+    type Row = { action: string; note: string | null; createdAt: Date };
+    const rows = tx.auditLog.create.mock.calls.map(
+      ([arg]) => (arg as { data: Row }).data,
+    );
+    expect(rows.map((r) => r.action)).toEqual(['COST_UPDATE', 'LOCKED']);
+    expect(rows[0].note).toBe('Wrong labor amount');
+    expect(rows[1].note).toBeNull();
+    expect(rows[1].createdAt.getTime() - rows[0].createdAt.getTime()).toBe(1);
+    expect(firstData(tx.repairTicket.updateMany).lastActivityAt).toEqual(
+      rows[1].createdAt,
+    );
+  });
+
+  it('on an unlocked ticket with no cost change writes only LOCKED', async () => {
+    const { tx, service } = setup(RepairStatus.CLOSED, {
+      ...costed,
+      isLumpSum: true,
+      isUnlocked: true,
+      unlockReason: 'Check the amounts',
+    });
+    await service.updateCosts(
+      TICKET,
+      { isLumpSum: true, partsCost: 3000, laborCost: 1000, lastUpdatedAt: AT },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(firstData(tx.auditLog.create)).toMatchObject({
+      action: 'LOCKED',
+      note: null,
+    });
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
   });
 });
 

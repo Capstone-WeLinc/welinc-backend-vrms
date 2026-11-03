@@ -271,6 +271,14 @@ describe('AttachmentsService.upload', () => {
       expect(s.puts[1]).toMatch(/\/thumb\.webp$/);
       expect(s.created).toHaveLength(1);
       expect(s.audits).toHaveLength(1);
+      // Spec 0021, AC-6: the action it writes, with the actor from the token
+      expect(s.audits[0]).toMatchObject({
+        data: {
+          repairTicketId: TICKET,
+          action: 'ATTACHMENT_ADDED',
+          actorUserId: 'me',
+        },
+      });
       expect(result.attachment).toMatchObject({
         kind: 'VEHICLE_PHOTO',
         fileName: 'front.jpg',
@@ -970,6 +978,10 @@ describe('AttachmentsService.remove (AC-17, AC-18)', () => {
       data: { deletedByUserId: 'me', deletedByName: 'Mia Mechanic' },
     });
     expect(s.audits).toHaveLength(1);
+    // Spec 0021, AC-6
+    expect(s.audits[0]).toMatchObject({
+      data: { action: 'ATTACHMENT_REMOVED', actorUserId: 'me' },
+    });
     expect(s.deletes).toHaveLength(0);
   });
 

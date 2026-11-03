@@ -323,7 +323,13 @@ describe('RepairsService.create with a common issue', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'd1' }),
       },
-      mechanic: { count: jest.fn().mockResolvedValue(1) },
+      mechanic: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            { id: '00000000-0000-4000-8000-0000000000cc', name: 'Mia Cruz' },
+          ]),
+      },
       lookupValue: {
         findFirst: jest.fn().mockResolvedValue({ name: 'Metro Freight Corp' }),
       },
@@ -403,10 +409,12 @@ describe('RepairsService.create with a common issue', () => {
         data: {
           lastActivityAt: Date;
           assignments: { create: Record<string, unknown>[] };
-          auditLogs: { create: Record<string, unknown> };
+          auditLogs: { create: Record<string, unknown>[] };
+          statusChangedAt: Date;
         } & Record<string, unknown>;
       },
     ];
+    const now = data.statusChangedAt;
     expect(data).toMatchObject({
       repairStatus: RepairStatus.ASSIGNED,
       priority: 'HIGH',
@@ -416,16 +424,27 @@ describe('RepairsService.create with a common issue', () => {
     expect(data.assignments.create).toEqual([
       {
         mechanicId: '00000000-0000-4000-8000-0000000000cc',
-        assignedAt: data.lastActivityAt,
+        assignedAt: now,
         assignedByUserId: admin.sub,
         assignedByName: 'Victor Ramos',
       },
     ]);
-    expect(data.auditLogs.create).toMatchObject({
-      action: 'CREATED',
-      changes: [],
-      createdAt: data.lastActivityAt,
-    });
+    // Spec 0021, AC-5b and AC-3b: CREATED at now, MECHANIC_ASSIGNED 1 ms later, which is the
+    // newest row and so the ticket's lastActivityAt
+    expect(data.auditLogs.create).toEqual([
+      expect.objectContaining({
+        action: 'CREATED',
+        changes: [],
+        createdAt: now,
+      }),
+      expect.objectContaining({
+        action: 'MECHANIC_ASSIGNED',
+        changes: [{ field: 'mechanic', before: null, after: 'Mia Cruz' }],
+        note: null,
+        createdAt: new Date(now.getTime() + 1),
+      }),
+    ]);
+    expect(data.lastActivityAt).toEqual(new Date(now.getTime() + 1));
   });
 
   it('starts the ticket Open when no mechanic is given and keeps the prior truck status (spec 0016, AC-1, AC-9)', async () => {
@@ -444,6 +463,11 @@ describe('RepairsService.create with a common issue', () => {
       priorVehicleStatus: 'DISABLED',
     });
     expect(args.data.assignments).toEqual({ create: [] });
+    // Spec 0021, AC-5b: a ticket created Open writes only CREATED, and lastActivityAt is its time
+    const logs = (args.data.auditLogs as { create: { action: string }[] })
+      .create;
+    expect(logs.map((r) => r.action)).toEqual(['CREATED']);
+    expect(args.data.lastActivityAt).toEqual(args.data.statusChangedAt);
   });
 
   it('sets the truck Under repair after the insert with one history row linked to the ticket (spec 0020, AC-6)', async () => {

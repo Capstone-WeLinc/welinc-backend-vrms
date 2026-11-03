@@ -86,6 +86,13 @@ export class RepairsController {
     return this.repairsService.findAuditEvents(query, ability);
   }
 
+  // Spec 0021, AC-11: the categories and their event types, for building filters
+  @RequirePermission('audit.view')
+  @Get('audit-logs/catalog')
+  findAuditCatalog(@CurrentAbility() ability: AppAbility) {
+    return this.repairsService.findAuditCatalog(ability);
+  }
+
   // Everyone who appears in the audit log, for the Person filter
   @RequirePermission('audit.view')
   @Get('audit-logs/actors')

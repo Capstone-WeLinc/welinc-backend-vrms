@@ -54,6 +54,13 @@ export type MoveOptions = {
   /** The audit row to write instead of STATUS_CHANGE (the unassign release keeps its own). */
   audit?: AuditEventData;
   /**
+   * Spec 0021, AC-3b: the time of the audit row, for a caller whose action writes more than one
+   * row (stamped in write order). Defaults to `now`.
+   */
+  auditAt?: Date;
+  /** The ticket's lastActivityAt: the newest row the action writes. Defaults to `now`. */
+  activityAt?: Date;
+  /**
    * Spec 0018, AC-7: the photo switches, passed only by the status endpoint. Other callers (the
    * mechanic release) leave it out, so no photo rule ever runs for them.
    */
@@ -84,7 +91,7 @@ export async function applyStatusMove(
       ...options.data,
       repairStatus: move.to,
       updatedAt: now,
-      lastActivityAt: now,
+      lastActivityAt: options.activityAt ?? options.auditAt ?? now,
       statusChangedAt: now, // spec 0015, AC-7: written with every status move
       isUnlocked: false,
       ...(isFinished(move.to) && { closedAt: now }),
@@ -138,7 +145,7 @@ export async function applyStatusMove(
       ...auditData(
         actor,
         options.audit ?? statusEvent(ticket.repairStatus, move.to, note),
-        now,
+        options.auditAt ?? now,
       ),
     },
   });
