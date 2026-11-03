@@ -83,10 +83,10 @@ export const AUDIT_CATEGORY: Record<AuditAction, AuditCategory> = {
 
 /** The category of a stored action, or null for one outside the catalog (AC-8). */
 export function categoryOf(action: string): AuditCategory | null {
-  return (
-    (AUDIT_CATEGORY as Record<string, AuditCategory | undefined>)[action] ??
-    null
-  );
+  // Own keys only: a stored name like "constructor" must not find an inherited member
+  return Object.hasOwn(AUDIT_CATEGORY, action)
+    ? AUDIT_CATEGORY[action as AuditAction]
+    : null;
 }
 
 /** Spec 0021, AC-11: each category with its types, in AC-7 order. */
