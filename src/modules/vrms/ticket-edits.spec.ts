@@ -565,7 +565,8 @@ describe('TicketEditsService mechanics (AC-9 to AC-12)', () => {
     });
   });
 
-  it('swaps on Assigned with no move: unassigned then assigned, one timestamp', async () => {
+  // Spec 0021, AC-3b: rows from one action never share a time
+  it('swaps on Assigned with no move: unassigned then assigned, 1 ms apart', async () => {
     const { service, tx } = mechanicsSetup(RepairStatus.ASSIGNED, [ANA]);
     await put(service, ['m2']);
     const rows = audits(tx);
@@ -576,11 +577,24 @@ describe('TicketEditsService mechanics (AC-9 to AC-12)', () => {
     expect(rows[0].changes).toEqual([
       { field: 'mechanic', before: 'Ana', after: null },
     ]);
-    expect((rows[0] as { createdAt?: Date }).createdAt).toBe(
-      (rows[1] as { createdAt?: Date }).createdAt,
-    );
-    // Only the stamp updates the ticket: no status write
+    const at = rows.map((r) => (r as unknown as { createdAt: Date }).createdAt);
+    expect(at[1].getTime() - at[0].getTime()).toBe(1);
+    // Only the stamp updates the ticket: no status write. updatedAt is now (the first row's
+    // time), lastActivityAt the newest row's
     expect(tx.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+    const [stamp] = tx.repairTicket.updateMany.mock.calls[0] as UpdateCall;
+    expect(stamp.data.updatedAt).toEqual(at[0]);
+    expect(stamp.data).toMatchObject({ lastActivityAt: at[1] });
+  });
+
+  it('a single row (including a move) keeps the action time for the row and lastActivityAt', async () => {
+    const { service, tx } = mechanicsSetup(RepairStatus.OPEN, []);
+    await put(service, ['m1']);
+    const [row] = audits(tx) as unknown as { createdAt: Date }[];
+    const [stamp, move] = tx.repairTicket.updateMany.mock.calls as UpdateCall[];
+    expect(row.createdAt).toEqual(stamp[0].data.updatedAt);
+    expect(stamp[0].data).toMatchObject({ lastActivityAt: row.createdAt });
+    expect(move[0].data).toMatchObject({ lastActivityAt: row.createdAt });
   });
 
   it('empties an In progress ticket without changing its status (AC-10)', async () => {

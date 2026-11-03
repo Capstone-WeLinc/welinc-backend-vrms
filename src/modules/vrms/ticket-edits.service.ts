@@ -19,6 +19,7 @@ import {
   issueEditedEvent,
   issueRemovedEvent,
   mechanicsChangedEvent,
+  stampedAt,
   whoName,
   type TicketDetailValues,
   ticketEditedEvent,
@@ -317,9 +318,16 @@ export class TicketEditsService {
 
     const id = ticket.id;
     const now = new Date();
+    // Spec 0021, AC-3b: the rows are stamped in write order, removed then added, 1 ms apart, and
+    // lastActivityAt is the newest one
+    const rowAt = new Map<AuditEventData, Date>();
+    [removedEvent, addedEvent]
+      .filter((e): e is AuditEventData => !!e)
+      .forEach((event, i) => rowAt.set(event, stampedAt(now, i)));
+    const activityAt = stampedAt(now, Math.max(rowAt.size - 1, 0));
     const updated = await this.prisma.$transaction(async (tx) => {
       // AC-19: the guarded stamp first
-      await stampEdit(tx, ticket, user, now);
+      await stampEdit(tx, ticket, user, now, {}, activityAt);
       if (removed.length > 0) {
         await tx.ticketAssignment.deleteMany({
           where: {
@@ -339,14 +347,18 @@ export class TicketEditsService {
           })),
         });
       }
-      // AC-12: MECHANIC_UNASSIGNED, then MECHANIC_ASSIGNED, one shared timestamp. The side that
-      // triggered a move is written by applyStatusMove instead of a STATUS_CHANGE row.
+      // AC-12: MECHANIC_UNASSIGNED, then MECHANIC_ASSIGNED, each at its own stamped time. The side
+      // that triggered a move is written by applyStatusMove instead of a STATUS_CHANGE row.
       const write = (event: AuditEventData) =>
         tx.auditLog.create({
-          data: { repairTicketId: id, ...auditData(user, event, now) },
+          data: {
+            repairTicketId: id,
+            ...auditData(user, event, rowAt.get(event)!),
+          },
         });
       if (move) {
         if (removedEvent && move.id !== 'M2') await write(removedEvent);
+        const moveEvent = (move.id === 'M2' ? removedEvent : addedEvent)!;
         // The stamp moved updatedAt to now, so the move's own guarded update matches it
         await applyStatusMove(
           tx,
@@ -355,7 +367,7 @@ export class TicketEditsService {
           user,
           null,
           now,
-          { audit: (move.id === 'M2' ? removedEvent : addedEvent)! },
+          { audit: moveEvent, auditAt: rowAt.get(moveEvent), activityAt },
         );
         if (addedEvent && move.id !== 'M1') await write(addedEvent);
       } else {

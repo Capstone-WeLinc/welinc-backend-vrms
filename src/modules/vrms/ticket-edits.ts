@@ -60,6 +60,8 @@ export async function stampEdit(
   user: Actor,
   now: Date,
   data: Prisma.RepairTicketUpdateManyMutationInput = {},
+  /** Spec 0021, AC-3b: the newest audit row the edit writes, when it writes several. */
+  activityAt: Date = now,
 ): Promise<void> {
   const { count } = await tx.repairTicket.updateMany({
     where: { id: ticket.id, updatedAt: ticket.updatedAt },
@@ -69,7 +71,7 @@ export async function stampEdit(
       editedByUserId: user.sub,
       editedByName: whoName(user),
       updatedAt: now,
-      lastActivityAt: now,
+      lastActivityAt: activityAt,
     },
   });
   if (count === 0) throw new ConflictException(STALE_TICKET);
