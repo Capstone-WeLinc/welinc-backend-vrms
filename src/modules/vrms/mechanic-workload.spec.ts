@@ -2,6 +2,7 @@ import { RepairStatus } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { MechanicRoster } from './mechanic-roster.service';
 import { MechanicWorkService } from './mechanic-work.service';
+import { ConfigService } from './config/config.service';
 import { isOccupied, openStatusRank, workloadOf } from './mechanic-workload';
 import { OPEN_STATUSES } from './ticket-statuses';
 
@@ -127,5 +128,117 @@ describe('MechanicWorkService workload and openTickets', () => {
         },
       }),
     );
+  });
+});
+
+describe('MechanicWorkService.workload scope', () => {
+  const service = (prisma: unknown) =>
+    new MechanicWorkService(prisma as PrismaService, {} as MechanicRoster);
+
+  it('reads every mechanic row, so a person who left still shows what they hold', async () => {
+    const findMany = jest
+      .fn<Promise<unknown[]>, [Record<string, unknown>]>()
+      .mockResolvedValue([]);
+    await service({ mechanic: { findMany } }).workload();
+    const [args] = findMany.mock.calls[0];
+    expect(args).not.toHaveProperty('where');
+  });
+
+  it('counts only tickets in an open status', async () => {
+    const findMany = jest
+      .fn<Promise<unknown[]>, [Record<string, unknown>]>()
+      .mockResolvedValue([]);
+    await service({ mechanic: { findMany } }).workload();
+    const [args] = findMany.mock.calls[0] as [
+      {
+        select: {
+          assignments: { where: { repairTicket: { repairStatus: unknown } } };
+        };
+      },
+    ];
+    expect(args.select.assignments.where.repairTicket.repairStatus).toEqual({
+      in: OPEN_STATUSES,
+    });
+  });
+
+  it('is Free with open work that is only on hold or waiting for verification', async () => {
+    const prisma = {
+      mechanic: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            authUserId: 'u1',
+            assignments: [
+              { repairTicket: { repairStatus: S.ON_HOLD } },
+              { repairTicket: { repairStatus: S.FOR_VERIFICATION } },
+            ],
+          },
+        ]),
+      },
+    };
+    const [row] = await service(prisma).workload();
+    expect(row).toMatchObject({ total: 2, occupied: false });
+    expect(row.byStatus.ON_HOLD).toBe(1);
+    expect(row.byStatus.FOR_VERIFICATION).toBe(1);
+  });
+});
+
+describe('MechanicWorkService.openTickets order', () => {
+  it('keeps tickets of the same status in the order the query returned them', async () => {
+    const t = (id: string, repairStatus: RepairStatus) => ({
+      id,
+      repairNumber: `REP-${id}`,
+      repairStatus,
+      updatedAt: new Date('2026-11-03T02:00:00.000Z'),
+      vehicle: { plateNumber: 'ABC 1234' },
+      assignments: [{ mechanic: { id: 'm1', name: 'Ana' } }],
+    });
+    const prisma = {
+      mechanic: { findUnique: jest.fn().mockResolvedValue({ id: 'm1' }) },
+      repairTicket: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            t('first', S.ASSIGNED),
+            t('second', S.ASSIGNED),
+            t('mid', S.IN_PROGRESS),
+          ]),
+      },
+    };
+    const service = new MechanicWorkService(
+      prisma as unknown as PrismaService,
+      {} as MechanicRoster,
+    );
+    const { tickets } = await service.openTickets('u1');
+    // Workflow order puts Assigned before In progress; the query's order holds within a status
+    expect(tickets.map((x) => x.id)).toEqual(['first', 'second', 'mid']);
+    expect(prisma.repairTicket.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { statusChangedAt: 'asc' } }),
+    );
+  });
+});
+
+describe('the picker and the Users page share one Occupied rule', () => {
+  it('flags busy only for In Progress, never for on hold or waiting for verification', async () => {
+    const prisma = {
+      mechanic: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'm1',
+            name: 'Ana',
+            authUserId: 'u1',
+            email: 'a@x.com',
+            assignments: [
+              { repairTicket: { repairStatus: S.ON_HOLD } },
+              { repairTicket: { repairStatus: S.FOR_VERIFICATION } },
+            ],
+          },
+        ]),
+      },
+    };
+    const rows = await new ConfigService(
+      prisma as unknown as PrismaService,
+    ).listAvailableMechanics();
+    expect(rows[0]).toMatchObject({ openCount: 2, busy: false });
+    expect(isOccupied([S.ON_HOLD, S.FOR_VERIFICATION])).toBe(false);
   });
 });
