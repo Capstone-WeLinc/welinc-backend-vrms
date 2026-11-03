@@ -55,6 +55,7 @@ import {
   olderThan,
   REJECTION_SCAN_ROWS,
   stampedAt,
+  stepTickEvent,
   storedCosts,
   toAuditEvent,
   unlockEvent,
@@ -1167,7 +1168,12 @@ export class RepairsService {
     return this.present(updated, ability);
   }
 
-  /** Tick or untick one copied step while In progress. Never touches the ticket's updatedAt (AC-28). */
+  /**
+   * Tick or untick one copied step while In progress. Never touches the ticket's updatedAt
+   * (AC-28). Spec 0021, AC-4 and AC-5: the checks, a conditional update, the STEP_CHECKED or
+   * STEP_UNCHECKED row and lastActivityAt run in one transaction; a tick that changes nothing
+   * writes nothing, so two ticks at once leave exactly one row.
+   */
   async checkStep(
     id: string,
     issueId: string,
@@ -1176,27 +1182,51 @@ export class RepairsService {
     user: JwtUser,
     ability: AppAbility,
   ) {
-    const ticket = await this.prisma.repairTicket.findUnique({
-      where: { id },
-      include: { assignments: ownerInclude },
-    });
-    if (!ticket) throw new NotFoundException('Repair ticket not found');
-    workAccess(ability, ticket);
-    if (ticket.repairStatus !== RepairStatus.IN_PROGRESS) {
-      throw new BadRequestException(
-        'Steps can only be ticked while the ticket is In progress.',
-      );
-    }
-    const step = await this.prisma.repairIssueStep.findFirst({
-      where: { id: stepId, repairIssue: { id: issueId, repairTicketId: id } },
-    });
-    if (!step) throw new NotFoundException('Step not found on this ticket');
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const ticket = await tx.repairTicket.findUnique({
+        where: { id },
+        include: { assignments: ownerInclude },
+      });
+      if (!ticket) throw new NotFoundException('Repair ticket not found');
+      workAccess(ability, ticket);
+      if (ticket.repairStatus !== RepairStatus.IN_PROGRESS) {
+        throw new BadRequestException(
+          'Steps can only be ticked while the ticket is In progress.',
+        );
+      }
+      const step = await tx.repairIssueStep.findFirst({
+        where: {
+          id: stepId,
+          repairIssue: { id: issueId, repairTicketId: id },
+        },
+      });
+      if (!step) throw new NotFoundException('Step not found on this ticket');
 
-    const updated = await this.prisma.repairIssueStep.update({
-      where: { id: stepId },
-      data: dto.checked
-        ? { checkedAt: new Date(), checkedByEmail: user.email }
-        : { checkedAt: null, checkedByEmail: null },
+      // Only a real change matches: a second tick waits on the row lock, then counts 0
+      const now = new Date();
+      const { count } = await tx.repairIssueStep.updateMany({
+        where: {
+          id: stepId,
+          checkedAt: dto.checked ? null : { not: null },
+        },
+        data: dto.checked
+          ? { checkedAt: now, checkedByEmail: user.email }
+          : { checkedAt: null, checkedByEmail: null },
+      });
+      if (count > 0) {
+        await tx.auditLog.create({
+          data: {
+            repairTicketId: id,
+            ...auditData(user, stepTickEvent(dto.checked, step, issueId), now),
+          },
+        });
+        // updatedAt passed as stored, so @updatedAt leaves it alone (spec 0014)
+        await tx.repairTicket.update({
+          where: { id },
+          data: { lastActivityAt: now, updatedAt: ticket.updatedAt },
+        });
+      }
+      return tx.repairIssueStep.findUniqueOrThrow({ where: { id: stepId } });
     });
     return {
       id: updated.id,

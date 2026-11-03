@@ -88,6 +88,8 @@ function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
     repairTicket: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue(row),
+      // A step tick reads the ticket inside its transaction (spec 0021, AC-4)
+      findUnique: jest.fn().mockResolvedValue(row),
     },
     repairIssue: {
       update: jest.fn().mockResolvedValue({}),
