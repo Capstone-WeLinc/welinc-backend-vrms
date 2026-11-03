@@ -75,10 +75,20 @@ function makeTx(
     vehicle: {
       findUniqueOrThrow: jest.fn(() => {
         calls.push('vehicle.read');
-        return Promise.resolve({ odometer: vehicleOdometer });
+        return Promise.resolve({
+          odometer: vehicleOdometer,
+          status: 'UNDER_REPAIR',
+        });
       }),
       update: jest.fn(() => {
         calls.push('vehicle.update');
+        return Promise.resolve();
+      }),
+    },
+    // Spec 0020, AC-7: the release's status history row
+    vehicleChange: {
+      create: jest.fn(() => {
+        calls.push('vehicle.change');
         return Promise.resolve();
       }),
     },
@@ -246,6 +256,7 @@ describe('applyStatusMove', () => {
       'audit',
       'vehicle.read',
       'vehicle.update',
+      'vehicle.change',
     ]);
   });
 
@@ -350,6 +361,53 @@ describe('applyStatusMove', () => {
     expect(raw.vehicle.update).toHaveBeenCalledWith({
       where: { id: 'vehicle-1' },
       data: expect.objectContaining({ status: 'DISABLED' }) as unknown,
+    });
+  });
+
+  it('writes one status history row on release, linked to the ticket, by the mover (spec 0020, AC-7)', async () => {
+    const { tx, raw } = makeTx();
+    await applyStatusMove(
+      tx,
+      { ...ticket(RepairStatus.IN_PROGRESS), priorVehicleStatus: 'DISABLED' },
+      move(RepairStatus.IN_PROGRESS, RepairStatus.CANCELLED),
+      actor,
+      'Duplicate ticket',
+      NOW,
+    );
+    expect(raw.vehicleChange.create).toHaveBeenCalledTimes(1);
+    expect(raw.vehicleChange.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        vehicleId: 'vehicle-1',
+        field: 'status',
+        before: 'UNDER_REPAIR',
+        after: 'DISABLED',
+        note: null,
+        repairTicketId: 'ticket-1',
+        actorUserId: 'chief-1',
+        actorName: 'Ramon Villanueva',
+      }) as unknown,
+    });
+  });
+
+  it('writes no history row when the release leaves the status as it was (spec 0020, AC-7)', async () => {
+    const { tx, raw } = makeTx();
+    raw.vehicle.findUniqueOrThrow.mockResolvedValueOnce({
+      odometer: 100,
+      status: 'AVAILABLE',
+    });
+    await applyStatusMove(
+      tx,
+      ticket(RepairStatus.FOR_VERIFICATION),
+      move(RepairStatus.FOR_VERIFICATION, RepairStatus.CLOSED),
+      actor,
+      null,
+      NOW,
+    );
+    expect(raw.vehicleChange.create).not.toHaveBeenCalled();
+    // The odometer still syncs on its own
+    expect(raw.vehicle.update).toHaveBeenCalledWith({
+      where: { id: 'vehicle-1' },
+      data: { odometer: 200000 },
     });
   });
 

@@ -5,10 +5,14 @@ import {
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { RequirePermission } from '../../../auth/permissions/permission.decorators';
 import type { AuthUser } from '../../../auth/account-check';
+import { SetVehicleStatusDto } from '../dto/set-vehicle-status.dto';
+import { VehicleChangesQueryDto } from '../dto/vehicle-changes-query.dto';
 import { UpdateVehicleDto } from '../dto/update-vehicle.dto';
 import { VehiclesService } from './vehicles.service';
 
@@ -26,6 +30,16 @@ export class VehiclesController {
     return this.vehicles.list();
   }
 
+  // GET /vrms/vehicles/:id/changes (spec 0020, AC-9)
+  @RequirePermission('vehicle.manage')
+  @Get(':id/changes')
+  changes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: VehicleChangesQueryDto,
+  ) {
+    return this.vehicles.changes(id, query);
+  }
+
   // PATCH /vrms/vehicles/:id
   @RequirePermission('vehicle.manage')
   @Patch(':id')
@@ -35,5 +49,16 @@ export class VehiclesController {
     @Req() req: AuthRequest,
   ) {
     return this.vehicles.update(id, dto, req.user);
+  }
+
+  // POST /vrms/vehicles/:id/status (spec 0020, AC-1 to AC-5a)
+  @RequirePermission('vehicle.manage')
+  @Post(':id/status')
+  setStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetVehicleStatusDto,
+    @Req() req: AuthRequest,
+  ) {
+    return this.vehicles.setStatus(id, dto, req.user);
   }
 }

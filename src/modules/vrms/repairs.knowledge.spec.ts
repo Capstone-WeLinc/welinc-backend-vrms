@@ -310,6 +310,7 @@ describe('RepairsService.create with a common issue', () => {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 0 }),
       },
+      vehicleChange: { create: jest.fn().mockResolvedValue({}) },
       garage: { findFirst: jest.fn().mockResolvedValue({ id: 'g1' }) },
       issueCategory: {
         findMany: jest
@@ -443,6 +444,45 @@ describe('RepairsService.create with a common issue', () => {
       priorVehicleStatus: 'DISABLED',
     });
     expect(args.data.assignments).toEqual({ create: [] });
+  });
+
+  it('sets the truck Under repair after the insert with one history row linked to the ticket (spec 0020, AC-6)', async () => {
+    const { prisma, service } = setupCreate();
+    prisma.$queryRaw.mockResolvedValue([{ id: 'v1', status: 'DISABLED' }]);
+    const order: string[] = [];
+    prisma.repairTicket.create.mockImplementation(() => {
+      order.push('ticket');
+      return Promise.resolve(fullTicket());
+    });
+    prisma.vehicleChange.create.mockImplementation(() => {
+      order.push('change');
+      return Promise.resolve({});
+    });
+    await service.create(dto, admin, defaultAbility(admin));
+    expect(prisma.vehicle.update).toHaveBeenCalledWith({
+      where: { id: 'v1' },
+      data: { status: 'UNDER_REPAIR' },
+    });
+    expect(prisma.vehicleChange.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        vehicleId: 'v1',
+        field: 'status',
+        before: 'DISABLED',
+        after: 'UNDER_REPAIR',
+        note: null,
+        repairTicketId: TICKET,
+        actorUserId: admin.sub,
+      }) as unknown,
+    });
+    expect(order).toEqual(['ticket', 'change']);
+  });
+
+  it('writes no status row for a truck already Under repair (spec 0020, AC-6)', async () => {
+    const { prisma, service } = setupCreate();
+    prisma.$queryRaw.mockResolvedValue([{ id: 'v1', status: 'UNDER_REPAIR' }]);
+    await service.create(dto, admin, defaultAbility(admin));
+    expect(prisma.vehicle.update).not.toHaveBeenCalled();
+    expect(prisma.vehicleChange.create).not.toHaveBeenCalled();
   });
 
   it('answers 409 OPEN_TICKET_EXISTS and writes nothing when the truck has an open ticket (spec 0016, AC-3)', async () => {
