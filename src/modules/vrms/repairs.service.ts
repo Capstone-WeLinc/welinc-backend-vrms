@@ -40,7 +40,9 @@ import {
 import { PrismaService } from '../../shared/prisma.service';
 import {
   AuditEvent,
+  AuditEventData,
   auditData,
+  closedTicketTextEvent,
   costEvent,
   createdEvent,
   decodeCursor,
@@ -48,8 +50,12 @@ import {
   hideDocumentEvents,
   knowledgeLinkEvent,
   lastRejectionFrom,
+  lockedEvent,
+  mechanicsChangedEvent,
   olderThan,
   REJECTION_SCAN_ROWS,
+  stampedAt,
+  storedCosts,
   toAuditEvent,
   unlockEvent,
   whoName,
@@ -346,13 +352,18 @@ export class RepairsService {
 
     // Mechanics are optional now (spec 0016, AC-1); any given must be active (spec 0010, AC-12)
     const mechanicIds = [...new Set((dto.mechanics ?? []).map((m) => m.id))];
+    // Names for the MECHANIC_ASSIGNED row, in the order they were picked (spec 0021, AC-5b)
+    let mechanicNames: string[] = [];
     if (mechanicIds.length > 0) {
-      const activeCount = await this.prisma.mechanic.count({
+      const active = await this.prisma.mechanic.findMany({
         where: { id: { in: mechanicIds }, isActive: true },
+        select: { id: true, name: true },
       });
-      if (activeCount !== mechanicIds.length) {
+      if (active.length !== mechanicIds.length) {
         throw new BadRequestException('In house mechanic not found');
       }
+      const nameOf = new Map(active.map((m) => [m.id, m.name]));
+      mechanicNames = mechanicIds.map((mid) => nameOf.get(mid)!);
     }
 
     // A repairNumber collision regenerates the number and retries once, then answers 500
@@ -368,6 +379,7 @@ export class RepairsService {
             vehicleId: vehicle.id,
             garageId: garage.id,
             mechanicIds,
+            mechanicNames,
             corporation,
             categories,
             entries,
@@ -408,6 +420,7 @@ export class RepairsService {
       vehicleId: string;
       garageId: string;
       mechanicIds: string[];
+      mechanicNames: string[];
       corporation: string | null;
       categories: Map<string, { id: string; name: string }>;
       entries: Map<
@@ -478,6 +491,16 @@ export class RepairsService {
     // No mechanic: Open. One or more: Assigned (spec 0016, AC-1)
     const now = new Date();
     const reporter = { userId: user.sub, name: whoName(user) };
+    // Spec 0021, AC-5b and AC-3b: CREATED, then MECHANIC_ASSIGNED when it starts Assigned
+    const events = [
+      createdEvent(),
+      ...(input.mechanicNames.length > 0
+        ? [mechanicsChangedEvent('added', input.mechanicNames)]
+        : []),
+    ];
+    const auditRows = events.map((event, i) =>
+      auditData(user, event, stampedAt(now, i)),
+    );
     const ticket = await tx.repairTicket.create({
       data: {
         repairNumber,
@@ -493,7 +516,8 @@ export class RepairsService {
         corporation,
         reportedByUserId: reporter.userId,
         reportedByName: reporter.name,
-        lastActivityAt: now,
+        // The newest row's time (AC-3b)
+        lastActivityAt: auditRows[auditRows.length - 1].createdAt,
         statusChangedAt: now,
         // Linked issues get a copy of the entry's steps (the CREATED row covers the link, no KNOWLEDGE_LINK)
         issues: {
@@ -532,8 +556,8 @@ export class RepairsService {
             assignedByName: reporter.name,
           })),
         },
-        // Nested so the ticket and its CREATED row are saved together or not at all
-        auditLogs: { create: auditData(user, createdEvent(), now) },
+        // Nested so the ticket and its rows are saved together or not at all
+        auditLogs: { create: auditRows },
       },
       include: ticketInclude,
     });
@@ -837,7 +861,7 @@ export class RepairsService {
     const from = ticket.repairStatus;
     // AC-4: an unlocked finished ticket saved with its own status keeps today's save
     if (from === dto.status && isFinished(from) && ticket.isUnlocked) {
-      return this.saveUnlocked(ticket, dto, ability);
+      return this.saveUnlocked(ticket, dto, user, ability);
     }
 
     const move = findMove(from, dto.status);
@@ -954,28 +978,79 @@ export class RepairsService {
   }
 
   /**
-   * AC-4: an unlocked finished ticket saved with its own status. No move and no audit row:
-   * the fields are saved and the ticket locks again, through the same stale check.
+   * AC-4: an unlocked finished ticket saved with its own status. No move: the fields are saved
+   * and the ticket locks again, through the same stale check. Spec 0021, AC-1 to AC-3b: it writes
+   * COST_UPDATE, TICKET_EDITED and LOCKED rows, in that order, in the same transaction.
    */
   private async saveUnlocked(
     ticket: RepairTicket,
     dto: UpdateRepairStatusDto,
+    user: JwtUser,
     ability: AppAbility,
   ) {
-    const remarks = dto.remarks?.trim();
-    const reason = dto.cancellationReason?.trim();
+    const remarks = dto.remarks?.trim() || null;
+    const reason = dto.cancellationReason?.trim() || null;
+    const costs = this.costData(ticket, dto, ability);
+    const note = ticket.isUnlocked ? ticket.unlockReason : null;
+
+    const before = storedCosts(ticket);
+    const events = [
+      costEvent(
+        before,
+        {
+          partsCost:
+            costs.partsCost !== undefined
+              ? Number(costs.partsCost)
+              : before.partsCost,
+          laborCost:
+            costs.laborCost !== undefined
+              ? Number(costs.laborCost)
+              : before.laborCost,
+          totalCost:
+            costs.totalCost !== undefined
+              ? Number(costs.totalCost)
+              : before.totalCost,
+          isLumpSum: before.isLumpSum,
+        },
+        note,
+      ),
+      closedTicketTextEvent(
+        {
+          remarks: ticket.remarks,
+          cancellationReason: ticket.cancellationReason,
+        },
+        {
+          remarks: remarks ?? ticket.remarks,
+          cancellationReason: reason ?? ticket.cancellationReason,
+        },
+        note,
+      ),
+      ticket.isUnlocked ? lockedEvent() : null,
+    ].filter((e): e is AuditEventData => !!e && e.changes.length > 0);
+
+    const now = new Date();
+    const rows = events.map((event, i) => ({
+      repairTicketId: ticket.id,
+      ...auditData(user, event, stampedAt(now, i)),
+    }));
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.repairTicket.updateMany({
         where: { id: ticket.id, updatedAt: ticket.updatedAt },
         data: {
-          ...this.costData(ticket, dto, ability),
+          ...costs,
           ...(remarks && { remarks }),
           ...(reason && { cancellationReason: reason }),
           isUnlocked: false,
-          updatedAt: new Date(),
+          updatedAt: now,
+          // The newest row's time; unchanged when nothing is written (AC-3b)
+          ...(rows.length > 0 && {
+            lastActivityAt: rows[rows.length - 1].createdAt,
+          }),
         },
       });
       if (count === 0) throw new ConflictException(STALE_TICKET);
+      for (const data of rows) await tx.auditLog.create({ data });
       return tx.repairTicket.findUniqueOrThrow({
         where: { id: ticket.id },
         include: ticketInclude,
@@ -1199,18 +1274,22 @@ export class RepairsService {
     }
 
     const totalCost = partsCost + laborCost;
-    // One COST_UPDATE row for the whole save, with every field that changed (spec 0010, AC-6)
-    const event = costEvent(
-      {
-        partsCost: ticket.partsCost != null ? Number(ticket.partsCost) : null,
-        laborCost: ticket.laborCost != null ? Number(ticket.laborCost) : null,
-        totalCost: ticket.totalCost != null ? Number(ticket.totalCost) : null,
-        isLumpSum: ticket.isLumpSum,
-      },
-      { partsCost, laborCost, totalCost, isLumpSum: dto.isLumpSum },
-    );
-    const audited = event.changes.length > 0;
+    // One COST_UPDATE row for the whole save, with every field that changed (spec 0010, AC-6),
+    // then LOCKED when the save relocks an unlocked ticket (spec 0021, AC-1, AC-3, AC-3b)
+    const note = ticket.isUnlocked ? ticket.unlockReason : null;
+    const events = [
+      costEvent(
+        storedCosts(ticket),
+        { partsCost, laborCost, totalCost, isLumpSum: dto.isLumpSum },
+        note,
+      ),
+      ...(ticket.isUnlocked ? [lockedEvent()] : []),
+    ].filter((e) => e.changes.length > 0);
     const now = new Date();
+    const rows = events.map((event, i) => ({
+      repairTicketId: id,
+      ...auditData(user, event, stampedAt(now, i)),
+    }));
 
     const updated = await this.prisma.$transaction(async (tx) => {
       // The stale check again, first: only the loaded updatedAt may move on (spec 0014, AC-12)
@@ -1223,8 +1302,10 @@ export class RepairsService {
           totalCost,
           isUnlocked: false,
           updatedAt: now,
-          // A save that changes no amount writes no audit row, so it is not activity (AC-10)
-          ...(audited && { lastActivityAt: now }),
+          // A save that writes no audit row is not activity (spec 0010, AC-10); else the newest row's time
+          ...(rows.length > 0 && {
+            lastActivityAt: rows[rows.length - 1].createdAt,
+          }),
         },
       });
       if (count === 0) throw new ConflictException(STALE_TICKET);
@@ -1235,11 +1316,7 @@ export class RepairsService {
         await tx.repairPart.createMany({ data: partsData });
       }
 
-      if (audited) {
-        await tx.auditLog.create({
-          data: { repairTicketId: id, ...auditData(user, event, now) },
-        });
-      }
+      for (const data of rows) await tx.auditLog.create({ data });
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,

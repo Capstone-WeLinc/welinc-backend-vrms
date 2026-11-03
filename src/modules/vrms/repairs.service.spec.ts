@@ -703,7 +703,13 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
         update: jest.fn().mockResolvedValue({ id: 'd1' }),
         create: jest.fn(),
       },
-      mechanic: { count: jest.fn().mockResolvedValue(activeCount) },
+      mechanic: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue(
+            activeCount > 0 ? [{ id: MECH_ID, name: 'Mia Cruz' }] : [],
+          ),
+      },
       $queryRaw: jest
         .fn()
         .mockResolvedValue([{ id: 'v1', status: 'AVAILABLE' }]),
@@ -761,8 +767,9 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
       .create(dto([{ id: MECH_ID }]), admin, defaultAbility(admin))
       .catch(() => {});
 
-    expect(prisma.mechanic.count).toHaveBeenCalledWith({
+    expect(prisma.mechanic.findMany).toHaveBeenCalledWith({
       where: { id: { in: [MECH_ID] }, isActive: true },
+      select: { id: true, name: true },
     });
   });
 
