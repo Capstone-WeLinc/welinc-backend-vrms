@@ -23,8 +23,17 @@ async function cleanDatabase(prisma: PrismaClient) {
   console.log('Cleaning database...');
   await prisma.knowledgeSuggestion.deleteMany({});
   await prisma.knowledgeEntryChange.deleteMany({});
-  // Audit rows first: the database refuses to delete a ticket that still has them (spec 0010, AC-8)
-  await prisma.auditLog.deleteMany({});
+  // Audit rows first: the database refuses to delete a ticket that still has them (spec 0010, AC-8).
+  // audit_logs is append only (spec 0021, AC-14): its triggers are switched off for this dev reset
+  // only, as the table owner, and always switched back on.
+  await prisma.$executeRawUnsafe('ALTER TABLE audit_logs DISABLE TRIGGER USER');
+  try {
+    await prisma.auditLog.deleteMany({});
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE audit_logs ENABLE TRIGGER USER',
+    );
+  }
   // Spec 0017: attachment rows block a ticket delete too. Their blobs become orphans, which the
   // nightly sweep removes after 24 hours.
   await prisma.attachment.deleteMany({});
