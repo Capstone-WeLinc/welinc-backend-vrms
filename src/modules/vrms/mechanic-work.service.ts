@@ -12,6 +12,7 @@ import { MechanicRoster } from './mechanic-roster.service';
 import { OPEN_STATUSES } from './ticket-statuses';
 import { applyStatusMove } from './apply-status-move';
 import { findMove } from './ticket-transitions';
+import { openStatusRank, workloadOf } from './mechanic-workload';
 
 /** M2: the last mechanic removed sends an Assigned ticket back to Open (spec 0014). */
 const UNASSIGN_RELEASE = findMove(RepairStatus.ASSIGNED, RepairStatus.OPEN)!;
@@ -20,6 +21,17 @@ const UNASSIGN_RELEASE = findMove(RepairStatus.ASSIGNED, RepairStatus.OPEN)!;
 // moves it back to the queue.
 
 export type ReleaseReason = 'DEACTIVATED' | 'ROLE_REMOVED';
+
+/** One row of a person's open tickets on the Users page (feature 57). */
+export type OpenTicket = {
+  id: string;
+  repairNumber: string;
+  repairStatus: RepairStatus;
+  /** Sent back as lastUpdatedAt on unassign or reassign, for the stale check. */
+  updatedAt: string;
+  plateNumber: string;
+  mechanics: { id: string; name: string }[];
+};
 
 /** Tickets a release changes. FOR_VERIFICATION and later are the verifier's and are left alone. */
 const RELEASABLE_STATUSES: RepairStatus[] = [
@@ -57,6 +69,76 @@ export class MechanicWorkService {
       total += g._count._all;
     }
     return { total, byStatus };
+  }
+
+  /**
+   * Feature 57: every mechanic's open work, keyed by welinc-auth user id, for the Users page.
+   * Inactive rows are included: a person who left can still hold tickets an Admin kept.
+   */
+  async workload() {
+    const rows = await this.prisma.mechanic.findMany({
+      select: {
+        authUserId: true,
+        assignments: {
+          where: { repairTicket: { repairStatus: { in: OPEN_STATUSES } } },
+          select: { repairTicket: { select: { repairStatus: true } } },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      authUserId: row.authUserId,
+      ...workloadOf(row.assignments.map((a) => a.repairTicket.repairStatus)),
+    }));
+  }
+
+  /**
+   * Feature 57: the person's open tickets with every mechanic on each, so the Users page can
+   * unassign or reassign through PUT /vrms/repairs/:id/assignments with the stale check.
+   */
+  async openTickets(
+    authUserId: string,
+  ): Promise<{ mechanicId: string | null; tickets: OpenTicket[] }> {
+    const mechanic = await this.prisma.mechanic.findUnique({
+      where: { authUserId },
+      select: { id: true },
+    });
+    if (!mechanic) return { mechanicId: null, tickets: [] };
+
+    const tickets = await this.prisma.repairTicket.findMany({
+      where: {
+        repairStatus: { in: OPEN_STATUSES },
+        assignments: { some: { mechanicId: mechanic.id } },
+      },
+      select: {
+        id: true,
+        repairNumber: true,
+        repairStatus: true,
+        updatedAt: true,
+        vehicle: { select: { plateNumber: true } },
+        assignments: {
+          select: { mechanic: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: { statusChangedAt: 'asc' },
+    });
+
+    return {
+      mechanicId: mechanic.id,
+      // Workflow order (In progress before For verification), oldest status change first within it
+      tickets: tickets
+        .map((t) => ({
+          id: t.id,
+          repairNumber: t.repairNumber,
+          repairStatus: t.repairStatus,
+          updatedAt: t.updatedAt.toISOString(),
+          plateNumber: t.vehicle.plateNumber,
+          mechanics: t.assignments.map((a) => a.mechanic),
+        }))
+        .sort(
+          (a, b) =>
+            openStatusRank(a.repairStatus) - openStatusRank(b.repairStatus),
+        ),
+    };
   }
 
   async release(
