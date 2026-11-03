@@ -12,7 +12,8 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/app.module.ts` | Root module wiring |
 | `src/auth/` | `JwtAuthGuard`, JWT strategy, `account-check.ts` (the live check against `welinc-auth`) and `roles.ts` (`UserRole` and `SystemType`) |
 | `src/auth/permissions/` | The permission matrix (spec 0011): `catalog.ts` (the one definition of keys, defaults and locks), `permissions.service.ts` (stored grants, startup backfill, version cache), `ability.factory.ts` (CASL ability per request), `permissions.guard.ts` and `permission.decorators.ts` (`@RequirePermission`, `@Authenticated`, `@Public`), `permission-matrix.service.ts` and `permissions.controller.ts` (the `/vrms/permissions` API) |
-| `src/modules/vrms/mechanic-work.service.ts` | Open work for a person who leaves VRMS: `GET /vrms/mechanics/:authUserId/open-work` and `POST .../release-tickets` |
+| `src/modules/vrms/mechanic-work.service.ts` | Open work for a person who leaves VRMS: `GET /vrms/mechanics/:authUserId/open-work` and `POST .../release-tickets`. Also the Users page workload: `GET /vrms/mechanics/workload` and `GET /vrms/mechanics/:authUserId/open-tickets`, all behind `users.manage` |
+| `src/modules/vrms/mechanic-workload.ts` | The one "Occupied" rule (`isOccupied`: at least one In Progress ticket) and the workload counts by open status |
 | `src/modules/vrms/mechanic-roster.service.ts` | Keeps in house `Mechanic` rows in step with `welinc-auth` users: `POST /vrms/mechanics/sync` and the just in time row on first request |
 | `src/modules/vrms/repairs.controller.ts`, `repairs.service.ts` | Repair ticket endpoints and business rules |
 | `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline; each event carries a `changes` list of field, before and after |
@@ -64,6 +65,7 @@ npx prisma migrate dev   # asks first, see root rules
 - Knowledge entry and category writes log one `KnowledgeEntryChange` row per changed field in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
 - Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp. The history starts at one baseline, `20261029000000_baseline` (spec 0010); add new folders after it.
 - New variables go in `.env.example` only (today: `PORT`, `NODE_ENV`, `DATABASE_URL`, `JWT_SECRET`, `AUTH_SERVICE_URL` (required, the app refuses to start without it), `CORS_ORIGINS`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_EMBED_MODEL`, `STORAGE_CONNECTION_STRING`, `STORAGE_ACCOUNT_URL`, `STORAGE_CONTAINER`, `STORAGE_PUBLIC_URL`). With no `GEMINI_API_KEY` the app still starts: AI runs answer 503 `AI_UNAVAILABLE` and analytics works. With no storage setting the app starts and attachment routes answer 503 `STORAGE_UNAVAILABLE`.
+- "Occupied" is defined once, as `isOccupied` in `mechanic-workload.ts`. The Users page workload and the assignment picker's `busy` both read it, so never work it out again somewhere else. Unassign and Reassign on that page go through `PUT /vrms/repairs/:id/assignments`, not a new write route.
 - Roles and systems come from `src/auth/roles.ts`, not `@prisma/client`: this database holds no users. `Mechanic.authUserId` and `AuditLog.actorUserId` are `welinc-auth` user ids (no foreign key); look a caller up by `req.user.sub`, never by email or name.
 
 ## Gotchas
