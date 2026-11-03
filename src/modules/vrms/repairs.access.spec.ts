@@ -96,8 +96,11 @@ function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     vehicle: {
       update: jest.fn().mockResolvedValue({}),
-      findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 900 }),
+      findUniqueOrThrow: jest
+        .fn()
+        .mockResolvedValue({ odometer: 900, status: 'UNDER_REPAIR' }),
     },
+    vehicleChange: { create: jest.fn().mockResolvedValue({}) },
   };
   const prisma = {
     repairTicket: {

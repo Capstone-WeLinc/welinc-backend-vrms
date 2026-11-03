@@ -18,6 +18,7 @@ import {
   VehicleStatus,
 } from '@prisma/client';
 import { applyStatusMove } from './apply-status-move';
+import { vehicleStatusChange } from './vehicles/vehicle-status';
 import {
   livePhotoCounts,
   PhotoCounts,
@@ -474,15 +475,10 @@ export class RepairsService {
       dto.driverId ??
       (await driverForLicense(tx, this.prisma, dto.newDriver!)).id;
 
-    await tx.vehicle.update({
-      where: { id: input.vehicleId },
-      data: { status: VehicleStatus.UNDER_REPAIR },
-    });
-
     // No mechanic: Open. One or more: Assigned (spec 0016, AC-1)
     const now = new Date();
     const reporter = { userId: user.sub, name: whoName(user) };
-    return tx.repairTicket.create({
+    const ticket = await tx.repairTicket.create({
       data: {
         repairNumber,
         vehicleId: input.vehicleId,
@@ -541,6 +537,22 @@ export class RepairsService {
       },
       include: ticketInclude,
     });
+
+    // Spec 0020, AC-6: the truck goes Under repair with its history row, after the insert so the
+    // row can point at the ticket. A stuck truck (already Under repair) writes neither.
+    await vehicleStatusChange(tx, {
+      vehicleId: input.vehicleId,
+      before: priorVehicleStatus,
+      after: VehicleStatus.UNDER_REPAIR,
+      actor: user,
+      note: null,
+      repairTicketId: ticket.id,
+    });
+    // The include above read the truck before the write
+    return {
+      ...ticket,
+      vehicle: { ...ticket.vehicle, status: VehicleStatus.UNDER_REPAIR },
+    };
   }
 
   /**

@@ -691,7 +691,7 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
     const prisma = {
       vehicle: {
         findFirst: jest.fn().mockResolvedValue({ id: 'v1' }),
-        update: jest.fn().mockRejectedValue(new Error('stop here')),
+        update: jest.fn(),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 0 }),
       },
       garage: { findFirst: jest.fn().mockResolvedValue({ id: 'g1' }) },
@@ -710,6 +710,7 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
       repairTicket: {
         findFirst: jest.fn().mockResolvedValue(null),
         aggregate: jest.fn().mockResolvedValue({ _max: { odometer: null } }),
+        create: jest.fn().mockRejectedValue(new Error('stop here')),
       },
       $transaction: jest.fn(),
     };
@@ -772,7 +773,7 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
       service.create(dto([{ id: MECH_ID }]), admin, defaultAbility(admin)),
     ).rejects.toThrow('stop here');
 
-    expect(prisma.vehicle.update).toHaveBeenCalled();
+    expect(prisma.repairTicket.create).toHaveBeenCalled();
   });
 
   describe('the mechanic item in the request body', () => {

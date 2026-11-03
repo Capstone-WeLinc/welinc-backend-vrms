@@ -16,6 +16,7 @@ import {
 } from './photo-rules';
 import { STALE_TICKET } from './ticket-knowledge';
 import { isFinished } from './ticket-statuses';
+import { vehicleStatusChange } from './vehicles/vehicle-status';
 import type { TicketMove } from './ticket-transitions';
 
 // Spec 0014, AC-1, AC-7, AC-9, AC-10 and AC-12: every effect of one status move, inside the
@@ -144,23 +145,28 @@ export async function applyStatusMove(
 
   // 4. The truck goes back to the fleet on a move into a finished status
   if (isFinished(move.to)) {
+    // Spec 0020, AC-7: read without a lock on purpose. The toggle is refused while this ticket is
+    // open, and the move above holds the ticket row, so nothing else changes the truck meanwhile.
     const vehicle = await tx.vehicle.findUniqueOrThrow({
       where: { id: ticket.vehicleId },
-      select: { odometer: true },
+      select: { odometer: true, status: true },
     });
     // On close, the ticket's reading wins when it is higher (as before)
     const odometer =
       closes && ticket.odometer > vehicle.odometer ? ticket.odometer : null;
-    await tx.vehicle.update({
-      where: { id: ticket.vehicleId },
-      data: {
-        // A truck that was Disabled before the repair goes back to Disabled (spec 0016, AC-9)
-        status:
-          ticket.priorVehicleStatus === VehicleStatus.DISABLED
-            ? VehicleStatus.DISABLED
-            : VehicleStatus.AVAILABLE,
-        ...(odometer !== null && { odometer }),
-      },
+    // A truck that was Disabled before the repair goes back to Disabled (spec 0016, AC-9), with
+    // its history row when the status changes (spec 0020, AC-7)
+    await vehicleStatusChange(tx, {
+      vehicleId: ticket.vehicleId,
+      before: vehicle.status,
+      after:
+        ticket.priorVehicleStatus === VehicleStatus.DISABLED
+          ? VehicleStatus.DISABLED
+          : VehicleStatus.AVAILABLE,
+      actor,
+      note: null,
+      repairTicketId: ticket.id,
+      also: odometer !== null ? { odometer } : undefined,
     });
     if (odometer !== null) {
       logger.log(
