@@ -1,17 +1,30 @@
 import { BadRequestException } from '@nestjs/common';
 import {
   actorFields,
+  AUDIT_ACTIONS,
+  AUDIT_CATEGORIES,
+  AUDIT_CATEGORY,
   attachmentMovedEvent,
+  auditCatalog,
   auditData,
+  auditKindFilter,
+  auditRoleFilter,
+  categoryOf,
+  closedTicketTextEvent,
   costEvent,
   decodeCursor,
   encodeCursor,
+  hiddenAuditEvents,
   knowledgeLinkEvent,
   lastRejectionFrom,
   lastReturnAt,
+  lockedEvent,
   olderThan,
   readChanges,
+  stampedAt,
   statusEvent,
+  stepTickEvent,
+  storedCosts,
   toAuditEvent,
   unlockEvent,
   whoName,
@@ -346,5 +359,243 @@ describe('lastReturnAt', () => {
       ]),
     ).toBeNull();
     expect(lastReturnAt([])).toBeNull();
+  });
+});
+
+// ── Spec 0021 ───────────────────────────────────────────────────────────────────
+
+describe('categories (spec 0021, AC-7, AC-8)', () => {
+  it('puts every event type in exactly one of the seven categories (AC-7)', () => {
+    expect(AUDIT_CATEGORIES).toHaveLength(7);
+    for (const action of AUDIT_ACTIONS) {
+      expect(AUDIT_CATEGORIES).toContain(AUDIT_CATEGORY[action]);
+    }
+    expect(Object.keys(AUDIT_CATEGORY).sort()).toEqual(
+      [...AUDIT_ACTIONS].sort(),
+    );
+  });
+
+  it('files each type under the category the spec table names (AC-7)', () => {
+    expect(AUDIT_CATEGORY).toMatchObject({
+      CREATED: 'STATUS',
+      LOCKED: 'STATUS',
+      STATUS_OVERRIDE: 'STATUS',
+      MECHANIC_ASSIGNED: 'ASSIGNMENT',
+      TRANSFER_CANCELLED: 'ASSIGNMENT',
+      GARAGE_CHANGE: 'EDITS',
+      TICKET_EDITED: 'EDITS',
+      COST_UPDATE: 'COSTS',
+      ATTACHMENT_MOVED: 'FILES',
+      STEP_CHECKED: 'CHECKLIST',
+      STEP_UNCHECKED: 'CHECKLIST',
+      KNOWLEDGE_LINK: 'KNOWLEDGE',
+    });
+  });
+
+  it('reads a stored action outside the catalog as category null (AC-8)', () => {
+    expect(categoryOf('STEP_CHECKED')).toBe('CHECKLIST');
+    expect(categoryOf('OLD_THING')).toBeNull();
+    expect(categoryOf('')).toBeNull();
+    // Inherited object keys are not categories
+    expect(categoryOf('constructor')).toBeNull();
+    expect(categoryOf('toString')).toBeNull();
+  });
+});
+
+describe('auditCatalog (spec 0021, AC-11, AC-12)', () => {
+  it('lists the categories in the spec order, each with its types', () => {
+    const catalog = auditCatalog(true);
+    expect(catalog.map((c) => c.category)).toEqual([...AUDIT_CATEGORIES]);
+    expect(catalog.find((c) => c.category === 'COSTS')?.types).toEqual([
+      'COST_UPDATE',
+    ]);
+    expect(catalog.flatMap((c) => c.types).sort()).toEqual(
+      [...AUDIT_ACTIONS].sort(),
+    );
+  });
+
+  it('leaves COSTS out without ticket.costs.view', () => {
+    const catalog = auditCatalog(false);
+    expect(catalog.map((c) => c.category)).not.toContain('COSTS');
+    expect(catalog).toHaveLength(6);
+    expect(catalog.flatMap((c) => c.types)).not.toContain('COST_UPDATE');
+  });
+});
+
+describe('stampedAt (spec 0021, AC-3b)', () => {
+  it('adds one millisecond per write position and leaves the input alone', () => {
+    const now = new Date('2026-11-04T00:00:00.000Z');
+    expect(stampedAt(now, 0).getTime()).toBe(now.getTime());
+    expect(stampedAt(now, 2).toISOString()).toBe('2026-11-04T00:00:00.002Z');
+    expect(now.toISOString()).toBe('2026-11-04T00:00:00.000Z');
+  });
+});
+
+describe('cost, locked and closed ticket text events (spec 0021, AC-1 to AC-3)', () => {
+  const costs = {
+    partsCost: null,
+    laborCost: null,
+    totalCost: null,
+    isLumpSum: false,
+  };
+
+  it('reads stored costs as numbers, keeping null for none (AC-1)', () => {
+    expect(
+      storedCosts({
+        partsCost: '1000.50',
+        laborCost: null,
+        totalCost: 1000.5,
+        isLumpSum: true,
+      }),
+    ).toEqual({
+      partsCost: 1000.5,
+      laborCost: null,
+      totalCost: 1000.5,
+      isLumpSum: true,
+    });
+  });
+
+  it('carries the unlock reason as the cost event note, and no note by default (AC-1)', () => {
+    const after = { ...costs, partsCost: 10, totalCost: 10 };
+    expect(costEvent(costs, after, 'Supplier refund').note).toBe(
+      'Supplier refund',
+    );
+    expect(costEvent(costs, after).note).toBeNull();
+  });
+
+  it('writes LOCKED as isUnlocked true to false with no note (AC-3)', () => {
+    expect(lockedEvent()).toEqual({
+      action: 'LOCKED',
+      changes: [{ field: 'isUnlocked', before: 'true', after: 'false' }],
+      note: null,
+    });
+  });
+
+  it('lists only the text fields that changed, with the note (AC-2)', () => {
+    const event = closedTicketTextEvent(
+      { remarks: 'Old', cancellationReason: 'Duplicate' },
+      { remarks: 'New', cancellationReason: 'Duplicate' },
+      'Fixing a typo',
+    );
+    expect(event).toEqual({
+      action: 'TICKET_EDITED',
+      changes: [{ field: 'remarks', before: 'Old', after: 'New' }],
+      note: 'Fixing a typo',
+    });
+  });
+
+  it('records a first value as before null, and both fields when both change (AC-2)', () => {
+    const event = closedTicketTextEvent(
+      { remarks: null, cancellationReason: 'A' },
+      { remarks: 'Pads replaced', cancellationReason: 'B' },
+      null,
+    );
+    expect(event?.changes).toEqual([
+      { field: 'remarks', before: null, after: 'Pads replaced' },
+      { field: 'cancellationReason', before: 'A', after: 'B' },
+    ]);
+    expect(event?.note).toBeNull();
+  });
+
+  it('is null when nothing changed, so no row is written (AC-2)', () => {
+    expect(
+      closedTicketTextEvent(
+        { remarks: 'Same', cancellationReason: null },
+        { remarks: 'Same', cancellationReason: null },
+        'x',
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('stepTickEvent (spec 0021, AC-4)', () => {
+  const step = { id: 's1', position: 2, text: 'Check brake fluid' };
+
+  it('writes STEP_CHECKED with the numbered step and both ids', () => {
+    expect(stepTickEvent(true, step, 'i1')).toEqual({
+      action: 'STEP_CHECKED',
+      changes: [
+        { field: 'checked', before: 'false', after: 'true' },
+        { field: 'step', before: null, after: '2. Check brake fluid' },
+        { field: 'issueId', before: null, after: 'i1' },
+        { field: 'stepId', before: null, after: 's1' },
+      ],
+      note: null,
+    });
+  });
+
+  it('writes STEP_UNCHECKED with the checked change reversed', () => {
+    const event = stepTickEvent(false, step, 'i1');
+    expect(event.action).toBe('STEP_UNCHECKED');
+    expect(event.changes[0]).toEqual({
+      field: 'checked',
+      before: 'true',
+      after: 'false',
+    });
+  });
+});
+
+describe('audit filters (spec 0021, AC-9, AC-12)', () => {
+  it('expands a category to its types and unions it with exact types (AC-9)', () => {
+    expect(auditKindFilter(['CHECKLIST'], ['COST_UPDATE'])).toEqual({
+      action: { in: ['COST_UPDATE', 'STEP_CHECKED', 'STEP_UNCHECKED'] },
+    });
+  });
+
+  it('does not repeat a type that is also in a chosen category', () => {
+    expect(auditKindFilter(['COSTS'], ['COST_UPDATE'])).toEqual({
+      action: { in: ['COST_UPDATE'] },
+    });
+  });
+
+  it('accepts reserved types before anything writes them', () => {
+    expect(auditKindFilter([], ['STATUS_OVERRIDE'])).toEqual({
+      action: { in: ['STATUS_OVERRIDE'] },
+    });
+    const assignment = auditKindFilter(['ASSIGNMENT'], []) as {
+      action: { in: string[] };
+    };
+    expect(assignment.action.in).toEqual(
+      expect.arrayContaining(['TRANSFER_REQUESTED', 'MECHANIC_ASSIGNED']),
+    );
+  });
+
+  it('is null with no categories and no types', () => {
+    expect(auditKindFilter()).toBeNull();
+    expect(auditKindFilter([], [])).toBeNull();
+  });
+
+  it('matches SYSTEM on no user id and no email, other roles on the stored role', () => {
+    expect(auditRoleFilter('SYSTEM')).toEqual({
+      actorUserId: null,
+      actorEmail: null,
+    });
+    expect(auditRoleFilter('MECHANIC')).toEqual({ actorRole: 'MECHANIC' });
+    expect(auditRoleFilter(undefined)).toBeNull();
+  });
+
+  it('hides cost events only from a caller without ticket.costs.view (AC-12)', () => {
+    expect(hiddenAuditEvents(true)).toBeNull();
+    const hidden = hiddenAuditEvents(false) as { AND: unknown[] };
+    expect(hidden.AND).toContainEqual({ action: { not: 'COST_UPDATE' } });
+  });
+});
+
+describe('toAuditEvent category (spec 0021, AC-8)', () => {
+  const base = {
+    id: uuid(9),
+    actorUserId: 'u1',
+    actorName: 'Victor',
+    actorEmail: 'v@welinc.com',
+    actorRole: 'ADMIN',
+    changes: [],
+    note: null,
+    createdAt: new Date('2026-11-04T00:00:00.000Z'),
+    repairTicket: { id: 't1', repairNumber: 'REP-1' },
+  };
+
+  it('carries the category of a catalog action and null for any other', () => {
+    expect(toAuditEvent({ ...base, action: 'LOCKED' }).category).toBe('STATUS');
+    expect(toAuditEvent({ ...base, action: 'GONE' }).category).toBeNull();
   });
 });
