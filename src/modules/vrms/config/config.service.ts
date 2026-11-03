@@ -3,6 +3,7 @@ import { RepairStatus } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service';
 import { OPEN_STATUSES } from '../ticket-statuses';
 import { vehicleOdometerFloor } from '../odometer';
+import { isOccupied } from '../mechanic-workload';
 import type { AppAbility } from '../../../auth/permissions/ability.factory';
 
 @Injectable()
@@ -128,8 +129,9 @@ export class ConfigService {
       name: mechanic.name,
       isAvailable: mechanic.assignments.length === 0,
       openCount: mechanic.assignments.length,
-      busy: mechanic.assignments.some(
-        (a) => a.repairTicket.repairStatus === RepairStatus.IN_PROGRESS,
+      // The same Occupied rule as the Users page (feature 57)
+      busy: isOccupied(
+        mechanic.assignments.map((a) => a.repairTicket.repairStatus),
       ),
       email: mechanic.email,
       authUserId: mechanic.authUserId,

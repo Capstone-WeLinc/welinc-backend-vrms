@@ -65,6 +65,20 @@ export class ConfigController {
     return this.mechanicRoster.sync(authorization.replace(/^Bearer\s+/i, ''));
   }
 
+  // GET /vrms/mechanics/workload (feature 57). Static path, so it sits before the :authUserId routes
+  @RequirePermission('users.manage')
+  @Get('mechanics/workload')
+  workload() {
+    return this.mechanicWork.workload();
+  }
+
+  // GET /vrms/mechanics/:authUserId/open-tickets (feature 57)
+  @RequirePermission('users.manage')
+  @Get('mechanics/:authUserId/open-tickets')
+  openTickets(@Param('authUserId', ParseUUIDPipe) authUserId: string) {
+    return this.mechanicWork.openTickets(authUserId);
+  }
+
   // GET /vrms/mechanics/:authUserId/open-work (spec 0011, AC-32)
   @RequirePermission('users.manage')
   @Get('mechanics/:authUserId/open-work')
