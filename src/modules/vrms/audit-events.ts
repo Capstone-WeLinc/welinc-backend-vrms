@@ -539,22 +539,61 @@ export function attachmentMovedEvent(
 }
 
 /**
- * Spec 0017, AC-16: the one where fragment that hides document add and remove events from a
- * caller without ticket.costs.view. Every audit reader applies it. Null means nothing to hide.
+ * Spec 0017, AC-16 and spec 0021, AC-12: the where fragment that hides document add and remove
+ * events and COST_UPDATE rows from a caller without ticket.costs.view. Every reader that shows
+ * rows to a person applies it. Null means nothing to hide.
  */
-export function hideDocumentEvents(
+export function hiddenAuditEvents(
   canViewCosts: boolean,
 ): Prisma.AuditLogWhereInput | null {
   if (canViewCosts) return null;
   return {
-    NOT: {
-      action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
-      // jsonb containment (@>): matches a changes element with this field and value
-      OR: DOCUMENT_KINDS.map((kind) => ({
-        changes: { array_contains: [{ field: 'kind', after: kind }] },
-      })),
-    },
+    AND: [
+      {
+        NOT: {
+          action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
+          // jsonb containment (@>): matches a changes element with this field and value
+          OR: DOCUMENT_KINDS.map((kind) => ({
+            changes: { array_contains: [{ field: 'kind', after: kind }] },
+          })),
+        },
+      },
+      { action: { not: 'COST_UPDATE' } },
+    ],
   };
+}
+
+export const AUDIT_ROLES = [
+  'ADMIN',
+  'CHIEF_MECHANIC',
+  'MECHANIC',
+  'SYSTEM',
+] as const;
+export type AuditRoleFilter = (typeof AUDIT_ROLES)[number];
+
+/**
+ * Spec 0021, AC-9: the category, type and role filters. A row matches when its type is in `types`
+ * or its category is in `categories`, expanded to one `action IN (...)` list. SYSTEM is the "no
+ * actor" rule toAuditEvent uses. Null means no filter.
+ */
+export function auditKindFilter(
+  categories: readonly AuditCategory[] = [],
+  types: readonly AuditAction[] = [],
+): Prisma.AuditLogWhereInput | null {
+  if (categories.length === 0 && types.length === 0) return null;
+  const actions = new Set<string>(types);
+  for (const action of AUDIT_ACTIONS) {
+    if (categories.includes(AUDIT_CATEGORY[action])) actions.add(action);
+  }
+  return { action: { in: [...actions] } };
+}
+
+export function auditRoleFilter(
+  role: AuditRoleFilter | undefined,
+): Prisma.AuditLogWhereInput | null {
+  if (!role) return null;
+  if (role === 'SYSTEM') return { actorUserId: null, actorEmail: null };
+  return { actorRole: role };
 }
 
 // ── Reading: keyset cursor and the timeline item ────────────────────────────────

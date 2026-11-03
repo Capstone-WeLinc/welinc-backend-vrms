@@ -41,13 +41,16 @@ import { PrismaService } from '../../shared/prisma.service';
 import {
   AuditEvent,
   AuditEventData,
+  auditCatalog,
   auditData,
+  auditKindFilter,
+  auditRoleFilter,
   closedTicketTextEvent,
   costEvent,
   createdEvent,
   decodeCursor,
   encodeCursor,
-  hideDocumentEvents,
+  hiddenAuditEvents,
   knowledgeLinkEvent,
   lastRejectionFrom,
   lockedEvent,
@@ -1427,7 +1430,14 @@ export class RepairsService {
     const repairNumber = query.repairNumber?.trim();
 
     const filters: Prisma.AuditLogWhereInput[] = [];
-    if (query.type) filters.push({ action: query.type });
+    // Spec 0021, AC-9 and AC-10: categories and types as a union, the old `type` merged in
+    const types = [
+      ...new Set([...(query.types ?? []), ...(query.type ? [query.type] : [])]),
+    ];
+    const kind = auditKindFilter(query.categories, types);
+    if (kind) filters.push(kind);
+    const role = auditRoleFilter(query.actorRole);
+    if (role) filters.push(role);
     // The Person filter carries a welinc-auth user id (spec 0009, AC-10)
     if (query.actorId) filters.push({ actorUserId: query.actorId });
     if (from || to)
@@ -1443,8 +1453,8 @@ export class RepairsService {
     }
     if (query.ticketId) filters.push({ repairTicketId: query.ticketId });
     if (query.cursor) filters.push(olderThan(decodeCursor(query.cursor)));
-    // Spec 0017, AC-16: receipt and document events stay hidden without ticket.costs.view
-    const hidden = hideDocumentEvents(canViewCosts(ability));
+    // Spec 0017, AC-16 and spec 0021, AC-12: document and cost events stay hidden without ticket.costs.view
+    const hidden = hiddenAuditEvents(canViewCosts(ability));
     if (hidden) filters.push(hidden);
 
     // One extra row tells us whether anything older remains
@@ -1473,6 +1483,11 @@ export class RepairsService {
       nextCursor:
         rows.length > limit ? encodeCursor(page[page.length - 1]) : null,
     };
+  }
+
+  /** Spec 0021, AC-11: the categories with their types; COSTS left out without ticket.costs.view. */
+  findAuditCatalog(ability: AppAbility) {
+    return auditCatalog(canViewCosts(ability));
   }
 
   /**

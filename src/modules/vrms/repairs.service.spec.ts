@@ -16,7 +16,7 @@ import type { PermissionsService } from '../../auth/permissions/permissions.serv
 import { PrismaService } from '../../shared/prisma.service';
 import { RepairsController } from './repairs.controller';
 import { RepairsService } from './repairs.service';
-import { hideDocumentEvents } from './audit-events';
+import { hiddenAuditEvents } from './audit-events';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -636,28 +636,117 @@ describe('RepairsService.findAuditEvents', () => {
         { where: { AND: Prisma.AuditLogWhereInput[] } },
       ][];
 
-      expect(hiding.where.AND).toContainEqual(hideDocumentEvents(false));
-      expect(hideDocumentEvents(false)).toEqual({
-        NOT: {
-          action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
-          OR: [
-            {
-              changes: {
-                array_contains: [{ field: 'kind', after: 'RECEIPT' }],
-              },
+      expect(hiding.where.AND).toContainEqual(hiddenAuditEvents(false));
+      // Spec 0021, AC-12: COST_UPDATE rows are hidden beside the documents
+      expect(hiddenAuditEvents(false)).toEqual({
+        AND: [
+          {
+            NOT: {
+              action: { in: ['ATTACHMENT_ADDED', 'ATTACHMENT_REMOVED'] },
+              OR: [
+                {
+                  changes: {
+                    array_contains: [{ field: 'kind', after: 'RECEIPT' }],
+                  },
+                },
+                {
+                  changes: {
+                    array_contains: [
+                      { field: 'kind', after: 'OTHER_DOCUMENT' },
+                    ],
+                  },
+                },
+              ],
             },
-            {
-              changes: {
-                array_contains: [{ field: 'kind', after: 'OTHER_DOCUMENT' }],
-              },
-            },
-          ],
-        },
+          },
+          { action: { not: 'COST_UPDATE' } },
+        ],
       });
-      expect(showing.where.AND).not.toContainEqual(hideDocumentEvents(false));
-      expect(hideDocumentEvents(true)).toBeNull();
+      expect(showing.where.AND).not.toContainEqual(hiddenAuditEvents(false));
+      expect(hiddenAuditEvents(true)).toBeNull();
     },
   );
+
+  // Spec 0021, AC-9 to AC-12
+  describe('categories, types and role (spec 0021)', () => {
+    const run = async (
+      query: Record<string, unknown>,
+      ability: typeof asAdmin = asAdmin,
+    ) => {
+      const prisma = {
+        auditLog: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      const service = new RepairsService(
+        prisma as unknown as PrismaService,
+        new FakeSettings(),
+        new FakeEmbeddings().asService(),
+      );
+      await service.findAuditEvents(query, ability);
+      const [args] = prisma.auditLog.findMany.mock.calls[0] as [
+        { where: { AND: Prisma.AuditLogWhereInput[] } },
+      ];
+      return args.where.AND;
+    };
+
+    it('expands categories and adds types as one union action list', async () => {
+      const and = await run({
+        categories: ['CHECKLIST'],
+        types: ['COST_UPDATE'],
+      });
+      expect(and).toEqual([
+        {
+          action: { in: ['COST_UPDATE', 'STEP_CHECKED', 'STEP_UNCHECKED'] },
+        },
+      ]);
+    });
+
+    it('merges the old type parameter into types', async () => {
+      const and = await run({ type: 'UNLOCK', types: ['LOCKED'] });
+      expect(and).toEqual([{ action: { in: ['LOCKED', 'UNLOCK'] } }]);
+    });
+
+    it('matches SYSTEM on no user id and no email, and other roles on actorRole', async () => {
+      expect(await run({ actorRole: 'SYSTEM' })).toEqual([
+        { actorUserId: null, actorEmail: null },
+      ]);
+      expect(await run({ actorRole: 'CHIEF_MECHANIC' })).toEqual([
+        { actorRole: 'CHIEF_MECHANIC' },
+      ]);
+    });
+
+    it('still ANDs the cost hiding in when a caller without costs asks for COSTS', async () => {
+      const and = await run({ categories: ['COSTS'] }, asMechanic);
+      expect(and).toEqual([
+        { action: { in: ['COST_UPDATE'] } },
+        hiddenAuditEvents(false),
+      ]);
+    });
+
+    it('returns the catalog in AC-7 order, without COSTS for a caller who cannot view costs', () => {
+      const service = new RepairsService(
+        {} as PrismaService,
+        new FakeSettings(),
+        new FakeEmbeddings().asService(),
+      );
+      const full = service.findAuditCatalog(asAdmin);
+      expect(full.map((c) => c.category)).toEqual([
+        'STATUS',
+        'ASSIGNMENT',
+        'EDITS',
+        'COSTS',
+        'FILES',
+        'CHECKLIST',
+        'KNOWLEDGE',
+      ]);
+      expect(full.find((c) => c.category === 'CHECKLIST')?.types).toEqual([
+        'STEP_CHECKED',
+        'STEP_UNCHECKED',
+      ]);
+      expect(
+        service.findAuditCatalog(asMechanic).map((c) => c.category),
+      ).not.toContain('COSTS');
+    });
+  });
 
   it('matches the Person filter on the welinc-auth id in actorUserId (spec 0009, AC-10)', async () => {
     const prisma = { auditLog: { findMany: jest.fn().mockResolvedValue([]) } };
