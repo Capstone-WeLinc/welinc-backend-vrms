@@ -21,6 +21,9 @@ import { SystemType, UserRole } from '../../auth/roles';
 
 const MECHANIC_ROLES: string[] = [UserRole.MECHANIC, UserRole.CHIEF_MECHANIC];
 
+/** The VRMS role a roster row stores (spec 0022, AC-4). */
+export type MechanicRole = 'MECHANIC' | 'CHIEF_MECHANIC';
+
 /** One user from welinc-auth's `GET /auth/users` answer, the fields the sync reads. */
 type AuthUserRow = {
   id: string;

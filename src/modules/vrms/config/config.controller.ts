@@ -72,6 +72,13 @@ export class ConfigController {
     return this.mechanicWork.workload();
   }
 
+  // GET /vrms/mechanics/roster (spec 0022, AC-2). The Mechanics screen's list; static path, before :authUserId
+  @RequirePermission('mechanics.view', 'users.manage')
+  @Get('mechanics/roster')
+  roster() {
+    return this.mechanicWork.listRoster();
+  }
+
   // GET /vrms/mechanics/:authUserId/open-tickets (feature 57)
   @RequirePermission('users.manage')
   @Get('mechanics/:authUserId/open-tickets')

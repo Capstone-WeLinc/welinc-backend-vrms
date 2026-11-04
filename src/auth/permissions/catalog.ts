@@ -184,6 +184,15 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
   },
   {
+    // Spec 0022, AC-1: the read only Mechanics screen and the two reads behind it
+    key: 'mechanics.view',
+    label: 'See the mechanics workload',
+    group: 'Records',
+    description:
+      'Open the Mechanics screen: who is Occupied or Free, and their open tickets.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
+  },
+  {
     // Spec 0016, AC-21: the Vehicles section in Settings
     key: 'vehicle.manage',
     label: 'Manage vehicles',
