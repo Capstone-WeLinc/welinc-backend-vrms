@@ -79,8 +79,8 @@ export class ConfigController {
     return this.mechanicWork.listRoster();
   }
 
-  // GET /vrms/mechanics/:authUserId/open-tickets (feature 57)
-  @RequirePermission('users.manage')
+  // GET /vrms/mechanics/:authUserId/open-tickets (feature 57; spec 0022, AC-3 opens it to mechanics.view)
+  @RequirePermission('users.manage', 'mechanics.view')
   @Get('mechanics/:authUserId/open-tickets')
   openTickets(@Param('authUserId', ParseUUIDPipe) authUserId: string) {
     return this.mechanicWork.openTickets(authUserId);
