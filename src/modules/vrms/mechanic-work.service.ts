@@ -34,6 +34,11 @@ export type OpenTicket = {
   mechanics: { id: string; name: string }[];
 };
 
+/** The stored role as the API's type; the CHECK constraint allows only these two or null. */
+function asMechanicRole(role: string | null): MechanicRole | null {
+  return role === 'MECHANIC' || role === 'CHIEF_MECHANIC' ? role : null;
+}
+
 /** One person on the Mechanics screen (spec 0022, AC-2). */
 export type RosterRow = {
   authUserId: string;
@@ -89,6 +94,7 @@ export class MechanicWorkService {
         name: true,
         email: true,
         isActive: true,
+        role: true,
         assignments: {
           where: { repairTicket: { repairStatus: { in: OPEN_STATUSES } } },
           select: { repairTicket: { select: { repairStatus: true } } },
@@ -127,7 +133,7 @@ export class MechanicWorkService {
         authUserId: r.authUserId,
         name: r.name,
         email: r.email,
-        role: null,
+        role: asMechanicRole(r.role),
         isActive: r.isActive,
         occupied: r.occupied,
         total: r.total,

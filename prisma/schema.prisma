@@ -124,6 +124,8 @@ model Mechanic {
   email      String?  @db.VarChar(255) // lowercased copy from welinc-auth
   name       String   @db.VarChar(100)
   isActive   Boolean  @default(true) @map("is_active")
+  // Spec 0022: MECHANIC or CHIEF_MECHANIC (a CHECK in the migration), written only by MechanicRoster
+  role       String?  @db.VarChar(20)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

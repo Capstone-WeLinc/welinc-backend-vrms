@@ -34,7 +34,12 @@ type AuthUserRow = {
   roles: { role: string; system: string }[];
 };
 
-type Wanted = { name: string; email: string; isActive: boolean };
+type Wanted = {
+  name: string;
+  email: string;
+  isActive: boolean;
+  role: MechanicRole;
+};
 
 export type SyncResult = {
   created: number;
@@ -44,6 +49,19 @@ export type SyncResult = {
 
 function isMechanicRole(r: { role: string; system: string }) {
   return r.system === SystemType.VRMS && MECHANIC_ROLES.includes(r.role);
+}
+
+/**
+ * Spec 0022, AC-4: the person's VRMS mechanic role, or null when they hold none. Other systems'
+ * roles are ignored, and Chief Mechanic wins if both somehow appear.
+ */
+export function roleOf(
+  roles: readonly { role: string; system: string }[],
+): MechanicRole | null {
+  const mine = roles.filter(isMechanicRole).map((r) => r.role);
+  if (mine.includes(UserRole.CHIEF_MECHANIC)) return UserRole.CHIEF_MECHANIC;
+  if (mine.includes(UserRole.MECHANIC)) return UserRole.MECHANIC;
+  return null;
 }
 
 function isUniqueViolation(err: unknown) {
@@ -90,12 +108,14 @@ export class MechanicRoster implements OnModuleInit {
    * logged and never fails the request.
    */
   async ensure(user: AuthUser): Promise<void> {
-    if (!user.roles.some(isMechanicRole)) return;
+    const role = roleOf(user.roles);
+    if (!role) return;
     // welinc-auth only answers 200 for an active, unlocked user
     const wanted: Wanted = {
       name: user.name,
       email: user.email.toLowerCase(),
       isActive: true,
+      role,
     };
     try {
       const row = await this.prisma.mechanic.findUnique({
@@ -134,13 +154,13 @@ export class MechanicRoster implements OnModuleInit {
     const users = await this.fetchUsers(token);
     const row = await this.prisma.mechanic.findUnique({
       where: { authUserId },
-      select: { id: true, name: true, email: true, isActive: true },
+      select: { id: true, name: true, email: true, isActive: true, role: true },
     });
     if (!row) return null;
-    const found = users.find(
-      (u) => u.id === authUserId && u.roles.some(isMechanicRole),
-    );
-    if (!found) {
+    const found = users.find((u) => u.id === authUserId);
+    const role = found ? roleOf(found.roles) : null;
+    // No VRMS mechanic role any more: the row keeps its last known role (AC-4)
+    if (!found || !role) {
       if (row.isActive) {
         await this.prisma.mechanic.update({
           where: { authUserId },
@@ -153,6 +173,7 @@ export class MechanicRoster implements OnModuleInit {
       name: found.name,
       email: found.email.toLowerCase(),
       isActive: found.isActive,
+      role,
     };
     if (this.differs(row, want)) await this.write(authUserId, want);
     return { mechanicId: row.id, stillActive: want.isActive };
@@ -164,12 +185,14 @@ export class MechanicRoster implements OnModuleInit {
 
     const wanted = new Map<string, Wanted>();
     for (const u of users) {
-      if (!u.roles.some(isMechanicRole)) continue;
+      const role = roleOf(u.roles);
+      if (!role) continue;
       wanted.set(u.id, {
         name: u.name,
         email: u.email.toLowerCase(),
         // Spec 0011, AC-31: a locked account is still a mechanic; only deactivation or losing the role is not
         isActive: u.isActive,
+        role,
       });
     }
 
@@ -180,6 +203,7 @@ export class MechanicRoster implements OnModuleInit {
         name: true,
         email: true,
         isActive: true,
+        role: true,
       },
     });
     const byAuthId = new Map(rows.map((r) => [r.authUserId, r]));
@@ -209,13 +233,19 @@ export class MechanicRoster implements OnModuleInit {
   }
 
   private differs(
-    row: { name: string; email: string | null; isActive: boolean },
+    row: {
+      name: string;
+      email: string | null;
+      isActive: boolean;
+      role: string | null;
+    },
     want: Wanted,
   ) {
     return (
       row.name !== want.name ||
       row.email !== want.email ||
-      row.isActive !== want.isActive
+      row.isActive !== want.isActive ||
+      row.role !== want.role
     );
   }
 

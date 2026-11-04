@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { AccountCheck, AuthUser } from '../../auth/account-check';
-import { MechanicRoster } from './mechanic-roster.service';
+import { MechanicRoster, roleOf } from './mechanic-roster.service';
 
 // Spec 0009, AC-11, AC-13 and AC-14, against an in memory mechanics table.
 
@@ -13,6 +13,7 @@ type Row = {
   name: string;
   email: string | null;
   isActive: boolean;
+  role?: string | null;
 };
 
 function fakePrisma(rows: Row[]) {
@@ -218,6 +219,7 @@ describe('MechanicRoster duplicate row race', () => {
     name: `Name ${authUserId}`,
     email: `${authUserId}@welinc.com`,
     isActive: true,
+    role: 'MECHANIC',
     ...over,
   });
 
@@ -251,7 +253,12 @@ describe('MechanicRoster duplicate row race', () => {
       expect(result).toEqual({ created: 0, updated: 1, deactivated: 0 });
       expect(prisma.mechanic.update).toHaveBeenCalledWith({
         where: { authUserId: 'a' },
-        data: { name: 'Name a', email: 'a@welinc.com', isActive: true },
+        data: {
+          name: 'Name a',
+          email: 'a@welinc.com',
+          isActive: true,
+          role: 'MECHANIC',
+        },
       });
     });
 
@@ -361,7 +368,12 @@ describe('MechanicRoster duplicate row race', () => {
 
       expect(prisma.mechanic.update).toHaveBeenCalledWith({
         where: { authUserId: 'a' },
-        data: { name: 'Name a', email: 'a@welinc.com', isActive: true },
+        data: {
+          name: 'Name a',
+          email: 'a@welinc.com',
+          isActive: true,
+          role: 'MECHANIC',
+        },
       });
     });
 
@@ -393,5 +405,69 @@ describe('MechanicRoster duplicate row race', () => {
 
       expect(logged).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// Spec 0022, AC-4: the VRMS role on each roster row, written by ensure, sync and refreshOne
+describe('MechanicRoster role', () => {
+  const row = (over: Partial<Row> = {}): Row => ({
+    id: 'm1',
+    authUserId: 'a',
+    name: 'Name a',
+    email: 'a@welinc.com',
+    isActive: true,
+    role: null,
+    ...over,
+  });
+
+  it('reads only VRMS mechanic roles, with Chief Mechanic winning', () => {
+    expect(roleOf([{ role: 'MECHANIC', system: 'VRMS' }])).toBe('MECHANIC');
+    expect(
+      roleOf([
+        { role: 'MECHANIC', system: 'VRMS' },
+        { role: 'CHIEF_MECHANIC', system: 'VRMS' },
+      ]),
+    ).toBe('CHIEF_MECHANIC');
+    expect(roleOf([{ role: 'CHIEF_MECHANIC', system: 'VMMS' }])).toBeNull();
+    expect(roleOf([{ role: 'ADMIN', system: 'VRMS' }])).toBeNull();
+  });
+
+  it('fills an empty role on the next sign in', async () => {
+    const rows = [row()];
+    const { roster } = setup(rows, []);
+    await roster.ensure({
+      sub: 'a',
+      email: 'a@welinc.com',
+      name: 'Name a',
+      system: 'VRMS',
+      roles: [{ role: 'CHIEF_MECHANIC', system: 'VRMS' }],
+    });
+    expect(rows[0].role).toBe('CHIEF_MECHANIC');
+  });
+
+  it('writes a role change on the next Admin sync, and nothing more once it matches', async () => {
+    const rows = [row({ role: 'MECHANIC' })];
+    const { roster } = setup(rows, [user('a', 'CHIEF_MECHANIC')]);
+    expect(await roster.sync('tok')).toMatchObject({ updated: 1 });
+    expect(rows[0].role).toBe('CHIEF_MECHANIC');
+    expect(await roster.sync('tok')).toMatchObject({ updated: 0 });
+  });
+
+  it('refreshOne writes the role too', async () => {
+    const rows = [row()];
+    const { roster } = setup(rows, [user('a', 'MECHANIC')]);
+    await roster.refreshOne('tok', 'a');
+    expect(rows[0].role).toBe('MECHANIC');
+  });
+
+  it('keeps the last known role when the person loses VRMS access', async () => {
+    const rows = [row({ role: 'CHIEF_MECHANIC' })];
+    const { roster, prisma } = setup(rows, [user('a', 'ADMIN')]);
+    await roster.sync('tok');
+    expect(rows[0]).toMatchObject({ isActive: false, role: 'CHIEF_MECHANIC' });
+    expect(await roster.refreshOne('tok', 'a')).toMatchObject({
+      stillActive: false,
+    });
+    expect(prisma.mechanic.upsert).not.toHaveBeenCalled();
   });
 });

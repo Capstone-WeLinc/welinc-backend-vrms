@@ -298,4 +298,12 @@ describe('MechanicWorkService.listRoster', () => {
       ),
     });
   });
+
+  it('passes the stored role through for the Chief badge (spec 0022, AC-4)', async () => {
+    const rows = await service([
+      { ...person('chief', true, []), role: 'CHIEF_MECHANIC' },
+      { ...person('new', true, []), role: null },
+    ]).listRoster();
+    expect(rows.map((r) => r.role)).toEqual(['CHIEF_MECHANIC', null]);
+  });
 });
