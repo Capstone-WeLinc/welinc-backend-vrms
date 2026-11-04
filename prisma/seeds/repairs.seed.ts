@@ -79,7 +79,21 @@ type Crew = {
   garage: string;
   demo: boolean;
   busyUntil: number;
-  hasOpen: boolean;
+  /** Open tickets held today; a mechanic juggles a few, at most MAX_OPEN. */
+  openCount: number;
+  /** Already working a truck: one In progress job at a time. */
+  inProgress: boolean;
+  /** How much work this person draws, fixed per person, so some are busier than others. */
+  activity: number;
+};
+
+const MAX_OPEN = 4;
+// Hours from logging to due, by priority (a fleet garage's usual promise)
+const DUE_HOURS: Record<RepairPriority, number> = {
+  CRITICAL: 24,
+  HIGH: 48,
+  MEDIUM: 96,
+  LOW: 168,
 };
 
 type Rows = {
@@ -132,7 +146,10 @@ export async function seedRepairs(
       garage: home ?? garageNames[roundRobin++ % garageNames.length],
       demo: !!home,
       busyUntil: 0,
-      hasOpen: false,
+      openCount: 0,
+      inProgress: false,
+      // A few regulars carry most of the floor; the demo logins always have live work
+      activity: home ? 3 : weighted([0.15, 1, 2.5], (w) => (w === 0.15 ? 45 : w === 1 ? 40 : 15)),
     };
   });
 
@@ -222,8 +239,8 @@ export async function seedRepairs(
       freeSince = t;
     }
 
-    // About a third of the working fleet is in the shop today, so the open queue looks like a real day
-    if (!open && !retiredAt && chance(0.35)) {
+    // About half of the working fleet is in the shop today, so the open queue looks like a busy day
+    if (!open && !retiredAt && chance(0.55)) {
       const createdAt = duringShopHours(
         Math.max(freeSince + DAY, now - between(0.05, 2) * DAY),
       );
@@ -348,30 +365,38 @@ export async function seedRepairs(
       (status === RepairStatus.FOR_VERIFICATION && costAt <= now);
 
     // ── Crew ──
-    const free = crews.filter(
-      (c) => c.garage === garageName && c.busyUntil <= createdAt,
-    );
-    const candidates =
-      free.length >= crewSize
-        ? free
-        : crews.filter((c) => c.garage === garageName);
-    // An open ticket goes to a demo login that has none yet, so every demo account has live work
+    // Today's open work: a mechanic juggles up to MAX_OPEN jobs but works one truck at a time,
+    // and busier people draw more of it. Past work: whoever was free at the garage.
+    const working = status === RepairStatus.IN_PROGRESS;
+    const atGarage = crews.filter((c) => c.garage === garageName);
+    const canTake = (c: Crew) =>
+      c.openCount < MAX_OPEN && !(working && c.inProgress);
+    const free = isOpen
+      ? atGarage.filter(canTake)
+      : atGarage.filter((c) => c.busyUntil <= createdAt);
+    const candidates = free.length >= crewSize ? free : atGarage;
+    // Every demo login (the Chief included) gets at least two live jobs
     const demoWanting = isOpen
-      ? candidates.filter(
-          (c) => c.demo && !c.hasOpen && c.busyUntil <= createdAt,
-        )
+      ? candidates.filter((c) => c.demo && c.openCount < 2 && canTake(c))
       : [];
     const lead = demoWanting.length
       ? pick(demoWanting)
-      : weighted(candidates, (c) => (c.demo ? 5 : 1));
+      : weighted(candidates, (c) => (isOpen ? c.activity : c.demo ? 5 : 1));
     const crew: Crew[] = [lead];
     if (crewSize === 2) {
       const second = candidates.filter((c) => c !== lead);
-      if (second.length) crew.push(weighted(second, (c) => (c.demo ? 3 : 1)));
+      if (second.length)
+        crew.push(
+          weighted(second, (c) => (isOpen ? c.activity : c.demo ? 3 : 1)),
+        );
     }
     for (const c of crew) {
-      c.busyUntil = closedAt ?? Infinity;
-      if (isOpen) c.hasOpen = true;
+      if (isOpen) {
+        c.openCount += 1;
+        if (working) c.inProgress = true;
+      } else {
+        c.busyUntil = closedAt!;
+      }
     }
     const worker = crew[0].email ?? ADMIN;
 
@@ -708,6 +733,8 @@ export async function seedRepairs(
       driverId: driver.id,
       garageId: garage.id,
       odometer: km,
+      dueAt: new Date(createdAt + DUE_HOURS[priority] * HOUR),
+      dueAtSource: 'PRIORITY',
       reportedByUserId: VRMS_ADMIN.id,
       reportedByName: VRMS_ADMIN.name,
       // Whoever closes a ticket verified it (Admin today)

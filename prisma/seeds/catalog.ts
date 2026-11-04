@@ -1334,6 +1334,44 @@ export const VEHICLES: VehicleSpec[] = [
   },
 ];
 
+/**
+ * The rest of the fleet, generated so the shop has a real day's load (about 70 trucks for 66
+ * mechanics across 3 garages). Built from the hand written models above with its own fixed
+ * random sequence, so it never shifts the history's SEED and rebuilds the same trucks every time.
+ */
+function extraFleet(count: number): VehicleSpec[] {
+  let state = 0x5eed_f1ee;
+  const next = () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+  };
+  const models = VEHICLES.filter((v) => !v.retiredMonthsAgo);
+  const garages = ['Sta. Rosa', 'Marikina', 'Pulilan'];
+  const taken = new Set(VEHICLES.map((v) => v.plateNumber));
+  const letters = 'ABCDEFGHIJKLMNPQRSTUVWXYZ';
+  const extra: VehicleSpec[] = [];
+  while (extra.length < count) {
+    const plate = `N${letters[Math.floor(next() * 25)]}${letters[Math.floor(next() * 25)]} ${1000 + Math.floor(next() * 9000)}`;
+    if (taken.has(plate)) continue;
+    taken.add(plate);
+    const model = models[Math.floor(next() * models.length)];
+    extra.push({
+      plateNumber: plate,
+      model: model.model,
+      type: model.type,
+      capacity: model.capacity,
+      startKm: 100 * Math.round((8_000 + next() * 130_000) / 100),
+      kmPerDay: 10 * Math.round((90 + next() * 90) / 10),
+      garage: garages[extra.length % garages.length],
+    });
+  }
+  return extra;
+}
+
+VEHICLES.push(...extraFleet(48));
+
 export type DriverSpec = {
   name: string;
   licenseNumber: string;
