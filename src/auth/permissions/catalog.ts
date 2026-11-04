@@ -184,12 +184,12 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
   },
   {
-    // Spec 0022, AC-1: the read only Mechanics screen and the two reads behind it
+    // Spec 0022, AC-1: the Team section on the Chief dashboard and the two reads behind it
     key: 'mechanics.view',
-    label: 'See the mechanics workload',
+    label: "See the team's workload",
     group: 'Records',
     description:
-      'Open the Mechanics screen: who is Occupied or Free, and their open tickets.',
+      'See the Team section on the dashboard: who holds which tickets, and their open tickets.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
   },
   {

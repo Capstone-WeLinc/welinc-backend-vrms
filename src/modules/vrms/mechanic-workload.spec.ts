@@ -243,7 +243,7 @@ describe('the picker and the Users page share one Occupied rule', () => {
   });
 });
 
-// Spec 0022, AC-2: the Mechanics screen's roster read
+// Spec 0022, AC-2: the Team section's roster read
 describe('MechanicWorkService.listRoster', () => {
   const service = (rows: unknown[]) =>
     new MechanicWorkService(
@@ -257,6 +257,7 @@ describe('MechanicWorkService.listRoster', () => {
     isActive: boolean,
     statuses: RepairStatus[],
   ) => ({
+    id: `m-${authUserId}`,
     authUserId,
     name: `Name ${authUserId}`,
     email: `${authUserId}@welinc.com`,
@@ -284,6 +285,7 @@ describe('MechanicWorkService.listRoster', () => {
     ]).listRoster();
     expect(row).toEqual({
       authUserId: 'u1',
+      mechanicId: 'm-u1',
       name: 'Name u1',
       email: 'u1@welinc.com',
       role: null,

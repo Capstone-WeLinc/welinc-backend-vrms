@@ -39,9 +39,11 @@ function asMechanicRole(role: string | null): MechanicRole | null {
   return role === 'MECHANIC' || role === 'CHIEF_MECHANIC' ? role : null;
 }
 
-/** One person on the Mechanics screen (spec 0022, AC-2). */
+/** One person on the Chief dashboard's Team section (spec 0022, AC-2). */
 export type RosterRow = {
   authUserId: string;
+  /** The mechanics.id that ticket assignments use, so the Team section joins on it, never the name. */
+  mechanicId: string;
   name: string;
   email: string | null;
   role: MechanicRole | null;
@@ -90,6 +92,7 @@ export class MechanicWorkService {
   private async rosterWithOpenStatuses() {
     const rows = await this.prisma.mechanic.findMany({
       select: {
+        id: true,
         authUserId: true,
         name: true,
         email: true,
@@ -122,7 +125,7 @@ export class MechanicWorkService {
   }
 
   /**
-   * Spec 0022, AC-2: the Mechanics screen's list. Every active person, plus an inactive one who
+   * Spec 0022, AC-2: the Team section's roster. Every active person, plus an inactive one who
    * still holds an open ticket. Occupied comes from isOccupied through workloadOf.
    */
   async listRoster(): Promise<RosterRow[]> {
@@ -131,6 +134,7 @@ export class MechanicWorkService {
       .filter((r) => r.isActive || r.total > 0)
       .map((r) => ({
         authUserId: r.authUserId,
+        mechanicId: r.id,
         name: r.name,
         email: r.email,
         role: asMechanicRole(r.role),

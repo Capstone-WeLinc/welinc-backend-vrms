@@ -117,7 +117,7 @@ describe('Route decorators (AC-7)', () => {
     );
   });
 
-  it('opens mechanics.view only on the two Mechanics screen reads, never a write (spec 0022, AC-3)', () => {
+  it('opens mechanics.view only on the two Team section reads, never a write (spec 0022, AC-3)', () => {
     expect(
       routes.filter((r) => r.keys?.includes('mechanics.view')).map(label),
     ).toEqual([
