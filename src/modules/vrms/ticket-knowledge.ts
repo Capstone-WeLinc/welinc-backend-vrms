@@ -64,12 +64,17 @@ export function formatIssue(
           estimatedHours: num(entry.estimatedHours),
         }
       : null,
+    // Spec 0023, AC-12: the checklist lock the Edit steps dialog sends back
+    checklistVersion: issue.checklistVersion,
     steps: issue.steps.map((s) => ({
       id: s.id,
       position: s.position,
       text: s.text,
       checkedAt: s.checkedAt,
       checkedByEmail: s.checkedByEmail,
+      // Spec 0023, AC-13: the Added and Edited tags
+      origin: s.origin,
+      editedAt: s.editedAt,
     })),
     resolutionNote: issue.resolutionNote,
     hoursSpent: num(issue.hoursSpent),

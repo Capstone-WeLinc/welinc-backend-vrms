@@ -234,6 +234,8 @@ model RepairIssue {
   followedKnownFix      Boolean?  @map("followed_known_fix")
   resolvedAt            DateTime? @map("resolved_at") @db.Timestamptz(6)
   suggestionDismissedAt DateTime? @map("suggestion_dismissed_at") @db.Timestamptz(6)
+  // Spec 0023: the checklist lock. Only the checklist paths move it (save, relink, clearsFix, approved suggestion)
+  checklistVersion      Int       @default(0) @map("checklist_version")
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -250,14 +252,24 @@ model RepairIssue {
   @@map("repair_issues")
 }
 
+/// Spec 0023: where a ticket's checklist step came from.
+enum StepOrigin {
+  KNOWN_FIX
+  ADDED
+}
+
 // Copied from the knowledge entry when the issue is linked; editing the entry never changes these.
+// Spec 0023: the people working the ticket may add, reword, remove and reorder them.
 model RepairIssueStep {
-  id             String    @id @default(uuid()) @db.Uuid
-  repairIssueId  String    @map("repair_issue_id") @db.Uuid
+  id             String     @id @default(uuid()) @db.Uuid
+  repairIssueId  String     @map("repair_issue_id") @db.Uuid
   position       Int
-  text           String    @db.VarChar(300)
-  checkedAt      DateTime? @map("checked_at") @db.Timestamptz(6)
-  checkedByEmail String?   @map("checked_by_email") @db.VarChar(255)
+  text           String     @db.VarChar(300)
+  checkedAt      DateTime?  @map("checked_at") @db.Timestamptz(6)
+  checkedByEmail String?    @map("checked_by_email") @db.VarChar(255)
+  // Spec 0023: copied from a known fix, or added on this ticket; editedAt marks a reworded copy
+  origin         StepOrigin @default(KNOWN_FIX)
+  editedAt       DateTime?  @map("edited_at") @db.Timestamptz(6)
 
   repairIssue RepairIssue @relation(fields: [repairIssueId], references: [id], onDelete: Cascade)
 

@@ -33,6 +33,11 @@ export const AUDIT_ACTIONS = [
   'LOCKED',
   'STEP_CHECKED',
   'STEP_UNCHECKED',
+  // Spec 0023
+  'STEP_ADDED',
+  'STEP_REMOVED',
+  'STEP_EDITED',
+  'STEP_MOVED',
   // Reserved: in the catalog so filters accept them, written by features 33 and 30
   'STATUS_OVERRIDE',
   'TRANSFER_REQUESTED',
@@ -78,6 +83,10 @@ export const AUDIT_CATEGORY: Record<AuditAction, AuditCategory> = {
   ATTACHMENT_MOVED: 'FILES',
   STEP_CHECKED: 'CHECKLIST',
   STEP_UNCHECKED: 'CHECKLIST',
+  STEP_ADDED: 'CHECKLIST',
+  STEP_REMOVED: 'CHECKLIST',
+  STEP_EDITED: 'CHECKLIST',
+  STEP_MOVED: 'CHECKLIST',
   KNOWLEDGE_LINK: 'KNOWLEDGE',
 };
 

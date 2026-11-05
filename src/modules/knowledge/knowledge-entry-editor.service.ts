@@ -133,6 +133,18 @@ export class KnowledgeEntryEditorService {
   }
 
   /**
+   * Spec 0023: takes the issue's row lock, the one a checklist save takes first, then says whether
+   * it has no steps. An issue with its own checklist keeps it; only an empty one gets the entry's.
+   */
+  private async hasNoSteps(tx: Prisma.TransactionClient, issueId: string) {
+    await tx.$queryRaw`SELECT id FROM repair_issues WHERE id = ${issueId}::uuid FOR UPDATE`;
+    const count = await tx.repairIssueStep.count({
+      where: { repairIssueId: issueId },
+    });
+    return count === 0;
+  }
+
+  /**
    * AC-33: links every still eligible issue of a suggestion group to the new entry. An issue already
    * linked, dismissed or on a cancelled ticket is skipped. Steps are copied only to Pending or In
    * progress tickets, and no ticket's updatedAt moves. Linking here records history, so it happens
@@ -157,13 +169,22 @@ export class KnowledgeEntryEditorService {
         i.repairTicket.repairStatus !== RepairStatus.CANCELLED,
     );
     for (const issue of eligible) {
+      const copies =
+        LINKABLE_STATUSES.includes(issue.repairTicket.repairStatus) &&
+        dto.steps.length > 0 &&
+        (await this.hasNoSteps(tx, issue.id));
       await tx.repairIssue.update({
         where: { id: issue.id },
         data: {
           knowledgeEntryId: entry.id,
           categoryId: issue.categoryId ?? entry.categoryId,
-          ...(LINKABLE_STATUSES.includes(issue.repairTicket.repairStatus)
-            ? { steps: { create: positioned(dto.steps, 'text') } }
+          // Spec 0023, AC-14: the checklist lock moves with the copy, so an open Edit steps
+          // dialog on this issue gets 409
+          ...(copies
+            ? {
+                checklistVersion: { increment: 1 },
+                steps: { create: positioned(dto.steps, 'text') },
+              }
             : {}),
         },
       });

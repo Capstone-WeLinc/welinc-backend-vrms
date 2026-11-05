@@ -1125,6 +1125,12 @@ export class RepairsService {
       });
       if (count === 0) throw new ConflictException(STALE_TICKET);
 
+      // Spec 0023, AC-14: the checklist lock moves before the steps are replaced, so an Edit
+      // steps dialog opened before this relink gets 409, and a running save finishes first
+      await tx.repairIssue.update({
+        where: { id: issueId },
+        data: { checklistVersion: { increment: 1 } },
+      });
       await tx.repairIssueStep.deleteMany({
         where: { repairIssueId: issueId },
       });
@@ -1696,6 +1702,8 @@ export class RepairsService {
         assign: ability.can('assign', target),
         // Spec 0019, AC-1: the details and issue Edit controls
         edit: ability.can('edit', target),
+        // Spec 0023, AC-2: the Edit steps and Add steps controls
+        editChecklist: ability.can('editChecklist', target),
       },
     };
 

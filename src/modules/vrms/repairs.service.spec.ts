@@ -695,7 +695,17 @@ describe('RepairsService.findAuditEvents', () => {
       });
       expect(and).toEqual([
         {
-          action: { in: ['COST_UPDATE', 'STEP_CHECKED', 'STEP_UNCHECKED'] },
+          action: {
+            in: [
+              'COST_UPDATE',
+              'STEP_CHECKED',
+              'STEP_UNCHECKED',
+              'STEP_ADDED',
+              'STEP_REMOVED',
+              'STEP_EDITED',
+              'STEP_MOVED',
+            ],
+          },
         },
       ]);
     });
@@ -741,6 +751,10 @@ describe('RepairsService.findAuditEvents', () => {
       expect(full.find((c) => c.category === 'CHECKLIST')?.types).toEqual([
         'STEP_CHECKED',
         'STEP_UNCHECKED',
+        'STEP_ADDED',
+        'STEP_REMOVED',
+        'STEP_EDITED',
+        'STEP_MOVED',
       ]);
       expect(
         service.findAuditCatalog(asMechanic).map((c) => c.category),

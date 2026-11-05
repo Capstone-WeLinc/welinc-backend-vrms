@@ -68,6 +68,13 @@ const COVERAGE: Entry[] = [
     provedBy: 'vrms/repairs.steps.spec.ts',
   },
   {
+    // Spec 0023: one row per changed step of a checklist save
+    method: 'save',
+    file: 'vrms/checklist-edits.service.ts',
+    writes: ['STEP_REMOVED', 'STEP_EDITED', 'STEP_MOVED', 'STEP_ADDED'],
+    provedBy: 'vrms/checklist-edits.service.spec.ts',
+  },
+  {
     method: 'editDetails',
     file: 'vrms/ticket-edits.service.ts',
     writes: ['TICKET_EDITED'],

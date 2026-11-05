@@ -520,6 +520,11 @@ export class TicketEditsService {
     const updated = await this.prisma.$transaction(async (tx) => {
       await stampEdit(tx, ticket, user, now);
       if (clearsFix) {
+        // Spec 0023, AC-14: the checklist lock moves before its steps go
+        await tx.repairIssue.update({
+          where: { id: issueId },
+          data: { checklistVersion: { increment: 1 } },
+        });
         await tx.repairIssueStep.deleteMany({
           where: { repairIssueId: issueId },
         });

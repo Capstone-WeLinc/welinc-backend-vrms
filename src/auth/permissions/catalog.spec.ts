@@ -23,6 +23,7 @@ const EXPECTED: Array<
   ['ticket.assign', 'Tickets', true, true, false],
   ['ticket.edit', 'Tickets', true, false, false],
   ['ticket.unlock', 'Tickets', true, false, false],
+  ['ticket.checklist.edit', 'Tickets', true, true, true],
   ['ticket.files.add', 'Tickets', true, true, true],
   ['ticket.documents.add', 'Tickets', true, true, false],
   ['ticket.files.remove_any', 'Tickets', true, true, false],
@@ -91,9 +92,9 @@ describe('permission catalog', () => {
   });
 
   // covers: AC-1, AC-2
-  it('seeds one row per matrix role and key, 81 today', () => {
+  it('seeds one row per matrix role and key, 84 today', () => {
     expect(MATRIX_ROLES).toEqual(['ADMIN', 'CHIEF_MECHANIC', 'MECHANIC']);
-    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(81);
+    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(84);
   });
 
   // covers: AC-4. Spec 0017, AC-15 locks ticket.files.remove_any off for the Mechanic
@@ -152,6 +153,7 @@ describe('permission catalog', () => {
       'ticket.verify',
       'ticket.costs.view',
       'ticket.assign',
+      'ticket.checklist.edit',
       'ticket.files.add',
       'ticket.documents.add',
       'ticket.files.remove_any',
@@ -166,13 +168,14 @@ describe('permission catalog', () => {
     expect(allowed('MECHANIC')).toEqual([
       'ticket.view',
       'ticket.work',
+      'ticket.checklist.edit',
       'ticket.files.add',
       'ai.use',
       'config.read',
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(allowed('ADMIN')).toHaveLength(26);
+    expect(allowed('ADMIN')).toHaveLength(27);
     expect(allowed('ADMIN')).not.toContain('ticket.work');
   });
 
