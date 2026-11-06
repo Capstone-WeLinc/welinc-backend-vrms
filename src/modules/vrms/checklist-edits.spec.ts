@@ -111,9 +111,11 @@ describe('the moved set (AC-10)', () => {
     expect(moved(stored(5), ['s2', 's3', 's4', 's5', 's1'])).toEqual(['s1']);
   });
 
-  it('writes one move for a swap, keeping the run that ends earliest', () => {
-    // [s2, s1]: both runs are one long; s2's ends first, so s1 is the one that moved
-    expect(moved(stored(2), ['s2', 's1'])).toEqual(['s1']);
+  it('writes one move for a swap, keeping the run through the lowest old positions', () => {
+    // [s2, s1]: both runs are one long; s1 is the lower one, so s2 moved ("Step 2 → step 1")
+    expect(moved(stored(2), ['s2', 's1'])).toEqual(['s2']);
+    // Dragging step 1 down one place gives the same order, so the same row
+    expect(moved(stored(3), ['s2', 's1', 's3'])).toEqual(['s2']);
     // Equal ends: the run through the lower old position stays, so s3 is the one that moved
     expect(moved(stored(4), ['s1', 's3', 's2', 's4'])).toEqual(['s3']);
   });
@@ -136,9 +138,44 @@ describe('the moved set (AC-10)', () => {
     ]);
   });
 
-  it('gives the longest increasing run, earliest ending on a tie', () => {
+  it('marks only step 6 when it is dragged above step 5', () => {
+    expect(moved(stored(6), ['s1', 's2', 's3', 's4', 's6', 's5'])).toEqual([
+      's6',
+    ]);
+  });
+
+  // The six tie rule cases of the spec: old positions in new order → the kept old positions
+  it.each([
+    [
+      [1, 2, 3, 4, 6, 5],
+      [1, 2, 3, 4, 5],
+    ],
+    [[2, 1], [1]],
+    [
+      [3, 1, 4],
+      [1, 4],
+    ],
+    [
+      [2, 3, 1],
+      [2, 3],
+    ],
+    [
+      [3, 4, 1, 2],
+      [1, 2],
+    ],
+    [
+      [2, 1, 3, 4],
+      [1, 3, 4],
+    ],
+  ])('keeps the run through the lowest old positions in %j', (values, kept) => {
+    const run = [...longestRun(values)].sort((a, b) => a - b);
+    expect(run.map((i) => values[i])).toEqual(kept);
+  });
+
+  it('gives the longest increasing run', () => {
     expect([...longestRun([3, 1, 2])].sort()).toEqual([1, 2]);
-    expect([...longestRun([2, 1])]).toEqual([0]);
+    expect([...longestRun([5, 4, 3, 2, 1])]).toEqual([4]);
+    expect([...longestRun([1, 2, 3])].sort()).toEqual([0, 1, 2]);
     expect([...longestRun([])]).toEqual([]);
   });
 });

@@ -117,33 +117,35 @@ export type ChecklistDiff = {
 };
 
 /**
- * AC-10: the indexes (into `values`) of the longest strictly increasing run. When two runs are
- * equally long, the one that ends earliest wins. Behind that end, each step back picks the
- * candidate with the lowest old position, so moving one step up marks that step, not the one it
- * jumped over ([s3, s1, s4] keeps s1 and s4, so s3 moved).
+ * AC-10: the indexes (into `values`, old positions in new order) of the longest strictly
+ * increasing run. When two runs are equally long, the run through the lowest old positions wins:
+ * compare their old positions one by one in order, the first lower one wins. So dragging step 6
+ * above step 5 keeps 1 to 5 (step 6 moved), and a swap of steps 1 and 2 keeps step 1.
  */
 export function longestRun(values: number[]): Set<number> {
   const n = values.length;
-  if (n === 0) return new Set();
-  const length = new Array<number>(n).fill(1);
-  const prev = new Array<number>(n).fill(-1);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < i; j++) {
-      if (values[j] >= values[i]) continue;
-      const longer = length[j] + 1 > length[i];
-      const lower = length[j] + 1 === length[i] && values[j] < values[prev[i]];
-      if (longer || lower) {
-        length[i] = length[j] + 1;
-        prev[i] = j;
-      }
+  // from[i]: the length of the longest increasing run that starts at index i
+  const from = new Array<number>(n).fill(1);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = i + 1; j < n; j++) {
+      if (values[j] > values[i]) from[i] = Math.max(from[i], from[j] + 1);
     }
   }
-  const best = Math.max(...length);
-  let at = length.indexOf(best);
   const run = new Set<number>();
-  while (at !== -1) {
-    run.add(at);
-    at = prev[at];
+  let left = n === 0 ? 0 : Math.max(...from);
+  let after = -1;
+  let last = -Infinity;
+  // Walk from the left: each pick is the lowest old position that can still finish a longest run
+  while (left > 0) {
+    let pick = -1;
+    for (let i = after + 1; i < n; i++) {
+      if (values[i] <= last || from[i] < left) continue;
+      if (pick === -1 || values[i] < values[pick]) pick = i;
+    }
+    run.add(pick);
+    after = pick;
+    last = values[pick];
+    left--;
   }
   return run;
 }
