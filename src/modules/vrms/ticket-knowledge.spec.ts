@@ -1,5 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
-import { checkResolutions, resolutionData } from './ticket-knowledge';
+import {
+  checkResolutions,
+  issueInclude,
+  resolutionData,
+} from './ticket-knowledge';
 
 // Spec 0007, AC-31: "What fixed it" on the move to For verification.
 
@@ -111,5 +115,11 @@ describe('resolutionData', () => {
       followedKnownFix: null,
       resolvedAt: now,
     });
+  });
+});
+
+describe('issueInclude order (spec 0024, AC-4)', () => {
+  it('sends issues by createdAt, then id, so issue numbers never swap', () => {
+    expect(issueInclude.orderBy).toEqual([{ createdAt: 'asc' }, { id: 'asc' }]);
   });
 });
