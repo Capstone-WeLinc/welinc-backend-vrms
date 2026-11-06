@@ -62,6 +62,15 @@ export function photoKindFor(workStarted: boolean): AttachmentKind {
   return workStarted ? 'PROOF' : 'VEHICLE_PHOTO';
 }
 
+/** Spec 0024, AC-21: the photo group an upload may name (a drop on a zone). */
+export const PHOTO_GROUPS = ['BEFORE', 'AFTER'] as const;
+export type PhotoGroup = (typeof PHOTO_GROUPS)[number];
+
+/** Spec 0024, AC-21: the kind a named group is stored as. */
+export function photoKindForGroup(group: PhotoGroup): AttachmentKind {
+  return group === 'AFTER' ? 'PROOF' : 'VEHICLE_PHOTO';
+}
+
 /**
  * Spec 0018: what the upload form sends. PHOTO lets the server pick Before or After; the two
  * photo kinds are still accepted from queued uploads in an open tab and treated as PHOTO.

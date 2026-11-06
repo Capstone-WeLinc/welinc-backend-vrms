@@ -34,11 +34,13 @@ import {
   PHOTO_KINDS,
   PHOTO_RULE,
   photoKindFor,
+  photoKindForGroup,
   visibleKinds,
 } from './attachment-kinds';
 import {
   attachmentNotFound,
   beforePhotoProtected,
+  groupNotForDocuments,
   notAPhotoMove,
   photoAlreadyThere,
   fileTooLarge,
@@ -101,6 +103,8 @@ export type AttachmentView = {
   takenAt?: Date | null;
   /** Spec 0018, AC-13: verifiers only; the key is absent for everyone else. */
   takenBeforeWork?: boolean;
+  /** Spec 0024, AC-22: a Before photo uploaded after work started (never protected). */
+  addedAfterWorkStarted: boolean;
 };
 
 /** What the evidence signals of a view read, once per request (spec 0018, AC-13 and AC-14). */
@@ -156,6 +160,21 @@ export function isReturnedAfter(
   );
 }
 
+/**
+ * Spec 0024, AC-22: a Before photo uploaded after work started, by upload time (both server
+ * times). Move never changes `createdAt`, so this holds wherever the photo moved from.
+ */
+export function isAddedAfterWorkStarted(
+  row: Pick<Attachment, 'kind' | 'createdAt'>,
+  workStartedAt: Date | null,
+): boolean {
+  return (
+    row.kind === AttachmentKind.VEHICLE_PHOTO &&
+    workStartedAt != null &&
+    row.createdAt.getTime() > workStartedAt.getTime()
+  );
+}
+
 type Ticket = {
   id: string;
   repairStatus: RepairStatus;
@@ -173,33 +192,37 @@ export type RemoveRights = {
   removeAny: boolean;
   /** The add right for each add action on this ticket (AC-15), documents including costs. */
   add: Record<AddAction, boolean>;
-  /** Spec 0018: work has started on the ticket (`workStartedAt` set). */
-  workStarted: boolean;
+  /** Spec 0018 and spec 0024, AC-22: when work started on the ticket, or null. */
+  workStartedAt: Date | null;
   /** Spec 0018, AC-10: `tickets.protect_before_photos`. */
   protectBefore: boolean;
 };
 
 /** The caller's side of RemoveRights; the ticket side comes from the row read (or locked). */
-type ChangeRights = Omit<RemoveRights, 'open' | 'workStarted'>;
+type ChangeRights = Omit<RemoveRights, 'open' | 'workStartedAt'>;
 
 /** The full rights against one read of the ticket. */
 function rightsOn(rights: ChangeRights, ticket: LockedTicket): RemoveRights {
   return {
     ...rights,
     open: !isFinished(ticket.repairStatus),
-    workStarted: workStarted(ticket),
+    workStartedAt: ticket.workStartedAt,
   };
 }
 
-/** Spec 0018, AC-10: a Before photo, after work started, while the switch is on. */
+/**
+ * Spec 0018, AC-10, narrowed by spec 0024, AC-22: a Before photo uploaded at or before the work
+ * start, once work has started, while the switch is on.
+ */
 export function isProtectedBefore(
-  row: Pick<Attachment, 'kind'>,
-  rights: Pick<RemoveRights, 'workStarted' | 'protectBefore'>,
+  row: Pick<Attachment, 'kind' | 'createdAt'>,
+  rights: Pick<RemoveRights, 'workStartedAt' | 'protectBefore'>,
 ): boolean {
   return (
     rights.protectBefore &&
-    rights.workStarted &&
-    row.kind === AttachmentKind.VEHICLE_PHOTO
+    rights.workStartedAt != null &&
+    row.kind === AttachmentKind.VEHICLE_PHOTO &&
+    !isAddedAfterWorkStarted(row, rights.workStartedAt)
   );
 }
 
@@ -220,7 +243,7 @@ function ownsWithRight(
  * finished ticket. Spec 0018, AC-10: a protected Before photo needs remove_any.
  */
 export function canRemove(
-  row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
+  row: Pick<Attachment, 'kind' | 'uploadedByUserId' | 'createdAt'>,
   rights: RemoveRights,
 ): boolean {
   if (!rights.open) return false;
@@ -234,7 +257,7 @@ export function canRemove(
  * Before needs remove_any; moving into Before never does.
  */
 export function canMove(
-  row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
+  row: Pick<Attachment, 'kind' | 'uploadedByUserId' | 'createdAt'>,
   rights: RemoveRights,
 ): boolean {
   if (!rights.open || !isPhotoKind(row.kind)) return false;
@@ -383,7 +406,7 @@ export class AttachmentsService {
       open,
       removeAny: ability.can('removeAny', 'RepairTicket'),
       add: { addFiles, addDocuments },
-      workStarted: workStarted(ticket),
+      workStartedAt: ticket.workStartedAt,
       protectBefore: this.settings.get('tickets.protect_before_photos'),
     };
     const items = await Promise.all(
@@ -429,10 +452,13 @@ export class AttachmentsService {
     this.requireStore();
     const ticket = await this.findVisibleTicket(ability, ticketId);
     // Spec 0018, AC-1: a photo's kind comes from whether work has started, never from the
-    // client. This early kind is checked now; it is derived again under the lock below.
+    // client's kind. This early kind is checked now; it is derived again under the lock below.
+    // Spec 0024, AC-21: a named group (a drop on a zone) overrides that pick for any photo kind.
     const photo = dto.kind === 'PHOTO' || isPhotoKind(dto.kind);
+    const photoKind = (started: boolean): AttachmentKind =>
+      dto.group ? photoKindForGroup(dto.group) : photoKindFor(started);
     const earlyKind: AttachmentKind = photo
-      ? photoKindFor(workStarted(ticket))
+      ? photoKind(workStarted(ticket))
       : (dto.kind as AttachmentKind);
     const rule = photo ? PHOTO_RULE : KIND_RULES[earlyKind];
     const limits = this.limits();
@@ -444,6 +470,8 @@ export class AttachmentsService {
     if (isFinished(ticket.repairStatus)) {
       throw ticketFinished(STATUS_LABELS[ticket.repairStatus]);
     }
+    // Spec 0024, AC-21: a bad value already answered 400 in the DTO; a document never has a group
+    if (dto.group && !photo) throw groupNotForDocuments();
     if (file && file.buffer.length > limits.maxFileMb * MB) {
       throw fileTooLarge(
         limits.maxFileMb,
@@ -476,7 +504,7 @@ export class AttachmentsService {
           open: true,
           removeAny: ability.can('removeAny', 'RepairTicket'),
           add: { addFiles: photo, addDocuments: !photo },
-          workStarted: startedAt != null,
+          workStartedAt: startedAt,
           protectBefore: this.settings.get('tickets.protect_before_photos'),
         },
         await this.evidence(ticketId, startedAt, ability),
@@ -531,7 +559,7 @@ export class AttachmentsService {
           const locked = await this.lockOpenTicket(tx, ticketId);
           // Spec 0018, AC-1: the kind again from the locked row; the checks below run for it
           startedAt = locked.workStartedAt;
-          kind = photo ? photoKindFor(workStarted(locked)) : earlyKind;
+          kind = photo ? photoKind(workStarted(locked)) : earlyKind;
           const duplicate = await this.findDuplicate(
             tx,
             ticketId,
@@ -780,7 +808,7 @@ export class AttachmentsService {
 
   /** The 403s and the 409 of a remove or move, in their order (spec 0018, AC-10). */
   private checkChange(
-    row: Pick<Attachment, 'kind' | 'uploadedByUserId'>,
+    row: Pick<Attachment, 'kind' | 'uploadedByUserId' | 'createdAt'>,
     ticket: LockedTicket,
     rights: ChangeRights,
     action: 'remove' | 'move',
@@ -979,6 +1007,11 @@ export class AttachmentsService {
       canRemove: canRemove(row, rights),
       canMove: canMove(row, rights),
       returnedAfter: isReturnedAfter(row, evidence.returnedAt),
+      // Spec 0024, AC-22: shown to everyone who sees the photo, unlike takenBeforeWork
+      addedAfterWorkStarted: isAddedAfterWorkStarted(
+        row,
+        evidence.workStartedAt,
+      ),
       // AC-13: the time and the flag never leave the server for a caller without the verify right
       ...(evidence.verifier && {
         takenAt: row.takenAt,

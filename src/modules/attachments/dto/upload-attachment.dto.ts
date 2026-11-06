@@ -1,5 +1,10 @@
 import { Allow, IsIn, IsOptional, IsUUID } from 'class-validator';
-import { UPLOAD_KINDS, type UploadKind } from '../attachment-kinds';
+import {
+  PHOTO_GROUPS,
+  UPLOAD_KINDS,
+  type PhotoGroup,
+  type UploadKind,
+} from '../attachment-kinds';
 
 // Spec 0017, AC-4 and AC-11: the multipart fields beside `file`. Spec 0018: `PHOTO` lets the
 // server pick Before or After; `VEHICLE_PHOTO` and `PROOF` are read as `PHOTO`.
@@ -10,6 +15,14 @@ export class UploadAttachmentDto {
   @IsOptional()
   @IsUUID()
   issueId?: string;
+
+  /**
+   * Spec 0024, AC-21: the photo group a drop names. Absent, the server picks it from
+   * `workStartedAt`; on a document the service answers 400.
+   */
+  @IsOptional()
+  @IsIn(PHOTO_GROUPS)
+  group?: PhotoGroup;
 
   /**
    * Spec 0018, AC-12: when the phone took the photo. Allowed through the global pipe with no

@@ -2,6 +2,7 @@ import {
   canMove,
   canRemove,
   cleanFileName,
+  isAddedAfterWorkStarted,
   isProtectedBefore,
   type RemoveRights,
 } from './attachments.service';
@@ -95,17 +96,26 @@ describe('cleanFileName (data model)', () => {
   });
 });
 
+// Spec 0024, AC-22: protection reads the upload time against the work start
+const STARTED = new Date('2026-11-05T02:00:00.000Z');
+const BEFORE_START = new Date('2026-11-05T01:00:00.000Z');
+const AFTER_START = new Date('2026-11-05T03:00:00.000Z');
+
 describe('canRemove (AC-17)', () => {
   const rights = (over: Partial<RemoveRights> = {}): RemoveRights => ({
     userId: 'me',
     open: true,
     removeAny: false,
     add: { addFiles: true, addDocuments: false },
-    workStarted: false,
+    workStartedAt: null,
     protectBefore: true,
     ...over,
   });
-  const photo = { kind: 'VEHICLE_PHOTO' as const, uploadedByUserId: 'me' };
+  const photo = {
+    kind: 'VEHICLE_PHOTO' as const,
+    uploadedByUserId: 'me',
+    createdAt: BEFORE_START,
+  };
 
   it('lets the uploader remove their own while they hold the add right', () => {
     expect(canRemove(photo, rights())).toBe(true);
@@ -130,7 +140,7 @@ describe('canRemove (AC-17)', () => {
   });
 
   it('checks the add right of the file’s kind', () => {
-    const doc = { kind: 'OTHER_DOCUMENT' as const, uploadedByUserId: 'me' };
+    const doc = { ...photo, kind: 'OTHER_DOCUMENT' as const };
     expect(canRemove(doc, rights())).toBe(false);
     expect(
       canRemove(doc, rights({ add: { addFiles: false, addDocuments: true } })),
@@ -144,15 +154,21 @@ describe('canRemove (AC-17)', () => {
   });
 
   it('protects a Before photo once work started, unless remove_any or the switch is off (spec 0018, AC-10)', () => {
-    expect(canRemove(photo, rights({ workStarted: true }))).toBe(false);
-    expect(
-      canRemove(photo, rights({ workStarted: true, removeAny: true })),
-    ).toBe(true);
-    expect(
-      canRemove(photo, rights({ workStarted: true, protectBefore: false })),
-    ).toBe(true);
+    const started = { workStartedAt: STARTED };
+    expect(canRemove(photo, rights(started))).toBe(false);
+    expect(canRemove(photo, rights({ ...started, removeAny: true }))).toBe(
+      true,
+    );
+    expect(canRemove(photo, rights({ ...started, protectBefore: false }))).toBe(
+      true,
+    );
     const after = { ...photo, kind: 'PROOF' as const };
-    expect(canRemove(after, rights({ workStarted: true }))).toBe(true);
+    expect(canRemove(after, rights(started))).toBe(true);
+  });
+
+  it('lets the uploader remove a Before photo added after work started (spec 0024, AC-22)', () => {
+    const late = { ...photo, createdAt: AFTER_START };
+    expect(canRemove(late, rights({ workStartedAt: STARTED }))).toBe(true);
   });
 });
 
@@ -162,12 +178,20 @@ describe('canMove (spec 0018, AC-9 to AC-11)', () => {
     open: true,
     removeAny: false,
     add: { addFiles: true, addDocuments: false },
-    workStarted: true,
+    workStartedAt: STARTED,
     protectBefore: true,
     ...over,
   });
-  const after = { kind: 'PROOF' as const, uploadedByUserId: 'me' };
-  const before = { kind: 'VEHICLE_PHOTO' as const, uploadedByUserId: 'me' };
+  const after = {
+    kind: 'PROOF' as const,
+    uploadedByUserId: 'me',
+    createdAt: AFTER_START,
+  };
+  const before = {
+    kind: 'VEHICLE_PHOTO' as const,
+    uploadedByUserId: 'me',
+    createdAt: BEFORE_START,
+  };
 
   it('lets the uploader with ticket.files.add move their own After photo', () => {
     expect(canMove(after, rights())).toBe(true);
@@ -182,11 +206,15 @@ describe('canMove (spec 0018, AC-9 to AC-11)', () => {
   it('keeps a protected Before photo for remove_any, and frees it before work starts', () => {
     expect(canMove(before, rights())).toBe(false);
     expect(canMove(before, rights({ removeAny: true }))).toBe(true);
-    expect(canMove(before, rights({ workStarted: false }))).toBe(true);
+    expect(canMove(before, rights({ workStartedAt: null }))).toBe(true);
+  });
+
+  it('lets the uploader move a late Before photo back to After (spec 0024, AC-22)', () => {
+    expect(canMove({ ...before, createdAt: AFTER_START }, rights())).toBe(true);
   });
 
   it('never moves a document, and nothing on a finished ticket', () => {
-    const doc = { kind: 'RECEIPT' as const, uploadedByUserId: 'me' };
+    const doc = { ...after, kind: 'RECEIPT' as const };
     expect(canMove(doc, rights({ removeAny: true }))).toBe(false);
     expect(canMove(after, rights({ open: false, removeAny: true }))).toBe(
       false,
@@ -194,23 +222,47 @@ describe('canMove (spec 0018, AC-9 to AC-11)', () => {
   });
 });
 
-describe('isProtectedBefore (spec 0018, AC-10)', () => {
+describe('isProtectedBefore (spec 0018, AC-10; spec 0024, AC-22)', () => {
+  const on = { workStartedAt: STARTED, protectBefore: true };
+  const before = { kind: 'VEHICLE_PHOTO' as const, createdAt: BEFORE_START };
+
   it('protects only a Before photo, only after work started, only while the switch is on', () => {
-    const on = { workStarted: true, protectBefore: true };
-    expect(isProtectedBefore({ kind: 'VEHICLE_PHOTO' }, on)).toBe(true);
-    expect(isProtectedBefore({ kind: 'PROOF' }, on)).toBe(false);
+    expect(isProtectedBefore(before, on)).toBe(true);
+    expect(isProtectedBefore({ ...before, kind: 'PROOF' }, on)).toBe(false);
+    expect(isProtectedBefore(before, { ...on, workStartedAt: null })).toBe(
+      false,
+    );
+    expect(isProtectedBefore(before, { ...on, protectBefore: false })).toBe(
+      false,
+    );
+  });
+
+  it('follows the upload time: at the work start is protected, after it is not', () => {
+    expect(isProtectedBefore({ ...before, createdAt: STARTED }, on)).toBe(true);
+    expect(isProtectedBefore({ ...before, createdAt: AFTER_START }, on)).toBe(
+      false,
+    );
+  });
+});
+
+describe('isAddedAfterWorkStarted (spec 0024, AC-22)', () => {
+  const before = { kind: 'VEHICLE_PHOTO' as const, createdAt: AFTER_START };
+
+  it('marks a Before photo uploaded strictly after the work start', () => {
+    expect(isAddedAfterWorkStarted(before, STARTED)).toBe(true);
     expect(
-      isProtectedBefore(
-        { kind: 'VEHICLE_PHOTO' },
-        { ...on, workStarted: false },
-      ),
+      isAddedAfterWorkStarted({ ...before, createdAt: STARTED }, STARTED),
     ).toBe(false);
     expect(
-      isProtectedBefore(
-        { kind: 'VEHICLE_PHOTO' },
-        { ...on, protectBefore: false },
-      ),
+      isAddedAfterWorkStarted({ ...before, createdAt: BEFORE_START }, STARTED),
     ).toBe(false);
+  });
+
+  it('never marks an After photo, or any photo before work started', () => {
+    expect(isAddedAfterWorkStarted({ ...before, kind: 'PROOF' }, STARTED)).toBe(
+      false,
+    );
+    expect(isAddedAfterWorkStarted(before, null)).toBe(false);
   });
 });
 
