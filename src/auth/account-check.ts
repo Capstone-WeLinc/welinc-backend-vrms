@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { SystemType, UserRole } from './roles';
+import { AUTH_UNAVAILABLE_MESSAGE } from './verify';
 
 // Spec 0009, AC-4 to AC-7 and AC-25: every protected request confirms the caller with
 // welinc-auth. Only 200 answers are cached, per token hash, for 30 seconds or until the
@@ -16,8 +17,7 @@ export const CHECK_TIMEOUT_MS = 3_000;
 export const CACHE_TTL_MS = 30_000;
 export const CACHE_MAX_ENTRIES = 5_000;
 
-export const UNAVAILABLE =
-  'Sign in service unavailable. Try again in a moment.';
+export const UNAVAILABLE = AUTH_UNAVAILABLE_MESSAGE;
 const NO_ACCESS = 'User does not have access to this system';
 
 /** The caller as VRMS sees it, built from welinc-auth's `/auth/me` answer. */
@@ -39,9 +39,12 @@ type MeAnswer = {
   roles?: unknown;
 };
 
-/** welinc-auth's base URL. Throws when unset, so backend-vrms refuses to start (AC-4). */
-export function authServiceUrl(config: ConfigService): string {
-  return config.getOrThrow<string>('AUTH_SERVICE_URL').replace(/\/+$/, '');
+/**
+ * welinc-auth's address on the internal network (`AUTH_INTERNAL_URL`, spec 0002, AC-22). Throws
+ * when unset, so backend-vrms refuses to start (spec 0009, AC-4).
+ */
+export function authInternalUrl(config: ConfigService): string {
+  return config.getOrThrow<string>('AUTH_INTERNAL_URL').replace(/\/+$/, '');
 }
 
 /**
@@ -101,7 +104,7 @@ export class AccountCheck {
   private readonly onConfirmed: ((user: AuthUser) => Promise<void>)[] = [];
 
   constructor(config: ConfigService) {
-    this.meUrl = `${authServiceUrl(config)}/auth/me?system=${SystemType.VRMS}`;
+    this.meUrl = `${authInternalUrl(config)}/auth/me?system=${SystemType.VRMS}`;
   }
 
   /**

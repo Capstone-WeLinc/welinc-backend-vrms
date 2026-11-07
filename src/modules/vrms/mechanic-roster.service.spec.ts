@@ -1,3 +1,4 @@
+import type { ServiceTokenClient } from '../../auth/verify';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
@@ -86,6 +87,10 @@ function setup(rows: Row[], users: unknown[]) {
     prisma as unknown as PrismaService,
     { whenConfirmed: jest.fn() } as unknown as AccountCheck,
     env,
+    // Spec 0002, AC-21: the roster asks with VRMS's own token, never a caller's
+    {
+      withToken: <T>(call: (token: string) => Promise<T>) => call('svc-tok'),
+    } as unknown as ServiceTokenClient,
   );
   return { roster, prisma, rows };
 }
@@ -116,7 +121,7 @@ describe('MechanicRoster.sync', () => {
       user('e', 'MECHANIC', { system: 'VMMS' }),
     ]);
 
-    expect(await roster.sync('tok')).toEqual({
+    expect(await roster.sync()).toEqual({
       created: 2,
       updated: 1,
       deactivated: 1,
@@ -133,22 +138,22 @@ describe('MechanicRoster.sync', () => {
       false,
     );
 
-    expect(await roster.sync('tok')).toEqual({
+    expect(await roster.sync()).toEqual({
       created: 0,
       updated: 0,
       deactivated: 0,
     });
   });
 
-  it('asks welinc-auth for the VRMS users with the admin token', async () => {
+  it("asks welinc-auth for the VRMS users with VRMS's own service token", async () => {
     const { roster } = setup([], []);
-    await roster.sync('tok');
+    await roster.sync();
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [
       string,
       RequestInit,
     ];
     expect(url).toBe('http://auth-service:3001/auth/users?system=VRMS');
-    expect(init.headers).toEqual({ Authorization: 'Bearer tok' });
+    expect(init.headers).toEqual({ Authorization: 'Bearer svc-tok' });
   });
 });
 
@@ -234,7 +239,7 @@ describe('MechanicRoster duplicate row race', () => {
         return Promise.reject(uniqueViolation());
       });
 
-      const result = await roster.sync('tok');
+      const result = await roster.sync();
 
       expect(result).toEqual({ created: 0, updated: 0, deactivated: 0 });
       expect(prisma.mechanic.update).not.toHaveBeenCalled();
@@ -248,7 +253,7 @@ describe('MechanicRoster duplicate row race', () => {
         return Promise.reject(uniqueViolation());
       });
 
-      const result = await roster.sync('tok');
+      const result = await roster.sync();
 
       expect(result).toEqual({ created: 0, updated: 1, deactivated: 0 });
       expect(prisma.mechanic.update).toHaveBeenCalledWith({
@@ -266,7 +271,7 @@ describe('MechanicRoster duplicate row race', () => {
       const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
       prisma.mechanic.upsert.mockRejectedValueOnce(uniqueViolation());
 
-      const result = await roster.sync('tok');
+      const result = await roster.sync();
 
       expect(result).toEqual({ created: 0, updated: 0, deactivated: 0 });
       expect(prisma.mechanic.update).not.toHaveBeenCalled();
@@ -276,7 +281,7 @@ describe('MechanicRoster duplicate row race', () => {
       const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
       prisma.mechanic.upsert.mockRejectedValueOnce(new Error('db down'));
 
-      await expect(roster.sync('tok')).rejects.toThrow('db down');
+      await expect(roster.sync()).rejects.toThrow('db down');
     });
 
     it('rethrows a different Prisma error code', async () => {
@@ -288,7 +293,7 @@ describe('MechanicRoster duplicate row race', () => {
         }),
       );
 
-      await expect(roster.sync('tok')).rejects.toBeInstanceOf(
+      await expect(roster.sync()).rejects.toBeInstanceOf(
         Prisma.PrismaClientKnownRequestError,
       );
     });
@@ -319,10 +324,7 @@ describe('MechanicRoster duplicate row race', () => {
         },
       );
 
-      const [first, second] = await Promise.all([
-        roster.sync('tok'),
-        roster.sync('tok'),
-      ]);
+      const [first, second] = await Promise.all([roster.sync(), roster.sync()]);
 
       expect(rows.filter((r) => r.authUserId === 'a')).toHaveLength(1);
       expect(first.created + second.created).toBeGreaterThanOrEqual(1);
@@ -448,24 +450,24 @@ describe('MechanicRoster role', () => {
   it('writes a role change on the next Admin sync, and nothing more once it matches', async () => {
     const rows = [row({ role: 'MECHANIC' })];
     const { roster } = setup(rows, [user('a', 'CHIEF_MECHANIC')]);
-    expect(await roster.sync('tok')).toMatchObject({ updated: 1 });
+    expect(await roster.sync()).toMatchObject({ updated: 1 });
     expect(rows[0].role).toBe('CHIEF_MECHANIC');
-    expect(await roster.sync('tok')).toMatchObject({ updated: 0 });
+    expect(await roster.sync()).toMatchObject({ updated: 0 });
   });
 
   it('refreshOne writes the role too', async () => {
     const rows = [row()];
     const { roster } = setup(rows, [user('a', 'MECHANIC')]);
-    await roster.refreshOne('tok', 'a');
+    await roster.refreshOne('a');
     expect(rows[0].role).toBe('MECHANIC');
   });
 
   it('keeps the last known role when the person loses VRMS access', async () => {
     const rows = [row({ role: 'CHIEF_MECHANIC' })];
     const { roster, prisma } = setup(rows, [user('a', 'ADMIN')]);
-    await roster.sync('tok');
+    await roster.sync();
     expect(rows[0]).toMatchObject({ isActive: false, role: 'CHIEF_MECHANIC' });
-    expect(await roster.refreshOne('tok', 'a')).toMatchObject({
+    expect(await roster.refreshOne('a')).toMatchObject({
       stillActive: false,
     });
     expect(prisma.mechanic.upsert).not.toHaveBeenCalled();

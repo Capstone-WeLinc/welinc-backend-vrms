@@ -138,7 +138,7 @@ describe('MechanicWorkService.release', () => {
       stillActive: false,
     });
 
-    expect(await service.release('u1', 'DEACTIVATED', admin, 'tok')).toEqual({
+    expect(await service.release('u1', 'DEACTIVATED', admin)).toEqual({
       released: 2,
       reopened: 1,
     });
@@ -158,7 +158,7 @@ describe('MechanicWorkService.release', () => {
       ],
     });
 
-    expect(await service.release('u1', 'DEACTIVATED', admin, 'tok')).toEqual({
+    expect(await service.release('u1', 'DEACTIVATED', admin)).toEqual({
       released: 0,
       reopened: 0,
     });
@@ -172,7 +172,7 @@ describe('MechanicWorkService.release', () => {
       mechanicId: 'm1',
       stillActive: false,
     });
-    expect(await service.release('u1', 'ROLE_REMOVED', admin, 'tok')).toEqual({
+    expect(await service.release('u1', 'ROLE_REMOVED', admin)).toEqual({
       released: 1,
       reopened: 0,
     });
@@ -182,11 +182,11 @@ describe('MechanicWorkService.release', () => {
   it('answers 409 while the person is still an active mechanic and 404 with no row', async () => {
     const active = setup([], { mechanicId: 'm1', stillActive: true });
     await expect(
-      active.service.release('u1', 'DEACTIVATED', admin, 'tok'),
+      active.service.release('u1', 'DEACTIVATED', admin),
     ).rejects.toThrow(ConflictException);
     const none = setup([], null);
     await expect(
-      none.service.release('u1', 'DEACTIVATED', admin, 'tok'),
+      none.service.release('u1', 'DEACTIVATED', admin),
     ).rejects.toThrow(NotFoundException);
   });
 });

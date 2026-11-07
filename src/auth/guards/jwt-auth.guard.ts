@@ -1,42 +1,46 @@
-import { ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  ExecutionContext,
+  Inject,
+  Injectable,
+  type CanActivate,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AuthGuard } from '@nestjs/passport';
 import type { Request } from 'express';
-import { AccountCheck } from '../account-check';
-import type { VerifiedToken } from '../strategies/jwt.strategy';
+import { AccountCheck, type AuthUser } from '../account-check';
 import { PUBLIC_KEY } from '../permissions/permission.decorators';
+import {
+  checkPerson,
+  SERVICE_ROUTE_KEY,
+  TOKEN_VERIFIER,
+  TokenVerifier,
+} from '../verify';
 
 /**
- * Verifies the token's signature, then confirms the account with welinc-auth (spec 0009, AC-4).
- * `req.user` is built from welinc-auth's answer, never from the token's claims.
- * Global; a `@Public()` route skips it (spec 0011, AC-7).
+ * Checks the token against welinc-auth's published keys (spec 0002, AC-10), refuses a service
+ * token, then confirms the account with welinc-auth (spec 0009, AC-4). `req.user` is built from
+ * welinc-auth's answer, never from the token's claims. Global; a `@Public()` route skips it
+ * (spec 0011, AC-7), and so does a `@ServiceRoute()`, which has its own guard.
  */
 @Injectable()
-export class JwtAuthGuard extends AuthGuard('jwt') {
+export class JwtAuthGuard implements CanActivate {
   constructor(
+    @Inject(TOKEN_VERIFIER) private readonly verifier: TokenVerifier,
     private readonly accountCheck: AccountCheck,
     private readonly reflector: Reflector,
-  ) {
-    super();
-  }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
-    if (isPublic) return true;
+    const targets = [context.getHandler(), context.getClass()];
+    if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets))
+      return true;
+    if (this.reflector.getAllAndOverride<string>(SERVICE_ROUTE_KEY, targets))
+      return true;
 
-    await super.canActivate(context);
-
-    const request = context.switchToHttp().getRequest<Request>();
-    const verified = request.user as VerifiedToken;
-    const token = (request.headers.authorization ?? '').replace(
-      /^Bearer\s+/i,
-      '',
-    );
-
-    const { user } = await this.accountCheck.confirm(token, verified.exp);
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { user?: AuthUser }>();
+    const { raw, token } = await checkPerson(this.verifier, request);
+    const { user } = await this.accountCheck.confirm(raw, token.exp);
     request.user = user;
     return true;
   }
