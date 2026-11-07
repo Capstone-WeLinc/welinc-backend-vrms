@@ -75,6 +75,7 @@ npx prisma migrate dev   # asks first, see root rules
 
 - In the local Docker stack, the `welinc_vrms_backend` container does not see edits made from Windows. Run `docker restart welinc_vrms_backend` and wait for "Nest application successfully started" before testing the API.
 - `JWT_SECRET` must match the one `welinc-auth` signs with, or every request returns 401.
+- `@nestjs/platform-express` pins its own `multer`, and that copy handles uploads, so bumping the top level `multer` alone changes nothing. `"multer": "$multer"` in `package.json` `overrides` makes Nest use ours; check `npm ls multer` after any upgrade. The `glob` and `minimatch` overrides there patch dev tools only.
 - `npm run lint` fixes files in place, so check `git diff` afterwards.
 - A change made in `welinc-auth` (deactivate, lock, role change) reaches VRMS within 30 seconds, because each token's 200 answer is cached in memory for that long. If `welinc-auth` is down, uncached requests get 503.
 - An Admin's matrix edits live in `role_permissions` and apply on the next request on every replica, because each checked request reads `permission_matrix.version`. A hand edit in the database applies only after you bump that version. A replica that has never loaded the matrix answers 503 on `GET /` until a request loads it. A `PATCH /vrms/permissions` that takes a right away needs a `note` of 5 to 500 characters (400 otherwise); adding rights needs none.

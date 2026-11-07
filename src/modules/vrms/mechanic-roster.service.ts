@@ -10,7 +10,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import {
   AccountCheck,
   askAuth,
-  authServiceUrl,
+  authInternalUrl,
   type AuthUser,
   UNAVAILABLE,
 } from '../../auth/account-check';
@@ -95,7 +95,7 @@ export class MechanicRoster implements OnModuleInit {
     private readonly accountCheck: AccountCheck,
     env: EnvConfig,
   ) {
-    this.usersUrl = `${authServiceUrl(env)}/auth/users?system=${SystemType.VRMS}`;
+    this.usersUrl = `${authInternalUrl(env)}/auth/users?system=${SystemType.VRMS}`;
   }
 
   onModuleInit() {

@@ -57,7 +57,7 @@ describe('AccountCheck', () => {
     });
   });
 
-  it('refuses to start without AUTH_SERVICE_URL', () => {
+  it('refuses to start without AUTH_INTERNAL_URL', () => {
     const config = {
       getOrThrow: () => {
         throw new Error('missing');
