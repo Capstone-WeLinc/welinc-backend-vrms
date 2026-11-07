@@ -1,5 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import sharp from 'sharp';
 import type { AuthUser } from '../../auth/account-check';
 import type { PermissionKey } from '../../auth/permissions/catalog';
@@ -10,6 +12,7 @@ import {
   isTakenBeforeWork,
   parseTakenAt,
 } from './attachments.service';
+import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 import type { FileStore } from './file-store';
 import type { PrismaService } from '../../shared/prisma.service';
 import type { SettingsService } from '../../settings/settings.service';
@@ -440,6 +443,120 @@ describe('AttachmentsService.upload', () => {
           ),
         ).toEqual({ status: 415, code: 'FILE_TYPE_NOT_ALLOWED' });
       }
+    });
+  });
+
+  describe('named photo group (spec 0024, AC-21 and AC-22)', () => {
+    const STARTED = new Date('2026-11-01T02:00:00Z');
+
+    it('stores a BEFORE drop as a Before photo after work started, marked and removable by its uploader', async () => {
+      const s = setup({ workStartedAt: STARTED });
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO', group: 'BEFORE' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(s.created[0].kind).toBe('VEHICLE_PHOTO');
+      expect(result.attachment).toMatchObject({
+        kind: 'VEHICLE_PHOTO',
+        addedAfterWorkStarted: true,
+        canRemove: true,
+        canMove: true,
+      });
+      // The audit row records the stored kind
+      expect(s.audits[0]).toMatchObject({
+        data: {
+          action: 'ATTACHMENT_ADDED',
+          changes: expect.arrayContaining([
+            expect.objectContaining({ field: 'kind', after: 'VEHICLE_PHOTO' }),
+          ]) as unknown,
+        },
+      });
+    });
+
+    it('stores an AFTER drop as an After photo before work started', async () => {
+      const s = setup();
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PHOTO', group: 'AFTER' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('PROOF');
+      expect(result.attachment.addedAfterWorkStarted).toBe(false);
+    });
+
+    it('overrides the pick for the older photo kinds, and again under the lock', async () => {
+      const s = setup({ workStartedAt: null, lockedWorkStartedAt: STARTED });
+      const result = await s.service.upload(
+        TICKET,
+        await photo(),
+        dto({ kind: 'PROOF', group: 'BEFORE' }),
+        ME,
+        abilityOf(MECHANIC_KEYS),
+      );
+      expect(result.attachment.kind).toBe('VEHICLE_PHOTO');
+    });
+
+    it('answers 400 GROUP_NOT_FOR_DOCUMENTS for a group on a document', async () => {
+      const s = setup();
+      expect(
+        await codeOf(
+          s.service.upload(
+            TICKET,
+            { buffer: Buffer.from('%PDF-1.4\n%fake'), originalname: 'a.pdf' },
+            dto({ kind: 'OTHER_DOCUMENT', group: 'BEFORE' }),
+            ME,
+            abilityOf(CHIEF_KEYS),
+          ),
+        ),
+      ).toEqual({ status: 400, code: 'GROUP_NOT_FOR_DOCUMENTS' });
+      expect(s.puts).toHaveLength(0);
+    });
+
+    it('answers 409 TICKET_FINISHED on a finished ticket before the group check', async () => {
+      const s = setup({ status: 'CLOSED' });
+      expect(
+        await codeOf(
+          s.service.upload(
+            TICKET,
+            { buffer: Buffer.from('%PDF-1.4\n%fake'), originalname: 'a.pdf' },
+            dto({ kind: 'OTHER_DOCUMENT', group: 'BEFORE' }),
+            ME,
+            abilityOf(CHIEF_KEYS),
+          ),
+        ),
+      ).toEqual({ status: 409, code: 'TICKET_FINISHED' });
+    });
+
+    it('answers 409 PHOTO_LIMIT_REACHED when the named group is full, whatever the work start says', async () => {
+      const s = setup({ workStartedAt: STARTED, photoCount: 5 });
+      expect(
+        await codeOf(
+          s.service.upload(
+            TICKET,
+            await photo(),
+            dto({ kind: 'PHOTO', group: 'BEFORE' }),
+            ME,
+            abilityOf(MECHANIC_KEYS),
+          ),
+        ),
+      ).toEqual({ status: 409, code: 'PHOTO_LIMIT_REACHED' });
+      expect(s.puts).toHaveLength(0);
+    });
+
+    it('rejects any other group value in the DTO', async () => {
+      const errorsFor = (group: unknown) =>
+        validate(
+          plainToInstance(UploadAttachmentDto, { kind: 'PHOTO', group }),
+        );
+      expect(await errorsFor('BEFORE')).toHaveLength(0);
+      expect(await errorsFor(undefined)).toHaveLength(0);
+      expect(await errorsFor('before')).toHaveLength(1);
+      expect(await errorsFor('SIDEWAYS')).toHaveLength(1);
     });
   });
 
@@ -1115,6 +1232,13 @@ describe('AttachmentsService.remove (AC-17, AC-18)', () => {
       expect(s.tx.attachment.updateMany).not.toHaveBeenCalled();
     });
 
+    it('lets the uploader remove a Before photo added after work started (spec 0024, AC-22)', async () => {
+      const late = row({ createdAt: new Date('2026-11-01T03:00:00Z') });
+      const s = removeSetup(late, started);
+      await s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
+      expect(s.audits).toHaveLength(1);
+    });
+
     it('never protects an After photo', async () => {
       const s = removeSetup(row({ kind: 'PROOF' }), started);
       await s.service.remove(TICKET, ATT, ME, abilityOf(MECHANIC_KEYS));
@@ -1168,6 +1292,32 @@ describe('AttachmentsService.move (spec 0018, AC-9 to AC-11, AC-21)', () => {
     ]);
     // Now a protected Before photo: the mechanic can no longer move or remove it
     expect(view).toMatchObject({ canMove: false, canRemove: false });
+  });
+
+  it('leaves a photo uploaded after work started free in Before, and marks it (spec 0024, AC-22)', async () => {
+    const late = row({
+      kind: 'PROOF',
+      createdAt: new Date('2026-11-01T03:00:00Z'),
+    });
+    const s = moveSetup(late, started);
+    // Move never changes createdAt: the fake update keeps the stored row
+    s.tx.attachment.update.mockImplementation(
+      (args: { where: { id: string }; data: Partial<Row> }) =>
+        Promise.resolve({ ...late, ...args.data }),
+    );
+    const view = await s.service.move(
+      TICKET,
+      ATT,
+      'VEHICLE_PHOTO',
+      ME,
+      abilityOf(MECHANIC_KEYS),
+    );
+    expect(view).toMatchObject({
+      kind: 'VEHICLE_PHOTO',
+      canMove: true,
+      canRemove: true,
+      addedAfterWorkStarted: true,
+    });
   });
 
   it('answers 200 with no audit row when the photo is already in that group', async () => {

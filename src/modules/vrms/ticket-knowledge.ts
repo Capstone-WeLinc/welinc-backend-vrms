@@ -15,7 +15,9 @@ export const STALE_TICKET =
 
 /** The issue relations formatTicket reads. */
 export const issueInclude = {
-  orderBy: { createdAt: 'asc' },
+  // Spec 0024, AC-4: the detail page's issue numbers, the title's first issue and #issue-N
+  // links read this order, so a tie on createdAt falls back to the id
+  orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   include: {
     category: { select: { name: true } },
     knowledgeEntry: {

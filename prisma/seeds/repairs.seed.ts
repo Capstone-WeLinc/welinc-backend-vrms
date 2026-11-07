@@ -811,6 +811,24 @@ export async function seedRepairs(
       ? new Date(statusAt.get(t.id!)!)
       : new Date(t.createdAt as Date);
 
+  // workStartedAt is the first move into IN_PROGRESS or OUTSOURCED, the same rule as the spec 0018
+  // backfill; without it every photo on a started ticket would land in Before (spec 0018, AC-1)
+  const startedAt = new Map<string, number>();
+  for (const a of rows.audits) {
+    const starts = (a.changes as { field: string; after?: unknown }[]).some(
+      (c) =>
+        c.field === 'repairStatus' &&
+        (c.after === 'IN_PROGRESS' || c.after === 'OUTSOURCED'),
+    );
+    const at = +(a.createdAt as Date);
+    if (starts && at < (startedAt.get(a.repairTicketId) ?? Infinity))
+      startedAt.set(a.repairTicketId, at);
+  }
+  for (const t of rows.tickets)
+    t.workStartedAt = startedAt.has(t.id!)
+      ? new Date(startedAt.get(t.id!)!)
+      : null;
+
   // ── Mechanic suggestions still waiting for an editor ──
   const recentIssue = (match: (m: IssueMeta) => boolean) =>
     shuffle(

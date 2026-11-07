@@ -58,6 +58,14 @@ export const photoAlreadyThere = (kind: AttachmentKind) =>
     `This photo is already in ${kind === 'PROOF' ? 'After' : 'Before'}.`,
   );
 
+/** Spec 0024, AC-21: only a photo upload may name its group. */
+export const groupNotForDocuments = () =>
+  attachmentError(
+    HttpStatus.BAD_REQUEST,
+    'GROUP_NOT_FOR_DOCUMENTS',
+    'Only photos go into Before or After.',
+  );
+
 export const attachmentNotFound = () =>
   new NotFoundException('Attachment not found');
 
