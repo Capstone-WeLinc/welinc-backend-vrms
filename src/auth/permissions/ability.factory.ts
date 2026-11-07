@@ -19,6 +19,7 @@ export type TicketAction =
   | 'unlock'
   | 'assign'
   | 'edit'
+  | 'editChecklist'
   | 'addFiles'
   | 'addDocuments'
   | 'removeAny';
@@ -93,6 +94,11 @@ export function buildAbility(
         break;
       case 'ticket.unlock':
         can('unlock', 'RepairTicket');
+        break;
+      case 'ticket.checklist.edit':
+        // Spec 0023, AC-1: on any ticket with ticket.view_all, else only on assigned ones
+        if (keys.has('ticket.view_all')) can('editChecklist', 'RepairTicket');
+        else can('editChecklist', 'RepairTicket', mine);
         break;
       case 'ticket.files.add':
         // Spec 0017, AC-15: everywhere the caller sees every ticket, else on their assigned ones

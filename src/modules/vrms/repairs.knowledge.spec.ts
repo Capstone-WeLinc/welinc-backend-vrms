@@ -168,6 +168,14 @@ describe('RepairsService.linkKnowledge', () => {
     expect(tx.repairIssueStep.deleteMany).toHaveBeenCalledWith({
       where: { repairIssueId: ISSUE },
     });
+    // Spec 0023, AC-14: the checklist lock moves first, before the steps are replaced
+    expect(tx.repairIssue.update).toHaveBeenNthCalledWith(1, {
+      where: { id: ISSUE },
+      data: { checklistVersion: { increment: 1 } },
+    });
+    expect(tx.repairIssue.update.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.repairIssueStep.deleteMany.mock.invocationCallOrder[0],
+    );
     expect(tx.repairIssue.update).toHaveBeenCalledWith({
       where: { id: ISSUE },
       data: {

@@ -72,8 +72,15 @@ export class ConfigController {
     return this.mechanicWork.workload();
   }
 
-  // GET /vrms/mechanics/:authUserId/open-tickets (feature 57)
-  @RequirePermission('users.manage')
+  // GET /vrms/mechanics/roster (spec 0022, AC-2). The Team section's roster; static path, before :authUserId
+  @RequirePermission('mechanics.view', 'users.manage')
+  @Get('mechanics/roster')
+  roster() {
+    return this.mechanicWork.listRoster();
+  }
+
+  // GET /vrms/mechanics/:authUserId/open-tickets (feature 57; spec 0022, AC-3 opens it to mechanics.view)
+  @RequirePermission('users.manage', 'mechanics.view')
   @Get('mechanics/:authUserId/open-tickets')
   openTickets(@Param('authUserId', ParseUUIDPipe) authUserId: string) {
     return this.mechanicWork.openTickets(authUserId);

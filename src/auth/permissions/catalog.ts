@@ -126,6 +126,15 @@ export const PERMISSION_CATALOG = [
     defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
   },
   {
+    // Spec 0023, AC-1: follows the caller's ticket visibility (assigned only without ticket.view_all)
+    key: 'ticket.checklist.edit',
+    label: 'Edit ticket checklists',
+    group: 'Tickets',
+    description:
+      "Add, reword, remove and reorder the steps on a ticket's issues. Without See every ticket, only on tickets assigned to you.",
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
+  },
+  {
     // Spec 0017, AC-15: follows the caller's ticket visibility (assigned only without ticket.view_all)
     key: 'ticket.files.add',
     label: 'Add vehicle photos and proof',
@@ -182,6 +191,15 @@ export const PERMISSION_CATALOG = [
     group: 'Records',
     description: 'Read the garage, vehicle, driver and mechanic lists.',
     defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: true },
+  },
+  {
+    // Spec 0022, AC-1: the Team section on the Chief dashboard and the two reads behind it
+    key: 'mechanics.view',
+    label: "See the team's workload",
+    group: 'Records',
+    description:
+      'See the Team section on the dashboard: who holds which tickets, and their open tickets.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: true, MECHANIC: false },
   },
   {
     // Spec 0016, AC-21: the Vehicles section in Settings

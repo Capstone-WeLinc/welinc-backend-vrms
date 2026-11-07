@@ -538,7 +538,17 @@ describe('stepTickEvent (spec 0021, AC-4)', () => {
 describe('audit filters (spec 0021, AC-9, AC-12)', () => {
   it('expands a category to its types and unions it with exact types (AC-9)', () => {
     expect(auditKindFilter(['CHECKLIST'], ['COST_UPDATE'])).toEqual({
-      action: { in: ['COST_UPDATE', 'STEP_CHECKED', 'STEP_UNCHECKED'] },
+      action: {
+        in: [
+          'COST_UPDATE',
+          'STEP_CHECKED',
+          'STEP_UNCHECKED',
+          'STEP_ADDED',
+          'STEP_REMOVED',
+          'STEP_EDITED',
+          'STEP_MOVED',
+        ],
+      },
     });
   });
 

@@ -781,6 +781,14 @@ describe('TicketEditsService issues (AC-14 to AC-17)', () => {
     expect(tx.repairIssueStep.deleteMany).toHaveBeenCalledWith({
       where: { repairIssueId: 'i1' },
     });
+    // Spec 0023, AC-14: the checklist lock moves before the steps go
+    expect(tx.repairIssue.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'i1' },
+      data: { checklistVersion: { increment: 1 } },
+    });
+    expect(tx.repairIssue.update.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.repairIssueStep.deleteMany.mock.invocationCallOrder[0],
+    );
     expect(tx.repairIssue.update).toHaveBeenCalledWith({
       where: { id: 'i1' },
       data: {

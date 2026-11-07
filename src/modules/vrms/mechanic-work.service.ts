@@ -12,7 +12,8 @@ import { MechanicRoster } from './mechanic-roster.service';
 import { OPEN_STATUSES } from './ticket-statuses';
 import { applyStatusMove } from './apply-status-move';
 import { findMove } from './ticket-transitions';
-import { openStatusRank, workloadOf } from './mechanic-workload';
+import { openStatusRank, workloadOf, type Workload } from './mechanic-workload';
+import type { MechanicRole } from './mechanic-roster.service';
 
 /** M2: the last mechanic removed sends an Assigned ticket back to Open (spec 0014). */
 const UNASSIGN_RELEASE = findMove(RepairStatus.ASSIGNED, RepairStatus.OPEN)!;
@@ -32,6 +33,22 @@ export type OpenTicket = {
   plateNumber: string;
   mechanics: { id: string; name: string }[];
 };
+
+/** The stored role as the API's type; the CHECK constraint allows only these two or null. */
+function asMechanicRole(role: string | null): MechanicRole | null {
+  return role === 'MECHANIC' || role === 'CHIEF_MECHANIC' ? role : null;
+}
+
+/** One person on the Chief dashboard's Team section (spec 0022, AC-2). */
+export type RosterRow = {
+  authUserId: string;
+  /** The mechanics.id that ticket assignments use, so the Team section joins on it, never the name. */
+  mechanicId: string;
+  name: string;
+  email: string | null;
+  role: MechanicRole | null;
+  isActive: boolean;
+} & Workload;
 
 /** Tickets a release changes. FOR_VERIFICATION and later are the verifier's and are left alone. */
 const RELEASABLE_STATUSES: RepairStatus[] = [
@@ -71,24 +88,61 @@ export class MechanicWorkService {
     return { total, byStatus };
   }
 
-  /**
-   * Feature 57: every mechanic's open work, keyed by welinc-auth user id, for the Users page.
-   * Inactive rows are included: a person who left can still hold tickets an Admin kept.
-   */
-  async workload() {
+  /** Every roster row with the statuses of its open assignments, one entry per assignment. */
+  private async rosterWithOpenStatuses() {
     const rows = await this.prisma.mechanic.findMany({
       select: {
+        id: true,
         authUserId: true,
+        name: true,
+        email: true,
+        isActive: true,
+        role: true,
         assignments: {
           where: { repairTicket: { repairStatus: { in: OPEN_STATUSES } } },
           select: { repairTicket: { select: { repairStatus: true } } },
         },
       },
     });
-    return rows.map((row) => ({
-      authUserId: row.authUserId,
-      ...workloadOf(row.assignments.map((a) => a.repairTicket.repairStatus)),
+    return rows.map(({ assignments, ...row }) => ({
+      ...row,
+      ...workloadOf(assignments.map((a) => a.repairTicket.repairStatus)),
     }));
+  }
+
+  /**
+   * Feature 57: every mechanic's open work, keyed by welinc-auth user id, for the Users page.
+   * Inactive rows are included: a person who left can still hold tickets an Admin kept.
+   */
+  async workload() {
+    const rows = await this.rosterWithOpenStatuses();
+    return rows.map(({ authUserId, total, byStatus, occupied }) => ({
+      authUserId,
+      total,
+      byStatus,
+      occupied,
+    }));
+  }
+
+  /**
+   * Spec 0022, AC-2: the Team section's roster. Every active person, plus an inactive one who
+   * still holds an open ticket. Occupied comes from isOccupied through workloadOf.
+   */
+  async listRoster(): Promise<RosterRow[]> {
+    const rows = await this.rosterWithOpenStatuses();
+    return rows
+      .filter((r) => r.isActive || r.total > 0)
+      .map((r) => ({
+        authUserId: r.authUserId,
+        mechanicId: r.id,
+        name: r.name,
+        email: r.email,
+        role: asMechanicRole(r.role),
+        isActive: r.isActive,
+        occupied: r.occupied,
+        total: r.total,
+        byStatus: r.byStatus,
+      }));
   }
 
   /**

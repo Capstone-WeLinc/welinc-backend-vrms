@@ -16,6 +16,8 @@ import { CurrentAbility } from '../../auth/permissions/current-ability.decorator
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
 import { TicketEditsService } from './ticket-edits.service';
+import { ChecklistEditsService } from './checklist-edits.service';
+import { SaveChecklistDto } from './dto/save-checklist.dto';
 import {
   AddIssueDto,
   EditIssueDto,
@@ -44,6 +46,7 @@ export class RepairsController {
   constructor(
     private readonly repairsService: RepairsService,
     private readonly editsService: TicketEditsService,
+    private readonly checklistEdits: ChecklistEditsService,
   ) {}
 
   @RequirePermission('ticket.create')
@@ -160,6 +163,19 @@ export class RepairsController {
       req.user,
       ability,
     );
+  }
+
+  // Add, reword, remove and reorder one issue's checklist (spec 0023, AC-6)
+  @RequirePermission('ticket.checklist.edit')
+  @Put(':id/issues/:issueId/steps')
+  saveChecklist(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('issueId', ParseUUIDPipe) issueId: string,
+    @Body() dto: SaveChecklistDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.checklistEdits.save(id, issueId, dto, req.user, ability);
   }
 
   // Update costs (lump sum or itemized parts)

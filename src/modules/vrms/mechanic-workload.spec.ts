@@ -242,3 +242,70 @@ describe('the picker and the Users page share one Occupied rule', () => {
     expect(isOccupied([S.ON_HOLD, S.FOR_VERIFICATION])).toBe(false);
   });
 });
+
+// Spec 0022, AC-2: the Team section's roster read
+describe('MechanicWorkService.listRoster', () => {
+  const service = (rows: unknown[]) =>
+    new MechanicWorkService(
+      {
+        mechanic: { findMany: jest.fn().mockResolvedValue(rows) },
+      } as unknown as PrismaService,
+      {} as MechanicRoster,
+    );
+  const person = (
+    authUserId: string,
+    isActive: boolean,
+    statuses: RepairStatus[],
+  ) => ({
+    id: `m-${authUserId}`,
+    authUserId,
+    name: `Name ${authUserId}`,
+    email: `${authUserId}@welinc.com`,
+    isActive,
+    assignments: statuses.map((repairStatus) => ({
+      repairTicket: { repairStatus },
+    })),
+  });
+
+  it('keeps every active person and an inactive one only while they hold open work', async () => {
+    const rows = await service([
+      person('active-free', true, []),
+      person('gone-holding', false, [S.ON_HOLD]),
+      person('gone-empty', false, []),
+    ]).listRoster();
+    expect(rows.map((r) => r.authUserId)).toEqual([
+      'active-free',
+      'gone-holding',
+    ]);
+  });
+
+  it('answers each row with its name, email, flags and the shared Occupied rule', async () => {
+    const [row] = await service([
+      person('u1', true, [S.IN_PROGRESS, S.ASSIGNED]),
+    ]).listRoster();
+    expect(row).toEqual({
+      authUserId: 'u1',
+      mechanicId: 'm-u1',
+      name: 'Name u1',
+      email: 'u1@welinc.com',
+      role: null,
+      isActive: true,
+      occupied: true,
+      total: 2,
+      byStatus: Object.fromEntries(
+        OPEN_STATUSES.map((s) => [
+          s,
+          s === S.IN_PROGRESS || s === S.ASSIGNED ? 1 : 0,
+        ]),
+      ),
+    });
+  });
+
+  it('passes the stored role through for the Chief badge (spec 0022, AC-4)', async () => {
+    const rows = await service([
+      { ...person('chief', true, []), role: 'CHIEF_MECHANIC' },
+      { ...person('new', true, []), role: null },
+    ]).listRoster();
+    expect(rows.map((r) => r.role)).toEqual(['CHIEF_MECHANIC', null]);
+  });
+});
