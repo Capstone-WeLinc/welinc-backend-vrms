@@ -195,13 +195,8 @@ export class MechanicWorkService {
     };
   }
 
-  async release(
-    authUserId: string,
-    reason: ReleaseReason,
-    user: AuthUser,
-    token: string,
-  ) {
-    const mechanic = await this.roster.refreshOne(token, authUserId);
+  async release(authUserId: string, reason: ReleaseReason, user: AuthUser) {
+    const mechanic = await this.roster.refreshOne(authUserId);
     if (!mechanic) throw new NotFoundException('Mechanic not found');
     if (mechanic.stillActive) {
       throw new ConflictException('They still have access to VRMS.');

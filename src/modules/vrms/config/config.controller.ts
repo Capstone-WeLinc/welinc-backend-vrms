@@ -56,13 +56,13 @@ export class ConfigController {
     return this.configService.listAvailableMechanics();
   }
 
-  // POST /vrms/mechanics/sync. Brings the in house mechanics in step with welinc-auth,
-  // asking as the calling admin (spec 0009, AC-11)
+  // POST /vrms/mechanics/sync. Brings the in house mechanics in step with welinc-auth (spec 0009,
+  // AC-11), asking with VRMS's own service token (spec 0002, AC-21)
   @RequirePermission('users.manage')
   @Post('mechanics/sync')
   @HttpCode(HttpStatus.OK)
-  syncMechanics(@Headers('authorization') authorization: string) {
-    return this.mechanicRoster.sync(authorization.replace(/^Bearer\s+/i, ''));
+  syncMechanics() {
+    return this.mechanicRoster.sync();
   }
 
   // GET /vrms/mechanics/workload (feature 57). Static path, so it sits before the :authUserId routes
@@ -101,14 +101,8 @@ export class ConfigController {
     @Param('authUserId', ParseUUIDPipe) authUserId: string,
     @Body() dto: ReleaseTicketsDto,
     @Req() req: { user: AuthUser },
-    @Headers('authorization') authorization: string,
   ) {
-    return this.mechanicWork.release(
-      authUserId,
-      dto.reason,
-      req.user,
-      authorization.replace(/^Bearer\s+/i, ''),
-    );
+    return this.mechanicWork.release(authUserId, dto.reason, req.user);
   }
 
   // GET /vrms/config/drivers (autocomplete suggestions)

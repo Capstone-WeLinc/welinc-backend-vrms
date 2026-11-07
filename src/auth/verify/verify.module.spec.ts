@@ -8,6 +8,7 @@ const ALL = {
   AUTH_ISSUER: 'http://localhost:3000/auth',
   AUTH_JWKS_URL: 'http://auth-service:3001/auth/.well-known/jwks.json',
   AUTH_INTERNAL_URL: 'http://auth-service:3001/',
+  AUTH_CLIENT_ID: 'vrms',
 };
 
 // covers: spec 0002 AC-22 (refuse to start without the token check settings)
@@ -17,6 +18,7 @@ describe('readVerifyConfig', () => {
       issuer: ALL.AUTH_ISSUER,
       jwksUrl: ALL.AUTH_JWKS_URL,
       internalUrl: 'http://auth-service:3001',
+      clientId: 'vrms',
     });
   });
 

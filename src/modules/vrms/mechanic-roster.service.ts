@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   Logger,
   OnModuleInit,
@@ -15,6 +16,7 @@ import {
   UNAVAILABLE,
 } from '../../auth/account-check';
 import { SystemType, UserRole } from '../../auth/roles';
+import { DIRECTORY_TOKENS, ServiceTokenClient } from '../../auth/verify';
 
 // Spec 0009, AC-11, AC-13 and AC-14: in house Mechanic rows follow the welinc-auth users who hold a
 // VRMS mechanic or chief mechanic role. Rows are never deleted. Every Mechanic row is in house (spec 0010).
@@ -94,6 +96,7 @@ export class MechanicRoster implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly accountCheck: AccountCheck,
     env: EnvConfig,
+    @Inject(DIRECTORY_TOKENS) private readonly directory: ServiceTokenClient,
   ) {
     this.usersUrl = `${authInternalUrl(env)}/auth/users?system=${SystemType.VRMS}`;
   }
@@ -130,8 +133,14 @@ export class MechanicRoster implements OnModuleInit {
     }
   }
 
-  private async fetchUsers(token: string): Promise<AuthUserRow[]> {
-    const body = await askAuth(this.usersUrl, token, this.logger);
+  /**
+   * Asks welinc-auth for the VRMS users with VRMS's own service token (spec 0002, AC-21), never a
+   * caller's, so a Chief Mechanic's action and background work need no admin token. No token: 503.
+   */
+  private async fetchUsers(): Promise<AuthUserRow[]> {
+    const body = await this.directory.withToken((token) =>
+      askAuth(this.usersUrl, token, this.logger),
+    );
     const users = readUsers(body);
     if (!users) {
       this.logger.warn(
@@ -148,10 +157,9 @@ export class MechanicRoster implements OnModuleInit {
    * is no Mechanic row for them.
    */
   async refreshOne(
-    token: string,
     authUserId: string,
   ): Promise<{ mechanicId: string; stillActive: boolean } | null> {
-    const users = await this.fetchUsers(token);
+    const users = await this.fetchUsers();
     const row = await this.prisma.mechanic.findUnique({
       where: { authUserId },
       select: { id: true, name: true, email: true, isActive: true, role: true },
@@ -179,9 +187,9 @@ export class MechanicRoster implements OnModuleInit {
     return { mechanicId: row.id, stillActive: want.isActive };
   }
 
-  /** AC-11: makes the in house rows match welinc-auth's VRMS users, asking as the calling admin. */
-  async sync(token: string): Promise<SyncResult> {
-    const users = await this.fetchUsers(token);
+  /** AC-11: makes the in house rows match welinc-auth's VRMS users, asking as VRMS itself. */
+  async sync(): Promise<SyncResult> {
+    const users = await this.fetchUsers();
 
     const wanted = new Map<string, Wanted>();
     for (const u of users) {
