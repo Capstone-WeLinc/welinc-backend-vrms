@@ -485,6 +485,22 @@ model RolePermission {
 
 // One row (id 1, kept by a check constraint). Each replica compares this version on every
 // checked request and reloads its grants when it moves.
+// Spec 0005: where VRMS stands in welinc-auth's directory feed (one row, id 'auth', a CHECK in
+// the migration). Written only by DirectorySync, and every cursor write carries the lease owner.
+model DirectorySyncState {
+  id           String    @id
+  // Null means the next tick does a full read first
+  cursor       String?
+  leaseUntil   DateTime? @map("lease_until") @db.Timestamptz(3)
+  leaseOwner   String?   @map("lease_owner") @db.Uuid
+  // Set while welinc-auth is failing, so the job warns once (AC-15)
+  failingSince DateTime? @map("failing_since") @db.Timestamptz(3)
+  // The last successful tick
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("directory_sync_state")
+}
+
 model PermissionMatrix {
   id        Int      @id @db.SmallInt
   version   Int      @default(1)

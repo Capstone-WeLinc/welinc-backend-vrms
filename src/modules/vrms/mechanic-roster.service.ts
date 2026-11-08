@@ -17,6 +17,13 @@ import {
 } from '../../auth/account-check';
 import { SystemType, UserRole } from '../../auth/roles';
 import { DIRECTORY_TOKENS, ServiceTokenClient } from '../../auth/verify';
+import type { DirectoryUser } from './directory/auth-directory.client';
+
+/** The client `apply` writes through: the service's own, or a transaction's. */
+type Db = Prisma.TransactionClient;
+
+/** What applying one directory person did to their row (spec 0005, AC-13). */
+export type ApplyOutcome = 'created' | 'updated' | 'deactivated' | 'unchanged';
 
 // Spec 0009, AC-11, AC-13 and AC-14: in house Mechanic rows follow the welinc-auth users who hold a
 // VRMS mechanic or chief mechanic role. Rows are never deleted. Every Mechanic row is in house (spec 0010).
@@ -238,6 +245,53 @@ export class MechanicRoster implements OnModuleInit {
       : { count: 0 };
 
     return { created, updated, deactivated };
+  }
+
+  /**
+   * Spec 0005, AC-13: brings one person's row in step with what welinc-auth's directory says.
+   * A VRMS mechanic role and not deleted: the row is created or updated. No mechanic role, or
+   * deleted: an existing row goes inactive and keeps its last role; no row means nothing to do.
+   * Applying the same person twice changes nothing. Runs inside the caller's transaction when
+   * given one, so a change and the cursor that passes it commit together.
+   */
+  async apply(
+    user: DirectoryUser,
+    db: Db = this.prisma,
+  ): Promise<ApplyOutcome> {
+    const role = user.deleted
+      ? null
+      : roleOf(
+          user.roles.map((code) => ({ role: code, system: SystemType.VRMS })),
+        );
+    const row = await db.mechanic.findUnique({
+      where: { authUserId: user.id },
+      select: { name: true, email: true, isActive: true, role: true },
+    });
+
+    if (!role) {
+      if (!row?.isActive) return 'unchanged';
+      await db.mechanic.update({
+        where: { authUserId: user.id },
+        data: { isActive: false },
+      });
+      return 'deactivated';
+    }
+
+    const want: Wanted = {
+      name: user.name,
+      email: user.email.toLowerCase(),
+      isActive: user.isActive,
+      role,
+    };
+    if (row && !this.differs(row, want)) return 'unchanged';
+    // A native upsert (INSERT ... ON CONFLICT), so a just in time insert racing it can't fail it
+    await db.mechanic.upsert({
+      where: { authUserId: user.id },
+      create: { authUserId: user.id, ...want },
+      update: want,
+    });
+    if (!row) return 'created';
+    return row.isActive && !want.isActive ? 'deactivated' : 'updated';
   }
 
   private differs(
