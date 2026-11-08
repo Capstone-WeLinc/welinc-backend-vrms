@@ -187,6 +187,8 @@ export class SessionController {
       accessToken: grant.accessToken,
       expiresIn: grant.expiresIn,
       sessionExpiresAt: grant.sessionExpiresAt,
+      // The 12 hour end, so the app can tell a max age cutoff from an idle one (AC-23)
+      sessionAbsoluteExpiresAt: grant.sessionAbsoluteExpiresAt,
       user: grant.user,
     };
   }
