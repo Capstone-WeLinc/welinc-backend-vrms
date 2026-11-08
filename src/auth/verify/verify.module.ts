@@ -18,6 +18,9 @@ export type VerifyConfig = {
 
 export const VERIFY_CONFIG = Symbol('VERIFY_CONFIG');
 
+/** Signs this service's client assertions with `AUTH_CLIENT_PRIVATE_KEY` (spec 0002, 0003). */
+export const ASSERTION_SIGNER = Symbol('ASSERTION_SIGNER');
+
 /** This service's token for welinc-auth's directory: `audience=AUTH`, `scope=directory.read`. */
 export const DIRECTORY_TOKENS = Symbol('DIRECTORY_TOKENS');
 
@@ -70,16 +73,21 @@ export function readVerifyConfig(config: ConfigService): VerifyConfig {
       },
     },
     {
-      provide: DIRECTORY_TOKENS,
+      provide: ASSERTION_SIGNER,
       inject: [VERIFY_CONFIG, ConfigService],
       // Async, so a missing or bad AUTH_CLIENT_PRIVATE_KEY stops startup (AC-22)
-      useFactory: async (verify: VerifyConfig, config: ConfigService) => {
-        const logger = new Logger('ServiceToken');
-        const signer = await AssertionSigner.create({
+      useFactory: (verify: VerifyConfig, config: ConfigService) =>
+        AssertionSigner.create({
           clientId: verify.clientId,
           privateKey: config.get<string>('AUTH_CLIENT_PRIVATE_KEY'),
           issuer: verify.issuer,
-        });
+        }),
+    },
+    {
+      provide: DIRECTORY_TOKENS,
+      inject: [VERIFY_CONFIG, ASSERTION_SIGNER],
+      useFactory: (verify: VerifyConfig, signer: AssertionSigner) => {
+        const logger = new Logger('ServiceToken');
         return new ServiceTokenClient({
           tokenUrl: `${verify.internalUrl}/auth/token`,
           signer,
@@ -91,6 +99,6 @@ export function readVerifyConfig(config: ConfigService): VerifyConfig {
       },
     },
   ],
-  exports: [VERIFY_CONFIG, TOKEN_VERIFIER, DIRECTORY_TOKENS],
+  exports: [VERIFY_CONFIG, TOKEN_VERIFIER, ASSERTION_SIGNER, DIRECTORY_TOKENS],
 })
 export class AuthVerifyModule {}

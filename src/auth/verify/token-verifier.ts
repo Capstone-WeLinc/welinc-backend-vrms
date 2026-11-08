@@ -14,6 +14,8 @@ export type UserToken = {
   roles: { role: string; system: string }[];
   exp: number;
   jti: string;
+  /** The session id (spec 0003, AC-1). Null on a token from before sessions, which is refused. */
+  sid: string | null;
 };
 
 /** A checked service access token. */
@@ -30,7 +32,11 @@ export type ServiceToken = {
 export type AccessToken = UserToken | ServiceToken;
 
 /** Why a token was refused. `unavailable` answers 503, the others 401. */
-export type TokenFailure = 'invalid' | 'wrong_audience' | 'unavailable';
+export type TokenFailure =
+  | 'invalid'
+  | 'expired'
+  | 'wrong_audience'
+  | 'unavailable';
 
 export class TokenCheckError extends Error {
   constructor(
@@ -72,9 +78,11 @@ export class TokenVerifier {
       if (error instanceof KeysUnavailableError) {
         throw new TokenCheckError('unavailable', 'keys');
       }
+      const code = (error as { code?: string }).code ?? 'unknown';
+      // Spec 0003, AC-27: an expired token is told apart, so the web app refreshes and retries
       throw new TokenCheckError(
-        'invalid',
-        (error as { code?: string }).code ?? 'unknown',
+        code === 'ERR_JWT_EXPIRED' ? 'expired' : 'invalid',
+        code,
       );
     }
 
@@ -98,6 +106,7 @@ export class TokenVerifier {
     if (payload['token_use'] === 'user') {
       const email = payload['email'];
       const roles = payload['roles'];
+      const sid = payload['sid'];
       if (typeof email !== 'string' || !Array.isArray(roles)) {
         throw new TokenCheckError('invalid', 'bad_claims');
       }
@@ -110,6 +119,7 @@ export class TokenVerifier {
         roles: roles as UserToken['roles'],
         exp,
         jti,
+        sid: typeof sid === 'string' && sid !== '' ? sid : null,
       };
     }
 

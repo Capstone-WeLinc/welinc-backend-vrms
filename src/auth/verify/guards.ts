@@ -12,6 +12,7 @@ import type { Request } from 'express';
 import {
   authUnavailable,
   invalidSession,
+  tokenExpired,
   wrongAudience,
   wrongTokenUse,
 } from './errors';
@@ -34,7 +35,10 @@ export function bearerToken(request: Request): string | null {
   return match ? match[1] : null;
 }
 
-/** Runs the verifier and maps a refusal to its HTTP answer: 401, 401 `WRONG_AUDIENCE` or 503. */
+/**
+ * Runs the verifier and maps a refusal to its HTTP answer: 401, 401 `TOKEN_EXPIRED`, 401
+ * `WRONG_AUDIENCE` or 503.
+ */
 export async function checkBearer(
   verifier: TokenVerifier,
   request: Request,
@@ -47,6 +51,7 @@ export async function checkBearer(
     if (!(error instanceof TokenCheckError)) throw error;
     if (error.failure === 'unavailable') throw authUnavailable();
     if (error.failure === 'wrong_audience') throw wrongAudience();
+    if (error.failure === 'expired') throw tokenExpired();
     throw invalidSession();
   }
 }
