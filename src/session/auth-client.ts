@@ -70,33 +70,59 @@ export class AuthClient {
     );
   }
 
+  /**
+   * Passes a real input ping on (AC-22, AC-42). `ended` when welinc-auth answers 401
+   * `SESSION_ENDED`; anything else that isn't 204 is `unavailable`.
+   */
+  async activity(
+    refreshToken: string,
+    userAddress: string | null,
+  ): Promise<'ok' | 'ended' | 'unavailable'> {
+    const answer = await this.post(
+      this.config.activityUrl,
+      { refresh_token: refreshToken },
+      userAddress,
+    );
+    if (answer.kind === 'failed') {
+      this.unavailable(`activity: ${answer.reason}`);
+      return 'unavailable';
+    }
+    if (answer.res.status === 204) return 'ok';
+    if (answer.res.status === 401) return 'ended';
+    this.unavailable(`activity: status ${answer.res.status}`);
+    return 'unavailable';
+  }
+
+  /**
+   * Ends the session at welinc-auth (AC-24, AC-42). Sends the cookie's token and, when the app
+   * sent a valid access token, its `sid`: welinc-auth ends the session by the token, or by the
+   * `sid` when the token matches no row. welinc-auth answers 204 for anything it can act on.
+   */
+  async logout(
+    input: { refreshToken: string | null; sid: string | null },
+    userAddress: string | null,
+  ): Promise<'ok' | 'unavailable'> {
+    const fields: Record<string, string> = {};
+    if (input.refreshToken) fields['refresh_token'] = input.refreshToken;
+    if (input.sid) fields['sid'] = input.sid;
+    if (Object.keys(fields).length === 0) return 'ok';
+    const answer = await this.post(this.config.logoutUrl, fields, userAddress);
+    if (answer.kind === 'failed') {
+      this.unavailable(`logout: ${answer.reason}`);
+      return 'unavailable';
+    }
+    if (answer.res.status === 204) return 'ok';
+    this.unavailable(`logout: status ${answer.res.status}`);
+    return 'unavailable';
+  }
+
   private async grant(
     fields: Record<string, string>,
     userAddress: string | null,
   ): Promise<GrantResult> {
-    let res: Response;
-    try {
-      const body = new URLSearchParams({
-        ...fields,
-        client_assertion_type:
-          'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-        client_assertion: await this.signer.sign(),
-      });
-      res = await fetch(this.config.tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          ...(userAddress ? { 'X-WeLinc-User-Address': userAddress } : {}),
-        },
-        body,
-        signal: AbortSignal.timeout(AUTH_CALL_TIMEOUT_MS),
-      });
-    } catch (error) {
-      const name = (error as { name?: unknown } | null)?.name;
-      return this.unavailable(
-        `no answer (${typeof name === 'string' ? name : 'error'})`,
-      );
-    }
+    const answer = await this.post(this.config.tokenUrl, fields, userAddress);
+    if (answer.kind === 'failed') return this.unavailable(answer.reason);
+    const { res } = answer;
 
     const body = (await res.json().catch(() => null)) as Record<
       string,
@@ -116,6 +142,40 @@ export class AuthClient {
     }
     const error = typeof body?.['error'] === 'string' ? body['error'] : '-';
     return this.unavailable(`status ${res.status} error=${error}`);
+  }
+
+  /** A form POST to welinc-auth with VRMS's client assertion, 3 s at most (AC-16a, AC-43). */
+  private async post(
+    url: string,
+    fields: Record<string, string>,
+    userAddress: string | null,
+  ): Promise<
+    { kind: 'answered'; res: Response } | { kind: 'failed'; reason: string }
+  > {
+    try {
+      const body = new URLSearchParams({
+        ...fields,
+        client_assertion_type:
+          'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: await this.signer.sign(),
+      });
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          ...(userAddress ? { 'X-WeLinc-User-Address': userAddress } : {}),
+        },
+        body,
+        signal: AbortSignal.timeout(AUTH_CALL_TIMEOUT_MS),
+      });
+      return { kind: 'answered', res };
+    } catch (error) {
+      const name = (error as { name?: unknown } | null)?.name;
+      return {
+        kind: 'failed',
+        reason: `no answer (${typeof name === 'string' ? name : 'error'})`,
+      };
+    }
   }
 
   private unavailable(reason: string): GrantResult {

@@ -191,6 +191,52 @@ export class SessionController {
     };
   }
 
+  /**
+   * A real input ping from the app (AC-22): passed to `/auth/session/activity`. The app sends
+   * it at most once a minute; welinc-auth ignores more than 2 a minute per session.
+   */
+  @Public()
+  @Post('activity')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(SessionCsrfGuard)
+  async activity(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    res.setHeader('Cache-Control', 'no-store');
+    const token = readRefreshCookie(req, this.config);
+    if (!token) throw sessionEnded();
+    const result = await this.auth.activity(token, req.ip ?? null);
+    if (result === 'ended') {
+      clearRefreshCookie(res, this.config);
+      throw sessionEnded();
+    }
+    if (result === 'unavailable') throw authUnavailable();
+  }
+
+  /**
+   * Logout (AC-24, AC-42). Always clears `vrms_rt`. The session is ended by the cookie's token,
+   * or by the access token's `sid` when the cookie's token matches nothing at welinc-auth. If
+   * welinc-auth can't be reached it answers 503, so the app can offer a retry, which still
+   * works through the access token's `sid`.
+   */
+  @Public()
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(SessionCsrfGuard)
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    res.setHeader('Cache-Control', 'no-store');
+    const refreshToken = readRefreshCookie(req, this.config);
+    clearRefreshCookie(res, this.config);
+    const sid = await this.bearerSid(req);
+    const result = await this.auth.logout(
+      { refreshToken, sid },
+      req.ip ?? null,
+    );
+    if (sid) this.accountCheck.forget(sid);
+    if (result === 'unavailable') throw authUnavailable();
+  }
+
   /** The server's own cutoff, asked fresh, for the idle warning (AC-23, AC-26). */
   @Authenticated()
   @Get('status')
@@ -198,6 +244,16 @@ export class SessionController {
     res.setHeader('Cache-Control', 'no-store');
     const { raw, token } = await checkPerson(this.verifier, req);
     return this.accountCheck.status(raw, token);
+  }
+
+  /** The `sid` of a valid VRMS user token on the request, else null. Never throws. */
+  private async bearerSid(req: Request): Promise<string | null> {
+    try {
+      const { token } = await checkPerson(this.verifier, req);
+      return token.sid;
+    } catch {
+      return null;
+    }
   }
 
   private setCookie(res: Response, grant: UserGrant) {

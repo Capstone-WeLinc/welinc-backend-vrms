@@ -20,6 +20,9 @@ export type SessionConfig = {
   cookieSecure: boolean;
   clientId: string;
   tokenUrl: string;
+  /** `/auth/logout` and `/auth/session/activity` on welinc-auth's internal address (AC-24, AC-42). */
+  logoutUrl: string;
+  activityUrl: string;
 };
 
 export const SESSION_CONFIG = Symbol('SESSION_CONFIG');
@@ -63,6 +66,8 @@ export function readSessionConfig(
     cookieSecure: secure === 'true' || secure === '1',
     clientId: verify.clientId,
     tokenUrl: `${verify.internalUrl}/auth/token`,
+    logoutUrl: `${verify.internalUrl}/auth/logout`,
+    activityUrl: `${verify.internalUrl}/auth/session/activity`,
   };
 }
 

@@ -140,12 +140,14 @@ describe('Route decorators (AC-7)', () => {
     expect(wrong.map(label)).toEqual([]);
   });
 
-  it('opens only the health check and the login and refresh routes (spec 0003, AC-16) to everyone, and only /permissions/me, the attachment routes (spec 0017, AC-12; spec 0018, AC-9) and the session status to any signed in user', () => {
+  it('opens only the health check and the cookie session routes (spec 0003, AC-16) to everyone, and only /permissions/me, the attachment routes (spec 0017, AC-12; spec 0018, AC-9) and the session status to any signed in user', () => {
     expect(routes.filter((r) => r.isPublic).map(label)).toEqual([
       'GET /',
       'GET /vrms/session/start',
       'GET /vrms/session/callback',
       'POST /vrms/session/refresh',
+      'POST /vrms/session/activity',
+      'POST /vrms/session/logout',
     ]);
     expect(routes.filter((r) => r.authenticated).map(label)).toEqual([
       'GET /vrms/permissions/me',
@@ -200,6 +202,8 @@ const TEST_SESSION_CONFIG: SessionConfig = {
   cookieSecure: false,
   clientId: 'vrms',
   tokenUrl: 'http://auth-service:3001/auth/token',
+  logoutUrl: 'http://auth-service:3001/auth/logout',
+  activityUrl: 'http://auth-service:3001/auth/session/activity',
 };
 
 describe('Every route against every matrix role, under the default matrix (AC-15)', () => {
