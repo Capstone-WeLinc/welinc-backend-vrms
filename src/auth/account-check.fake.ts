@@ -21,4 +21,13 @@ export class FakeAccountCheck {
     if (this.error) return Promise.reject(this.error);
     return Promise.resolve({ user: this.user, fresh: true });
   }
+
+  status(): Promise<{ sessionExpiresAt: string }> {
+    if (this.error) return Promise.reject(this.error);
+    return Promise.resolve({
+      sessionExpiresAt: new Date(Date.now() + 1_800_000).toISOString(),
+    });
+  }
+
+  forget(): void {}
 }

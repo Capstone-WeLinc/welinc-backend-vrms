@@ -1,22 +1,40 @@
 import {
-  ForbiddenException,
+  HttpException,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AccountCheck, CACHE_MAX_ENTRIES, CACHE_TTL_MS } from './account-check';
+import type { UserToken } from './verify';
 
-// Spec 0009, AC-4, AC-7 and AC-25.
+// covers: spec 0009 AC-4, AC-7, AC-25; spec 0003 AC-1, AC-26, AC-27 (the session check)
 
-const ME = {
-  id: 'u1',
-  email: 'mech.juan@welinc.com',
-  name: 'Juan dela Cruz',
-  roles: [
-    { role: 'MECHANIC', system: 'VRMS' },
-    { role: 'MECHANIC', system: 'VMMS' },
-  ],
+const SESSION = {
+  active: true,
+  sid: 's1',
+  expiresAt: '2026-11-09T09:00:00.000Z',
+  user: { id: 'u1', name: 'Juan dela Cruz', email: 'mech.juan@welinc.com' },
 };
+
+const inAnHour = () => Math.floor(Date.now() / 1000) + 3600;
+
+function token(over: Partial<UserToken> = {}): UserToken {
+  return {
+    tokenUse: 'user',
+    sub: 'u1',
+    email: 'mech.juan@welinc.com',
+    aud: 'VRMS',
+    clientId: 'vrms',
+    roles: [
+      { role: 'MECHANIC', system: 'VRMS' },
+      { role: 'MECHANIC', system: 'VMMS' },
+    ],
+    exp: inAnHour(),
+    jti: 'j1',
+    sid: 's1',
+    ...over,
+  };
+}
 
 function answer(status: number, body: unknown = {}) {
   return Promise.resolve(
@@ -35,17 +53,20 @@ function setup(url = 'http://auth-service:3001/') {
   return { fetchMock, check: new AccountCheck(config) };
 }
 
+const codeOf = (error: unknown) =>
+  ((error as HttpException).getResponse() as { code?: string }).code;
+
 afterEach(() => jest.useRealTimers());
 
 describe('AccountCheck', () => {
-  it('asks /auth/me?system=VRMS with only the caller token and keeps VRMS roles', async () => {
+  it('asks /auth/session with only the caller token, names the caller from it and takes VRMS roles from the token', async () => {
     const { fetchMock, check } = setup();
-    fetchMock.mockReturnValue(answer(200, ME));
+    fetchMock.mockReturnValue(answer(200, SESSION));
 
-    const { user, fresh } = await check.confirm('tok');
+    const { user, fresh } = await check.confirm('tok', token());
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('http://auth-service:3001/auth/me?system=VRMS');
+    expect(url).toBe('http://auth-service:3001/auth/session');
     expect(init.headers).toEqual({ Authorization: 'Bearer tok' });
     expect(fresh).toBe(true);
     expect(user).toEqual({
@@ -59,135 +80,153 @@ describe('AccountCheck', () => {
 
   it('refuses to start without AUTH_INTERNAL_URL', () => {
     const config = {
-      getOrThrow: () => {
+      getOrThrow: jest.fn(() => {
         throw new Error('missing');
-      },
+      }),
     } as unknown as ConfigService;
     expect(() => new AccountCheck(config)).toThrow('missing');
   });
 
-  it('answers 401 for a 200 with no VRMS role', async () => {
+  it('answers 401 SESSION_ENDED for a token with no sid, without asking', async () => {
     const { fetchMock, check } = setup();
-    fetchMock.mockReturnValue(
-      answer(200, { ...ME, roles: [{ role: 'ADMIN', system: 'BMS' }] }),
-    );
-    await expect(check.confirm('tok')).rejects.toThrow(
-      new UnauthorizedException('User does not have access to this system'),
-    );
+    const error = await check
+      .confirm('tok', token({ sid: null }))
+      .catch((e: unknown) => e);
+    expect((error as HttpException).getStatus()).toBe(401);
+    expect(codeOf(error)).toBe('SESSION_ENDED');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([
-    [401, 'Invalid session', UnauthorizedException],
-    [
-      403,
-      'Account is locked. Contact your Admin to unlock.',
-      ForbiddenException,
-    ],
-  ])('passes a %s through with its message', async (status, message, Type) => {
+  it('caches by sid for 30 s, across tokens of the same session', async () => {
+    jest.useFakeTimers();
     const { fetchMock, check } = setup();
-    fetchMock.mockReturnValue(answer(status, { message }));
-    await expect(check.confirm('tok')).rejects.toThrow(new Type(message));
-  });
+    fetchMock.mockImplementation(() => answer(200, SESSION));
 
-  it.each([
-    ['a 500', () => answer(500)],
-    ['a 429', () => answer(429)],
-    ['a 404', () => answer(404)],
-    ['an unreadable body', () => answer(200, 'not json')],
-    ['a body missing fields', () => answer(200, { id: 'u1' })],
-    ['a timeout', () => Promise.reject(new DOMException('t', 'TimeoutError'))],
-  ])('answers 503 for %s', async (_label, reply) => {
-    const { fetchMock, check } = setup();
-    fetchMock.mockImplementation(reply);
-    await expect(check.confirm('tok')).rejects.toThrow(
-      ServiceUnavailableException,
-    );
-  });
-
-  it('caches a 200 for 30 seconds, then asks again', async () => {
-    jest.useFakeTimers({ now: 1_000_000 });
-    const { fetchMock, check } = setup();
-    fetchMock.mockImplementation(() => answer(200, ME));
-
-    await check.confirm('tok');
-    const second = await check.confirm('tok');
+    await check.confirm('tok-a', token());
+    const second = await check.confirm('tok-b', token({ jti: 'j2' }));
     expect(second.fresh).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    jest.setSystemTime(1_000_000 + CACHE_TTL_MS + 1);
-    await check.confirm('tok');
+    jest.advanceTimersByTime(CACHE_TTL_MS + 1);
+    await check.confirm('tok-b', token({ jti: 'j2' }));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("ends a cache entry at the token's exp when that comes first", async () => {
-    jest.useFakeTimers({ now: 1_000_000 });
+  it('shares one call among concurrent misses for one sid', async () => {
     const { fetchMock, check } = setup();
-    fetchMock.mockImplementation(() => answer(200, ME));
-
-    const exp = (1_000_000 + 5_000) / 1000;
-    await check.confirm('tok', exp);
-    jest.setSystemTime(1_000_000 + 5_001);
-    await check.confirm('tok', exp);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('never caches a 401, 403 or 5xx', async () => {
-    const { fetchMock, check } = setup();
-    fetchMock
-      .mockImplementationOnce(() => answer(503))
-      .mockImplementationOnce(() => answer(401, { message: 'Invalid session' }))
-      .mockImplementation(() => answer(200, ME));
-
-    await expect(check.confirm('tok')).rejects.toThrow();
-    await expect(check.confirm('tok')).rejects.toThrow();
-    await expect(check.confirm('tok')).resolves.toMatchObject({ fresh: true });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-  });
-
-  it('shares one call between checks for the same token already in flight', async () => {
-    const { fetchMock, check } = setup();
-    fetchMock.mockImplementation(() => answer(200, ME));
-
-    const [a, b] = await Promise.all([
-      check.confirm('tok'),
-      check.confirm('tok'),
-    ]);
+    let release: (value: Response) => void = () => undefined;
+    fetchMock.mockReturnValue(
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+    );
+    const calls = [
+      check.confirm('a', token()),
+      check.confirm('b', token({ jti: 'j2' })),
+      check.confirm('c', token({ jti: 'j3' })),
+    ];
+    release(new Response(JSON.stringify(SESSION), { status: 200 }));
+    await Promise.all(calls);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect([a.fresh, b.fresh].sort()).toEqual([false, true]);
   });
 
-  // covers: AC-4 (capped at 5,000 entries, oldest dropped first)
-  describe('cache cap', () => {
-    async function fill(check: AccountCheck, count: number) {
-      for (let i = 0; i < count; i++) await check.confirm(`tok-${i}`);
+  it('caches an ended answer until the token expires, and keeps its code', async () => {
+    jest.useFakeTimers();
+    const { fetchMock, check } = setup();
+    fetchMock.mockImplementation(() =>
+      answer(401, {
+        message: 'This account is not active',
+        code: 'ACCOUNT_INACTIVE',
+      }),
+    );
+    for (let i = 0; i < 2; i++) {
+      jest.advanceTimersByTime(CACHE_TTL_MS + 1);
+      const error = await check
+        .confirm('tok', token())
+        .catch((e: unknown) => e);
+      expect((error as HttpException).getStatus()).toBe(401);
+      expect(codeOf(error)).toBe('ACCOUNT_INACTIVE');
     }
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 
-    it('keeps every answer while the cache is at its cap', async () => {
+  it('passes TOKEN_EXPIRED through and caches nothing for it', async () => {
+    const { fetchMock, check } = setup();
+    fetchMock.mockImplementation(() =>
+      answer(401, { message: 'expired', code: 'TOKEN_EXPIRED' }),
+    );
+    for (let i = 0; i < 2; i++) {
+      const error = await check
+        .confirm('tok', token())
+        .catch((e: unknown) => e);
+      expect(codeOf(error)).toBe('TOKEN_EXPIRED');
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a session answer for another user', async () => {
+    const { fetchMock, check } = setup();
+    fetchMock.mockReturnValue(
+      answer(200, { ...SESSION, user: { ...SESSION.user, id: 'u2' } }),
+    );
+    const error = await check.confirm('tok', token()).catch((e: unknown) => e);
+    expect(codeOf(error)).toBe('SESSION_ENDED');
+  });
+
+  it('answers 401 when the token holds no VRMS role', async () => {
+    const { fetchMock, check } = setup();
+    fetchMock.mockReturnValue(answer(200, SESSION));
+    await expect(
+      check.confirm(
+        'tok',
+        token({ roles: [{ role: 'ADMIN', system: 'BMS' }] }),
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('fails closed with 503 on a timeout, another status or an unreadable body', async () => {
+    for (const reply of [
+      Promise.reject(Object.assign(new Error('t'), { name: 'TimeoutError' })),
+      answer(500),
+      answer(200, 'not json'),
+      answer(200, { active: true }),
+    ]) {
       const { fetchMock, check } = setup();
-      fetchMock.mockImplementation(() => answer(200, ME));
+      fetchMock.mockReturnValue(reply);
+      await expect(check.confirm('tok', token())).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+    }
+  });
 
-      await fill(check, CACHE_MAX_ENTRIES);
-      fetchMock.mockClear();
-      const again = await check.confirm('tok-0');
-
-      expect(again.fresh).toBe(false);
-      expect(fetchMock).not.toHaveBeenCalled();
+  it('status always asks fresh and answers the server cutoff', async () => {
+    const { fetchMock, check } = setup();
+    fetchMock.mockImplementation(() => answer(200, SESSION));
+    await check.confirm('tok', token());
+    await expect(check.status('tok', token())).resolves.toEqual({
+      sessionExpiresAt: SESSION.expiresAt,
     });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 
-    it('drops the oldest entry first when one more token arrives', async () => {
-      const { fetchMock, check } = setup();
-      fetchMock.mockImplementation(() => answer(200, ME));
+  it('runs whenConfirmed listeners on a fresh answer only', async () => {
+    const { fetchMock, check } = setup();
+    fetchMock.mockImplementation(() => answer(200, SESSION));
+    const listener = jest.fn(() => Promise.resolve());
+    check.whenConfirmed(listener);
+    await check.confirm('tok', token());
+    await check.confirm('tok', token());
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
 
-      await fill(check, CACHE_MAX_ENTRIES + 1);
-      fetchMock.mockClear();
-
-      const newest = await check.confirm(`tok-${CACHE_MAX_ENTRIES}`);
-      expect(newest.fresh).toBe(false);
-      expect(fetchMock).not.toHaveBeenCalled();
-
-      const oldest = await check.confirm('tok-0');
-      expect(oldest.fresh).toBe(true);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
+  it('keeps at most CACHE_MAX_ENTRIES sessions', async () => {
+    const { fetchMock, check } = setup();
+    fetchMock.mockImplementation(() => answer(200, SESSION));
+    for (let i = 0; i <= CACHE_MAX_ENTRIES; i++) {
+      // a different sid each time, the same user
+      await check.confirm('tok', token({ sid: `s${i}` }));
+    }
+    await check.confirm('tok', token({ sid: 's0' }));
+    expect(fetchMock).toHaveBeenCalledTimes(CACHE_MAX_ENTRIES + 2);
   });
 });

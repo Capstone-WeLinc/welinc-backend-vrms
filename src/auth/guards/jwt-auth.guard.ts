@@ -40,7 +40,7 @@ export class JwtAuthGuard implements CanActivate {
       .switchToHttp()
       .getRequest<Request & { user?: AuthUser }>();
     const { raw, token } = await checkPerson(this.verifier, request);
-    const { user } = await this.accountCheck.confirm(raw, token.exp);
+    const { user } = await this.accountCheck.confirm(raw, token);
     request.user = user;
     return true;
   }

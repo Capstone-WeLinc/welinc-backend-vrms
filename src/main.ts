@@ -2,7 +2,23 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import type { Request, Response, NextFunction } from 'express';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+
+/**
+ * Proxy hops in front of backend-vrms (spec 0003): 1 locally (nginx), 2 hosted. `req.ip` is then
+ * the user's address, which VRMS forwards to welinc-auth as `X-WeLinc-User-Address`. Unset
+ * trusts none, so a forged X-Forwarded-For is ignored.
+ */
+function trustProxyHops(): number {
+  const raw = process.env['TRUST_PROXY_HOPS'];
+  if (raw === undefined || raw === '') return 0;
+  const hops = Number(raw);
+  if (!Number.isInteger(hops) || hops < 0) {
+    throw new Error('TRUST_PROXY_HOPS must be a whole number, 0 or more');
+  }
+  return hops;
+}
 
 function isLocalDevOrigin(origin: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
@@ -10,6 +26,9 @@ function isLocalDevOrigin(origin: string): boolean {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.set('trust proxy', trustProxyHops());
+  // The vrms_rt refresh cookie and the login state cookie (spec 0003, AC-16)
+  app.use(cookieParser());
 
   // Spec 0017, AC-1: no files on local disk; attachments open through signed Blob Storage links
   app.use((_: Request, res: Response, next: NextFunction) => {

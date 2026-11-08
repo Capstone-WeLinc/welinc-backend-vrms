@@ -27,6 +27,20 @@ function error(status: HttpStatus, message: string, code?: string) {
 export const invalidSession = () =>
   error(HttpStatus.UNAUTHORIZED, 'Invalid session');
 
+/** A good token past its `exp` (spec 0003, AC-27): refresh and try once more. */
+export const tokenExpired = () =>
+  error(
+    HttpStatus.UNAUTHORIZED,
+    'The access token has expired',
+    'TOKEN_EXPIRED',
+  );
+
+/** The session is over: logout, idle, age, or an admin (spec 0001 section 11). */
+export const sessionEnded = (
+  message = 'The session has ended',
+  code = 'SESSION_ENDED',
+) => error(HttpStatus.UNAUTHORIZED, message, code);
+
 /** A good signature, but the token is for another system. */
 export const wrongAudience = () =>
   error(

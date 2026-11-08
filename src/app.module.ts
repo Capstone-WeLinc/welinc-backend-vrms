@@ -10,6 +10,7 @@ import { KnowledgeModule } from './modules/knowledge/knowledge.module';
 import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
+import { SessionModule } from './session/session.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AttachmentsModule } from './modules/attachments/attachments.module';
     AiModule,
     AnalyticsModule,
     AttachmentsModule,
+    SessionModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -17,6 +17,11 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import type { Request } from 'express';
 import request from 'supertest';
 import { AppModule } from '../../app.module';
+import {
+  SESSION_CONFIG,
+  type SessionConfig,
+} from '../../session/session.config';
+import { TOKEN_VERIFIER } from '../verify';
 import type { AuthUser } from '../account-check';
 import { SystemType, UserRole } from '../roles';
 import { MATRIX_ROLES, PermissionKey } from './catalog';
@@ -135,14 +140,22 @@ describe('Route decorators (AC-7)', () => {
     expect(wrong.map(label)).toEqual([]);
   });
 
-  it('opens only the health check to everyone, and only /permissions/me and the attachment routes (spec 0017, AC-12; spec 0018, AC-9) to any signed in user', () => {
-    expect(routes.filter((r) => r.isPublic).map(label)).toEqual(['GET /']);
+  it('opens only the health check and the cookie session routes (spec 0003, AC-16) to everyone, and only /permissions/me, the attachment routes (spec 0017, AC-12; spec 0018, AC-9) and the session status to any signed in user', () => {
+    expect(routes.filter((r) => r.isPublic).map(label)).toEqual([
+      'GET /',
+      'GET /vrms/session/start',
+      'GET /vrms/session/callback',
+      'POST /vrms/session/refresh',
+      'POST /vrms/session/activity',
+      'POST /vrms/session/logout',
+    ]);
     expect(routes.filter((r) => r.authenticated).map(label)).toEqual([
       'GET /vrms/permissions/me',
       'GET /vrms/repairs/:id/attachments',
       'DELETE /vrms/repairs/:id/attachments/:attachmentId',
       'PATCH /vrms/repairs/:id/attachments/:attachmentId',
       'POST /vrms/repairs/:id/attachments',
+      'GET /vrms/session/status',
     ]);
   });
 });
@@ -180,6 +193,19 @@ const stubService = () =>
 
 const UUID = '00000000-0000-4000-8000-0000000000e1';
 
+const TEST_SESSION_CONFIG: SessionConfig = {
+  webAppUrl: 'http://localhost:8001',
+  webAppOrigin: 'http://localhost:8001',
+  portalUrl: 'http://localhost:8000',
+  authPublicUrl: 'http://localhost:3000/auth',
+  redirectUri: 'http://localhost:3000/vrms/session/callback',
+  cookieSecure: false,
+  clientId: 'vrms',
+  tokenUrl: 'http://auth-service:3001/auth/token',
+  logoutUrl: 'http://auth-service:3001/auth/logout',
+  activityUrl: 'http://auth-service:3001/auth/session/activity',
+};
+
 describe('Every route against every matrix role, under the default matrix (AC-15)', () => {
   let app: INestApplication;
 
@@ -197,6 +223,15 @@ describe('Every route against every matrix role, under the default matrix (AC-15
       providers: [
         ...[...deps].map((dep) => ({ provide: dep, useValue: stubService() })),
         { provide: PermissionsService, useClass: FakePermissions },
+        // The session routes (spec 0003) read their config and check the bearer themselves
+        { provide: SESSION_CONFIG, useValue: TEST_SESSION_CONFIG },
+        {
+          provide: TOKEN_VERIFIER,
+          useValue: {
+            verify: () =>
+              Promise.resolve({ tokenUse: 'user', sid: 's1', roles: [] }),
+          },
+        },
         { provide: APP_GUARD, useClass: TestUserGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },
       ],
@@ -228,6 +263,8 @@ describe('Every route against every matrix role, under the default matrix (AC-15
       [route.method](path)
       .set('x-test-role', role)
       .set('authorization', 'Bearer test')
+      // The session cookie routes' CSRF guard wants the VRMS origin (spec 0003, AC-17)
+      .set('origin', TEST_SESSION_CONFIG.webAppOrigin)
       .send({});
     if (allowed) {
       expect(res.status).not.toBe(403);

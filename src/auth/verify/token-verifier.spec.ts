@@ -102,7 +102,8 @@ describe('TokenVerifier', () => {
       await failure(
         verifier.verify(await signAccess(signer, {}, {}, now - 10)),
       ),
-    ).toBe('invalid');
+      // spec 0003 AC-27: told apart as expired, so the caller gets TOKEN_EXPIRED
+    ).toBe('expired');
   });
 
   it('fails an old HS256 token, alg none, and HS256 keyed with the public key', async () => {

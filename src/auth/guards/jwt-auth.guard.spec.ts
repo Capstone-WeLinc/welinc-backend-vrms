@@ -73,13 +73,17 @@ describe('JwtAuthGuard', () => {
     expect(request.user).toEqual(mechanic);
   });
 
-  it('asks about the bare token and passes the token exp for the cache', async () => {
+  it('asks about the bare token and passes the checked token for the session cache', async () => {
     const token = await signAccess(signer);
     const { guard, context, confirm } = setup(`bearer ${token}`);
     await guard.canActivate(context);
-    expect(confirm).toHaveBeenCalledWith(token, expect.any(Number));
-    const exp = (confirm.mock.calls[0] as unknown[])[1] as number;
-    expect(exp).toBeGreaterThan(Date.now() / 1000);
+    const [raw, checked] = confirm.mock.calls[0] as unknown as [
+      string,
+      { tokenUse: string; exp: number },
+    ];
+    expect(raw).toBe(token);
+    expect(checked.tokenUse).toBe('user');
+    expect(checked.exp).toBeGreaterThan(Date.now() / 1000);
   });
 
   it('never asks welinc-auth when the token check fails', async () => {
