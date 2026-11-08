@@ -18,6 +18,7 @@ import { ConfigService } from './config.service';
 import type { AuthUser } from '../../../auth/account-check';
 import { MechanicRoster } from '../mechanic-roster.service';
 import { MechanicWorkService } from '../mechanic-work.service';
+import { DirectorySync } from '../directory/directory-sync.service';
 import { ReleaseTicketsDto } from '../dto/release-tickets.dto';
 
 @Controller('vrms')
@@ -26,6 +27,7 @@ export class ConfigController {
     private readonly configService: ConfigService,
     private readonly mechanicRoster: MechanicRoster,
     private readonly mechanicWork: MechanicWorkService,
+    private readonly directorySync: DirectorySync,
   ) {}
 
   // GET /vrms/config/garages
@@ -56,13 +58,14 @@ export class ConfigController {
     return this.configService.listAvailableMechanics();
   }
 
-  // POST /vrms/mechanics/sync. Brings the in house mechanics in step with welinc-auth (spec 0009,
-  // AC-11), asking with VRMS's own service token (spec 0002, AC-21)
+  // POST /vrms/mechanics/sync. The recovery path (spec 0005, AC-17): reads every VRMS user from
+  // welinc-auth's directory again and restarts the feed from there. The app no longer calls it;
+  // the 30 s poll keeps the list current
   @RequirePermission('users.manage')
   @Post('mechanics/sync')
   @HttpCode(HttpStatus.OK)
   syncMechanics() {
-    return this.mechanicRoster.sync();
+    return this.directorySync.recover();
   }
 
   // POST /vrms/mechanics/:authUserId/refresh (spec 0005, AC-18). The Users page calls it after

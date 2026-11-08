@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { authUnavailable } from '../../../auth/verify/errors';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../shared/prisma.service';
@@ -27,6 +28,16 @@ export class LeaseLostError extends Error {
     this.name = 'LeaseLostError';
   }
 }
+
+/** AC-17: another copy holds the lease. */
+const syncRunning = () =>
+  new ConflictException({
+    statusCode: 409,
+    code: 'SYNC_RUNNING',
+    message:
+      'A mechanic list update is already running. Try again in a minute.',
+    error: 'Conflict',
+  });
 
 export type TickOutcome =
   | { kind: 'skipped' } // another copy holds the lease
@@ -76,6 +87,31 @@ export class DirectorySync {
         `Directory sync tick failed: ${error instanceof Error ? error.message : String(error)}`,
       );
       return { kind: 'stopped' };
+    } finally {
+      await this.release(lease.owner);
+    }
+  }
+
+  /**
+   * AC-17: `POST /vrms/mechanics/sync`, the recovery path. Claims the lease (409 `SYNC_RUNNING`
+   * when another copy holds it), runs the full read and saves its `changesCursor`.
+   */
+  async recover(): Promise<SyncResult> {
+    const lease = await this.claim();
+    if (!lease) throw syncRunning();
+    try {
+      const result = await this.fullRead(lease.owner);
+      await this.recovered(lease.owner, lease.failingSince);
+      return result;
+    } catch (error) {
+      if (error instanceof DirectoryUnavailableError) {
+        this.logger.warn(
+          `Recovery sync could not reach welinc-auth: ${error.reason}`,
+        );
+        throw authUnavailable();
+      }
+      if (error instanceof LeaseLostError) throw syncRunning();
+      throw error;
     } finally {
       await this.release(lease.owner);
     }
