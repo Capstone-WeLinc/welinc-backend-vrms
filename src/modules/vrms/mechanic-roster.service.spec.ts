@@ -5,6 +5,10 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { AccountCheck, AuthUser } from '../../auth/account-check';
 import { MechanicRoster, roleOf } from './mechanic-roster.service';
+import type {
+  AuthDirectoryClient,
+  DirectoryUser,
+} from './directory/auth-directory.client';
 
 // Spec 0009, AC-11, AC-13 and AC-14, against an in memory mechanics table.
 
@@ -48,11 +52,14 @@ function fakePrisma(rows: Row[]) {
         where,
         data,
       }: {
-        where: { id: { in: string[] } };
+        where: { id?: { in: string[] }; authUserId?: string };
         data: Partial<Row>;
       }) => {
         const hit = rows.filter(
-          (r) => where.id.in.includes(r.id) && r.isActive,
+          (r) =>
+            (where.id ? where.id.in.includes(r.id) : true) &&
+            (where.authUserId ? r.authUserId === where.authUserId : true) &&
+            r.isActive,
         );
         hit.forEach((r) => Object.assign(r, data));
         return Promise.resolve({ count: hit.length });
@@ -75,7 +82,23 @@ const user = (
   roles: [{ role, system: extra.system ?? 'VRMS' }],
 });
 
-function setup(rows: Row[], users: unknown[]) {
+type ListedUser = ReturnType<typeof user>;
+
+/** A `/auth/users` row as welinc-auth's directory would answer it to VRMS (spec 0005, AC-7). */
+const asDirectoryUser = (u: ListedUser): DirectoryUser => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  phone: null,
+  phoneVerified: false,
+  picture: null,
+  isActive: u.isActive,
+  deleted: false,
+  roles: u.roles.filter((r) => r.system === 'VRMS').map((r) => r.role),
+  updatedAt: '2026-11-09T00:00:00.000Z',
+});
+
+function setup(rows: Row[], users: ListedUser[]) {
   global.fetch = jest.fn(() =>
     Promise.resolve(new Response(JSON.stringify(users), { status: 200 })),
   );
@@ -91,6 +114,15 @@ function setup(rows: Row[], users: unknown[]) {
     {
       withToken: <T>(call: (token: string) => Promise<T>) => call('svc-tok'),
     } as unknown as ServiceTokenClient,
+    // Spec 0005, AC-18: refreshOne asks the directory lookup for one person
+    {
+      lookup: jest.fn((ids: string[]) =>
+        Promise.resolve({
+          users: users.filter((u) => ids.includes(u.id)).map(asDirectoryUser),
+          missing: ids.filter((id) => !users.some((u) => u.id === id)),
+        }),
+      ),
+    } as unknown as AuthDirectoryClient,
   );
   return { roster, prisma, rows };
 }

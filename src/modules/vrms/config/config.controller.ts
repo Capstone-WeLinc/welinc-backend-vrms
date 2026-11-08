@@ -65,6 +65,20 @@ export class ConfigController {
     return this.mechanicRoster.sync();
   }
 
+  // POST /vrms/mechanics/:authUserId/refresh (spec 0005, AC-18). The Users page calls it after
+  // each save, so the picker shows the change at once instead of on the next poll
+  @RequirePermission('users.manage')
+  @Post('mechanics/:authUserId/refresh')
+  @HttpCode(HttpStatus.OK)
+  async refreshMechanic(
+    @Param('authUserId', ParseUUIDPipe) authUserId: string,
+  ) {
+    const row = await this.mechanicRoster.refreshOne(authUserId);
+    return row
+      ? { mechanicId: row.mechanicId, isActive: row.stillActive }
+      : { mechanicId: null };
+  }
+
   // GET /vrms/mechanics/workload (feature 57). Static path, so it sits before the :authUserId routes
   @RequirePermission('users.manage')
   @Get('mechanics/workload')

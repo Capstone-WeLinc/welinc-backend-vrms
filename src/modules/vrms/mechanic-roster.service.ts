@@ -17,7 +17,12 @@ import {
 } from '../../auth/account-check';
 import { SystemType, UserRole } from '../../auth/roles';
 import { DIRECTORY_TOKENS, ServiceTokenClient } from '../../auth/verify';
-import type { DirectoryUser } from './directory/auth-directory.client';
+import {
+  AuthDirectoryClient,
+  DirectoryUnavailableError,
+  type DirectoryUser,
+} from './directory/auth-directory.client';
+import { authUnavailable } from '../../auth/verify/errors';
 
 /** The client `apply` writes through: the service's own, or a transaction's. */
 type Db = Prisma.TransactionClient;
@@ -104,6 +109,7 @@ export class MechanicRoster implements OnModuleInit {
     private readonly accountCheck: AccountCheck,
     env: EnvConfig,
     @Inject(DIRECTORY_TOKENS) private readonly directory: ServiceTokenClient,
+    private readonly people: AuthDirectoryClient,
   ) {
     this.usersUrl = `${authInternalUrl(env)}/auth/users?system=${SystemType.VRMS}`;
   }
@@ -159,39 +165,40 @@ export class MechanicRoster implements OnModuleInit {
   }
 
   /**
-   * Spec 0011, AC-33: brings one person's Mechanic row in step with welinc-auth and says whether they
-   * still hold access to VRMS as a mechanic (active account, mechanic role). Returns null when there
-   * is no Mechanic row for them.
+   * Spec 0005, AC-18 (and spec 0011, AC-33): brings one person's row in step with welinc-auth at
+   * once, through the directory lookup instead of listing every user. A person in `missing`
+   * (never in VRMS, or hard deleted) has an existing row set inactive. Returns the row after, or
+   * null when there is none and nothing to create. welinc-auth unavailable: 503 `AUTH_UNAVAILABLE`.
    */
   async refreshOne(
     authUserId: string,
   ): Promise<{ mechanicId: string; stillActive: boolean } | null> {
-    const users = await this.fetchUsers();
+    let found: DirectoryUser | undefined;
+    try {
+      const answer = await this.people.lookup([authUserId]);
+      found = answer.users.find((user) => user.id === authUserId);
+    } catch (error) {
+      if (error instanceof DirectoryUnavailableError) {
+        this.logger.warn(`Could not refresh ${authUserId}: ${error.reason}`);
+        throw authUnavailable();
+      }
+      throw error;
+    }
+
+    if (found) {
+      await this.apply(found);
+    } else {
+      await this.prisma.mechanic.updateMany({
+        where: { authUserId, isActive: true },
+        data: { isActive: false },
+      });
+    }
+
     const row = await this.prisma.mechanic.findUnique({
       where: { authUserId },
-      select: { id: true, name: true, email: true, isActive: true, role: true },
+      select: { id: true, isActive: true },
     });
-    if (!row) return null;
-    const found = users.find((u) => u.id === authUserId);
-    const role = found ? roleOf(found.roles) : null;
-    // No VRMS mechanic role any more: the row keeps its last known role (AC-4)
-    if (!found || !role) {
-      if (row.isActive) {
-        await this.prisma.mechanic.update({
-          where: { authUserId },
-          data: { isActive: false },
-        });
-      }
-      return { mechanicId: row.id, stillActive: false };
-    }
-    const want: Wanted = {
-      name: found.name,
-      email: found.email.toLowerCase(),
-      isActive: found.isActive,
-      role,
-    };
-    if (this.differs(row, want)) await this.write(authUserId, want);
-    return { mechanicId: row.id, stillActive: want.isActive };
+    return row ? { mechanicId: row.id, stillActive: row.isActive } : null;
   }
 
   /** AC-11: makes the in house rows match welinc-auth's VRMS users, asking as VRMS itself. */
