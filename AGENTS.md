@@ -34,7 +34,7 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set
 | `src/modules/vrms/checklist-edits.service.ts`, `checklist-edits.ts` | Per ticket checklist edits (spec 0023): `PUT /vrms/repairs/:id/issues/:issueId/steps` behind `ticket.checklist.edit` (CASL `editChecklist`), and the pure rules (`normalizeStepText`, `cleanSteps`, `checklistDiff` with the moved set, the four `STEP_*` audit builders) |
 | `src/shared/` | `PrismaService`, `SharedModule` |
 | `prisma/schema.prisma`, `prisma/migrations/` | Data model and migration history |
-| `prisma/seed.ts`, `prisma/seeds/` | Seed data (`npm run seed`): `catalog.ts` holds the fleet, problems, parts and prices; `repairs.seed.ts` plays out each truck's history in order |
+| `prisma/seed.ts`, `prisma/seeds/` | Seed data (`npm run seed`): `people.json` is a byte for byte copy of welinc-auth's manifest (spec 0006; check it with `npm --prefix welinc-auth run seed:check -- welinc-backend-vrms/prisma/seeds/people.json`), `shared-ids.ts` reads it (`seedActor`, `vrmsRole`) and `mechanics.seed.ts` makes a `Mechanic` row per VRMS mechanic or chief in it; `catalog.ts` holds the fleet, problems, parts and prices; `repairs.seed.ts` plays out each truck's history in order |
 
 ## Commands
 
