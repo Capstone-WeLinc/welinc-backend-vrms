@@ -1,10 +1,12 @@
-import type { ServiceTokenClient } from '../../auth/verify';
 import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { AccountCheck, AuthUser } from '../../auth/account-check';
 import { MechanicRoster, roleOf } from './mechanic-roster.service';
+import type {
+  AuthDirectoryClient,
+  DirectoryUser,
+} from './directory/auth-directory.client';
 
 // Spec 0009, AC-11, AC-13 and AC-14, against an in memory mechanics table.
 
@@ -42,17 +44,32 @@ function fakePrisma(rows: Row[]) {
         return Promise.resolve({});
       },
     ),
-    update: jest.fn(),
+    update: jest.fn(
+      ({
+        where,
+        data,
+      }: {
+        where: { authUserId: string };
+        data: Partial<Row>;
+      }) => {
+        const row = find(where.authUserId);
+        if (row) Object.assign(row, data);
+        return Promise.resolve(row);
+      },
+    ),
     updateMany: jest.fn(
       ({
         where,
         data,
       }: {
-        where: { id: { in: string[] } };
+        where: { id?: { in: string[] }; authUserId?: string };
         data: Partial<Row>;
       }) => {
         const hit = rows.filter(
-          (r) => where.id.in.includes(r.id) && r.isActive,
+          (r) =>
+            (where.id ? where.id.in.includes(r.id) : true) &&
+            (where.authUserId ? r.authUserId === where.authUserId : true) &&
+            r.isActive,
         );
         hit.forEach((r) => Object.assign(r, data));
         return Promise.resolve({ count: hit.length });
@@ -75,87 +92,39 @@ const user = (
   roles: [{ role, system: extra.system ?? 'VRMS' }],
 });
 
-function setup(rows: Row[], users: unknown[]) {
-  global.fetch = jest.fn(() =>
-    Promise.resolve(new Response(JSON.stringify(users), { status: 200 })),
-  );
+type ListedUser = ReturnType<typeof user>;
+
+/** A `/auth/users` row as welinc-auth's directory would answer it to VRMS (spec 0005, AC-7). */
+const asDirectoryUser = (u: ListedUser): DirectoryUser => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  phone: null,
+  phoneVerified: false,
+  picture: null,
+  isActive: u.isActive,
+  deleted: false,
+  roles: u.roles.filter((r) => r.system === 'VRMS').map((r) => r.role),
+  updatedAt: '2026-11-09T00:00:00.000Z',
+});
+
+function setup(rows: Row[], users: ListedUser[]) {
   const prisma = fakePrisma(rows);
-  const env = {
-    getOrThrow: () => 'http://auth-service:3001',
-  } as unknown as ConfigService;
   const roster = new MechanicRoster(
     prisma as unknown as PrismaService,
     { whenConfirmed: jest.fn() } as unknown as AccountCheck,
-    env,
-    // Spec 0002, AC-21: the roster asks with VRMS's own token, never a caller's
+    // Spec 0005, AC-18: refreshOne asks the directory lookup for one person
     {
-      withToken: <T>(call: (token: string) => Promise<T>) => call('svc-tok'),
-    } as unknown as ServiceTokenClient,
+      lookup: jest.fn((ids: string[]) =>
+        Promise.resolve({
+          users: users.filter((u) => ids.includes(u.id)).map(asDirectoryUser),
+          missing: ids.filter((id) => !users.some((u) => u.id === id)),
+        }),
+      ),
+    } as unknown as AuthDirectoryClient,
   );
   return { roster, prisma, rows };
 }
-
-describe('MechanicRoster.sync', () => {
-  it('creates, updates and deactivates, then a second call changes nothing', async () => {
-    const rows: Row[] = [
-      {
-        id: 'm1',
-        authUserId: 'b',
-        name: 'Old',
-        email: 'b@welinc.com',
-        isActive: true,
-      },
-      {
-        id: 'm2',
-        authUserId: 'gone',
-        name: 'Gone',
-        email: null,
-        isActive: true,
-      },
-    ];
-    const { roster } = setup(rows, [
-      user('a', 'MECHANIC'),
-      user('b', 'CHIEF_MECHANIC'),
-      user('c', 'MECHANIC', { isLocked: true }),
-      user('d', 'ADMIN'),
-      user('e', 'MECHANIC', { system: 'VMMS' }),
-    ]);
-
-    expect(await roster.sync()).toEqual({
-      created: 2,
-      updated: 1,
-      deactivated: 1,
-    });
-    expect(rows.find((r) => r.authUserId === 'a')).toMatchObject({
-      name: 'Name a',
-      email: 'a@welinc.com',
-      isActive: true,
-    });
-    // A locked mechanic stays active (spec 0011, AC-31)
-    expect(rows.find((r) => r.authUserId === 'c')?.isActive).toBe(true);
-    expect(rows.find((r) => r.id === 'm2')?.isActive).toBe(false);
-    expect(rows.some((r) => r.authUserId === 'd' || r.authUserId === 'e')).toBe(
-      false,
-    );
-
-    expect(await roster.sync()).toEqual({
-      created: 0,
-      updated: 0,
-      deactivated: 0,
-    });
-  });
-
-  it("asks welinc-auth for the VRMS users with VRMS's own service token", async () => {
-    const { roster } = setup([], []);
-    await roster.sync();
-    const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
-    expect(url).toBe('http://auth-service:3001/auth/users?system=VRMS');
-    expect(init.headers).toEqual({ Authorization: 'Bearer svc-tok' });
-  });
-});
 
 describe('MechanicRoster.ensure', () => {
   const caller = (role: string): AuthUser => ({
@@ -229,108 +198,6 @@ describe('MechanicRoster duplicate row race', () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
-
-  describe('sync', () => {
-    // covers: AC-11
-    it('counts nothing when the winner already wrote the same values', async () => {
-      const { roster, prisma, rows } = setup([], [user('a', 'MECHANIC')]);
-      prisma.mechanic.upsert.mockImplementationOnce(() => {
-        rows.push(rowFor('a'));
-        return Promise.reject(uniqueViolation());
-      });
-
-      const result = await roster.sync();
-
-      expect(result).toEqual({ created: 0, updated: 0, deactivated: 0 });
-      expect(prisma.mechanic.update).not.toHaveBeenCalled();
-      expect(rows.filter((r) => r.authUserId === 'a')).toHaveLength(1);
-    });
-
-    it('updates the row the winner wrote when its values still differ', async () => {
-      const { roster, prisma, rows } = setup([], [user('a', 'MECHANIC')]);
-      prisma.mechanic.upsert.mockImplementationOnce(() => {
-        rows.push(rowFor('a', { name: 'Stale name', isActive: false }));
-        return Promise.reject(uniqueViolation());
-      });
-
-      const result = await roster.sync();
-
-      expect(result).toEqual({ created: 0, updated: 1, deactivated: 0 });
-      expect(prisma.mechanic.update).toHaveBeenCalledWith({
-        where: { authUserId: 'a' },
-        data: {
-          name: 'Name a',
-          email: 'a@welinc.com',
-          isActive: true,
-          role: 'MECHANIC',
-        },
-      });
-    });
-
-    it('counts nothing when the row is gone again after the violation', async () => {
-      const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
-      prisma.mechanic.upsert.mockRejectedValueOnce(uniqueViolation());
-
-      const result = await roster.sync();
-
-      expect(result).toEqual({ created: 0, updated: 0, deactivated: 0 });
-      expect(prisma.mechanic.update).not.toHaveBeenCalled();
-    });
-
-    it('rethrows an error that is not a unique violation', async () => {
-      const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
-      prisma.mechanic.upsert.mockRejectedValueOnce(new Error('db down'));
-
-      await expect(roster.sync()).rejects.toThrow('db down');
-    });
-
-    it('rethrows a different Prisma error code', async () => {
-      const { roster, prisma } = setup([], [user('a', 'MECHANIC')]);
-      prisma.mechanic.upsert.mockRejectedValueOnce(
-        new Prisma.PrismaClientKnownRequestError('Record not found', {
-          code: 'P2025',
-          clientVersion: 'test',
-        }),
-      );
-
-      await expect(roster.sync()).rejects.toBeInstanceOf(
-        Prisma.PrismaClientKnownRequestError,
-      );
-    });
-
-    // covers: AC-11 (two concurrent calls leave one row per authUserId and never answer 500)
-    it('leaves one row per authUserId when two syncs run at the same time', async () => {
-      const { roster, prisma, rows } = setup([], [user('a', 'MECHANIC')]);
-      // Each upsert decides at its start whether the row exists, like the unique index would
-      prisma.mechanic.upsert.mockImplementation(
-        async ({
-          where,
-          create,
-          update,
-        }: {
-          where: { authUserId: string };
-          create: Omit<Row, 'id'>;
-          update: Partial<Row>;
-        }) => {
-          const existedAtStart = rows.find(
-            (r) => r.authUserId === where.authUserId,
-          );
-          await Promise.resolve();
-          const now = rows.find((r) => r.authUserId === where.authUserId);
-          if (existedAtStart) Object.assign(existedAtStart, update);
-          else if (now) throw uniqueViolation();
-          else rows.push({ id: 'm-new', ...create });
-          return {};
-        },
-      );
-
-      const [first, second] = await Promise.all([roster.sync(), roster.sync()]);
-
-      expect(rows.filter((r) => r.authUserId === 'a')).toHaveLength(1);
-      expect(first.created + second.created).toBeGreaterThanOrEqual(1);
-      expect(first.updated + second.updated).toBe(0);
-    });
-  });
 
   describe('ensure', () => {
     const caller = (): AuthUser => ({
@@ -447,12 +314,13 @@ describe('MechanicRoster role', () => {
     expect(rows[0].role).toBe('CHIEF_MECHANIC');
   });
 
-  it('writes a role change on the next Admin sync, and nothing more once it matches', async () => {
+  it('writes a role change from the directory, and nothing more once it matches', async () => {
     const rows = [row({ role: 'MECHANIC' })];
-    const { roster } = setup(rows, [user('a', 'CHIEF_MECHANIC')]);
-    expect(await roster.sync()).toMatchObject({ updated: 1 });
+    const { roster } = setup(rows, []);
+    const chief = asDirectoryUser(user('a', 'CHIEF_MECHANIC'));
+    expect(await roster.apply(chief)).toBe('updated');
     expect(rows[0].role).toBe('CHIEF_MECHANIC');
-    expect(await roster.sync()).toMatchObject({ updated: 0 });
+    expect(await roster.apply(chief)).toBe('unchanged');
   });
 
   it('refreshOne writes the role too', async () => {
@@ -465,11 +333,129 @@ describe('MechanicRoster role', () => {
   it('keeps the last known role when the person loses VRMS access', async () => {
     const rows = [row({ role: 'CHIEF_MECHANIC' })];
     const { roster, prisma } = setup(rows, [user('a', 'ADMIN')]);
-    await roster.sync();
+    expect(await roster.apply(asDirectoryUser(user('a', 'ADMIN')))).toBe(
+      'deactivated',
+    );
     expect(rows[0]).toMatchObject({ isActive: false, role: 'CHIEF_MECHANIC' });
     expect(await roster.refreshOne('a')).toMatchObject({
       stillActive: false,
     });
     expect(prisma.mechanic.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// Spec 0005, AC-13: applying one person from the directory (the poll, the full read, refreshOne)
+describe('MechanicRoster.apply', () => {
+  const person = (over: Partial<DirectoryUser> = {}): DirectoryUser => ({
+    ...asDirectoryUser(user('a', 'MECHANIC')),
+    ...over,
+  });
+  const row = (over: Partial<Row> = {}): Row => ({
+    id: 'm1',
+    authUserId: 'a',
+    name: 'Name a',
+    email: 'a@welinc.com',
+    isActive: true,
+    role: 'MECHANIC',
+    ...over,
+  });
+
+  it('creates a row for a new mechanic with a lower case email', async () => {
+    const rows: Row[] = [];
+    const { roster } = setup(rows, []);
+    expect(await roster.apply(person())).toBe('created');
+    expect(rows[0]).toMatchObject({
+      authUserId: 'a',
+      email: 'a@welinc.com',
+      isActive: true,
+      role: 'MECHANIC',
+    });
+  });
+
+  it('updates a changed name, and applying the same person twice changes nothing', async () => {
+    const rows = [row()];
+    const { roster, prisma } = setup(rows, []);
+    const renamed = person({ name: 'Ana Cruz' });
+    expect(await roster.apply(renamed)).toBe('updated');
+    expect(rows[0].name).toBe('Ana Cruz');
+    prisma.mechanic.upsert.mockClear();
+    expect(await roster.apply(renamed)).toBe('unchanged');
+    expect(prisma.mechanic.upsert).not.toHaveBeenCalled();
+  });
+
+  it('follows a deactivated account and keeps the row', async () => {
+    const rows = [row()];
+    const { roster } = setup(rows, []);
+    expect(await roster.apply(person({ isActive: false }))).toBe('deactivated');
+    expect(rows[0]).toMatchObject({ isActive: false, role: 'MECHANIC' });
+  });
+
+  it('sets a deleted person inactive, keeping their last role', async () => {
+    const rows = [row({ role: 'CHIEF_MECHANIC' })];
+    const { roster } = setup(rows, []);
+    expect(
+      await roster.apply(person({ deleted: true, roles: ['CHIEF_MECHANIC'] })),
+    ).toBe('deactivated');
+    expect(rows[0]).toMatchObject({ isActive: false, role: 'CHIEF_MECHANIC' });
+  });
+
+  it('sets inactive someone who lost every VRMS role (roles: [])', async () => {
+    const rows = [row()];
+    const { roster } = setup(rows, []);
+    expect(await roster.apply(person({ roles: [] }))).toBe('deactivated');
+    expect(rows[0].isActive).toBe(false);
+    expect(await roster.apply(person({ roles: [] }))).toBe('unchanged');
+  });
+
+  it('ignores a person with no mechanic role and no row', async () => {
+    const rows: Row[] = [];
+    const { roster, prisma } = setup(rows, []);
+    expect(await roster.apply(person({ roles: ['ADMIN'] }))).toBe('unchanged');
+    expect(rows).toHaveLength(0);
+    expect(prisma.mechanic.upsert).not.toHaveBeenCalled();
+  });
+
+  it('reactivates a row when the role comes back', async () => {
+    const rows = [row({ isActive: false })];
+    const { roster } = setup(rows, []);
+    expect(await roster.apply(person())).toBe('updated');
+    expect(rows[0].isActive).toBe(true);
+  });
+
+  it('writes through the transaction it is given', async () => {
+    const rows: Row[] = [];
+    const { roster, prisma } = setup(rows, []);
+    const tx = fakePrisma(rows);
+    await roster.apply(person(), tx as never);
+    expect(tx.mechanic.upsert).toHaveBeenCalled();
+    expect(prisma.mechanic.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// Spec 0005, AC-18: refreshOne reads one person through the directory lookup
+describe('MechanicRoster.refreshOne', () => {
+  it('sets inactive a person the lookup puts in missing', async () => {
+    const rows: Row[] = [
+      {
+        id: 'm1',
+        authUserId: 'gone',
+        name: 'Gone',
+        email: null,
+        isActive: true,
+      },
+    ];
+    const { roster } = setup(rows, []);
+    expect(await roster.refreshOne('gone')).toEqual({
+      mechanicId: 'm1',
+      stillActive: false,
+    });
+    expect(rows[0].isActive).toBe(false);
+  });
+
+  it('creates the row for a mechanic the lookup returns, and answers null for nobody', async () => {
+    const rows: Row[] = [];
+    const { roster } = setup(rows, [user('a', 'MECHANIC')]);
+    expect(await roster.refreshOne('a')).toMatchObject({ stillActive: true });
+    expect(await roster.refreshOne('nobody')).toBeNull();
   });
 });
