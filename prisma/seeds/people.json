@@ -11,19 +11,7 @@
   },
   "people": [
     {
-      "id": "00000000-0000-4000-8000-000000000001",
-      "email": "bms.admin@welinc.com",
-      "name": "Bernardo Mendoza",
-      "group": "office",
-      "state": "active",
-      "password": "admin",
-      "contact": null,
-      "roles": [
-        { "system": "BMS", "role": "ADMIN" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000002",
+      "id": "00000000-0000-4000-8000-000000001101",
       "email": "vrms.admin@welinc.com",
       "name": "Victor Ramos",
       "group": "office",
@@ -31,124 +19,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "ADMIN" }
+        {
+          "system": "VRMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000003",
-      "email": "vmms.admin@welinc.com",
-      "name": "Valerio Mercado",
-      "group": "office",
-      "state": "active",
-      "password": "admin",
-      "contact": null,
-      "roles": [
-        { "system": "VMMS", "role": "ADMIN" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000004",
-      "email": "bms.cs@welinc.com",
-      "name": "Clara Reyes",
-      "group": "office",
-      "state": "active",
-      "password": "cs",
-      "contact": null,
-      "roles": [
-        { "system": "BMS", "role": "CUSTOMER_SUPPORT" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000005",
-      "email": "bms.ops@welinc.com",
-      "name": "Oscar Santos",
-      "group": "office",
-      "state": "active",
-      "password": "ops",
-      "contact": null,
-      "roles": [
-        { "system": "BMS", "role": "OPERATIONS" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000011",
-      "email": "mech.juan@welinc.com",
-      "name": "Juan dela Cruz",
-      "group": "mechanic",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000012",
-      "email": "mech.pedro@welinc.com",
-      "name": "Pedro Santos",
-      "group": "mechanic",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000013",
-      "email": "mech.rommel@welinc.com",
-      "name": "Rommel Cruz",
-      "group": "mechanic",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000014",
-      "email": "mech.isabel@welinc.com",
-      "name": "Isabel Reyes",
-      "group": "mechanic",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000015",
-      "email": "mech.carl@welinc.com",
-      "name": "Carl Santos",
-      "group": "mechanic",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000020",
-      "email": "vrms.chief@welinc.com",
-      "name": "Ramon Villanueva",
-      "group": "office",
-      "state": "active",
-      "password": "chief",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000101",
+      "id": "00000000-0000-4000-8000-000000001102",
       "email": "vrms.admin2@welinc.com",
       "name": "Teresita Aquino",
       "group": "office",
@@ -156,11 +34,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "ADMIN" }
+        {
+          "system": "VRMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000102",
+      "id": "00000000-0000-4000-8000-000000001103",
       "email": "vrms.admin3@welinc.com",
       "name": "Gilbert Navarro",
       "group": "office",
@@ -168,11 +49,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "ADMIN" }
+        {
+          "system": "VRMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000103",
+      "id": "00000000-0000-4000-8000-000000001104",
       "email": "vrms.admin4@welinc.com",
       "name": "Marissa Domingo",
       "group": "office",
@@ -180,11 +64,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "ADMIN" }
+        {
+          "system": "VRMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000104",
+      "id": "00000000-0000-4000-8000-000000001105",
       "email": "vrms.admin5@welinc.com",
       "name": "Rodrigo Salazar",
       "group": "office",
@@ -192,11 +79,29 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "ADMIN" }
+        {
+          "system": "VRMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000111",
+      "id": "00000000-0000-4000-8000-000000001201",
+      "email": "vrms.chief@welinc.com",
+      "name": "Ramon Villanueva",
+      "group": "office",
+      "state": "active",
+      "password": "chief",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000001202",
       "email": "vrms.chief2@welinc.com",
       "name": "Alfredo Bautista",
       "group": "office",
@@ -204,11 +109,14 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000112",
+      "id": "00000000-0000-4000-8000-000000001203",
       "email": "vrms.chief3@welinc.com",
       "name": "Nestor Pineda",
       "group": "office",
@@ -216,11 +124,14 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000113",
+      "id": "00000000-0000-4000-8000-000000001204",
       "email": "vrms.chief4@welinc.com",
       "name": "Lorna Galang",
       "group": "office",
@@ -228,11 +139,14 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000114",
+      "id": "00000000-0000-4000-8000-000000001205",
       "email": "vrms.chief5@welinc.com",
       "name": "Efren Lacson",
       "group": "office",
@@ -240,11 +154,29 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000201",
+      "id": "00000000-0000-4000-8000-000000002101",
+      "email": "vmms.admin@welinc.com",
+      "name": "Valerio Mercado",
+      "group": "office",
+      "state": "active",
+      "password": "admin",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VMMS",
+          "role": "ADMIN"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000002102",
       "email": "vmms.admin2@welinc.com",
       "name": "Cristina Velasco",
       "group": "office",
@@ -252,11 +184,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "ADMIN" }
+        {
+          "system": "VMMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000202",
+      "id": "00000000-0000-4000-8000-000000002103",
       "email": "vmms.admin3@welinc.com",
       "name": "Dominic Sison",
       "group": "office",
@@ -264,11 +199,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "ADMIN" }
+        {
+          "system": "VMMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000203",
+      "id": "00000000-0000-4000-8000-000000002104",
       "email": "vmms.admin4@welinc.com",
       "name": "Rowena Manalo",
       "group": "office",
@@ -276,11 +214,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "ADMIN" }
+        {
+          "system": "VMMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000204",
+      "id": "00000000-0000-4000-8000-000000002105",
       "email": "vmms.admin5@welinc.com",
       "name": "Leonardo Abad",
       "group": "office",
@@ -288,11 +229,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "ADMIN" }
+        {
+          "system": "VMMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000210",
+      "id": "00000000-0000-4000-8000-000000002201",
       "email": "vmms.ops@welinc.com",
       "name": "Oscar Ramos",
       "group": "office",
@@ -300,11 +244,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "OPERATIONS" }
+        {
+          "system": "VMMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000211",
+      "id": "00000000-0000-4000-8000-000000002202",
       "email": "vmms.ops2@welinc.com",
       "name": "Imelda Fajardo",
       "group": "office",
@@ -312,11 +259,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "OPERATIONS" }
+        {
+          "system": "VMMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000212",
+      "id": "00000000-0000-4000-8000-000000002203",
       "email": "vmms.ops3@welinc.com",
       "name": "Rafael Ilagan",
       "group": "office",
@@ -324,11 +274,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "OPERATIONS" }
+        {
+          "system": "VMMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000213",
+      "id": "00000000-0000-4000-8000-000000002204",
       "email": "vmms.ops4@welinc.com",
       "name": "Josefina Dela Paz",
       "group": "office",
@@ -336,11 +289,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "OPERATIONS" }
+        {
+          "system": "VMMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000214",
+      "id": "00000000-0000-4000-8000-000000002205",
       "email": "vmms.ops5@welinc.com",
       "name": "Noel Samonte",
       "group": "office",
@@ -348,11 +304,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "OPERATIONS" }
+        {
+          "system": "VMMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000220",
+      "id": "00000000-0000-4000-8000-000000002301",
       "email": "vmms.chief@welinc.com",
       "name": "Ramon Garcia",
       "group": "office",
@@ -360,11 +319,14 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VMMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000221",
+      "id": "00000000-0000-4000-8000-000000002302",
       "email": "vmms.chief2@welinc.com",
       "name": "Diego Martinez",
       "group": "office",
@@ -372,11 +334,14 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VMMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000222",
+      "id": "00000000-0000-4000-8000-000000002303",
       "email": "vmms.chief3@welinc.com",
       "name": "Ariel Macaraeg",
       "group": "office",
@@ -384,11 +349,14 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VMMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000223",
+      "id": "00000000-0000-4000-8000-000000002304",
       "email": "vmms.chief4@welinc.com",
       "name": "Benigno Tuazon",
       "group": "office",
@@ -396,11 +364,14 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VMMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000224",
+      "id": "00000000-0000-4000-8000-000000002305",
       "email": "vmms.chief5@welinc.com",
       "name": "Celso Ramirez",
       "group": "office",
@@ -408,11 +379,29 @@
       "password": "chief",
       "contact": null,
       "roles": [
-        { "system": "VMMS", "role": "CHIEF_MECHANIC" }
+        {
+          "system": "VMMS",
+          "role": "CHIEF_MECHANIC"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000301",
+      "id": "00000000-0000-4000-8000-000000003101",
+      "email": "bms.admin@welinc.com",
+      "name": "Bernardo Mendoza",
+      "group": "office",
+      "state": "active",
+      "password": "admin",
+      "contact": null,
+      "roles": [
+        {
+          "system": "BMS",
+          "role": "ADMIN"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000003102",
       "email": "bms.admin2@welinc.com",
       "name": "Evangeline Cortez",
       "group": "office",
@@ -420,11 +409,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "ADMIN" }
+        {
+          "system": "BMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000302",
+      "id": "00000000-0000-4000-8000-000000003103",
       "email": "bms.admin3@welinc.com",
       "name": "Patrick Yap",
       "group": "office",
@@ -432,11 +424,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "ADMIN" }
+        {
+          "system": "BMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000303",
+      "id": "00000000-0000-4000-8000-000000003104",
       "email": "bms.admin4@welinc.com",
       "name": "Gemma Lualhati",
       "group": "office",
@@ -444,11 +439,14 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "ADMIN" }
+        {
+          "system": "BMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000304",
+      "id": "00000000-0000-4000-8000-000000003105",
       "email": "bms.admin5@welinc.com",
       "name": "Raul Tan",
       "group": "office",
@@ -456,11 +454,29 @@
       "password": "admin",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "ADMIN" }
+        {
+          "system": "BMS",
+          "role": "ADMIN"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000311",
+      "id": "00000000-0000-4000-8000-000000003201",
+      "email": "bms.ops@welinc.com",
+      "name": "Oscar Santos",
+      "group": "office",
+      "state": "active",
+      "password": "ops",
+      "contact": null,
+      "roles": [
+        {
+          "system": "BMS",
+          "role": "OPERATIONS"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000003202",
       "email": "bms.ops2@welinc.com",
       "name": "Melchor Agustin",
       "group": "office",
@@ -468,11 +484,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "OPERATIONS" }
+        {
+          "system": "BMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000312",
+      "id": "00000000-0000-4000-8000-000000003203",
       "email": "bms.ops3@welinc.com",
       "name": "Liza Montemayor",
       "group": "office",
@@ -480,11 +499,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "OPERATIONS" }
+        {
+          "system": "BMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000313",
+      "id": "00000000-0000-4000-8000-000000003204",
       "email": "bms.ops4@welinc.com",
       "name": "Hernani Cabral",
       "group": "office",
@@ -492,11 +514,14 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "OPERATIONS" }
+        {
+          "system": "BMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000314",
+      "id": "00000000-0000-4000-8000-000000003205",
       "email": "bms.ops5@welinc.com",
       "name": "Susana Ventura",
       "group": "office",
@@ -504,11 +529,29 @@
       "password": "ops",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "OPERATIONS" }
+        {
+          "system": "BMS",
+          "role": "OPERATIONS"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000321",
+      "id": "00000000-0000-4000-8000-000000003301",
+      "email": "bms.cs@welinc.com",
+      "name": "Clara Reyes",
+      "group": "office",
+      "state": "active",
+      "password": "cs",
+      "contact": null,
+      "roles": [
+        {
+          "system": "BMS",
+          "role": "CUSTOMER_SUPPORT"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000003302",
       "email": "bms.cs2@welinc.com",
       "name": "Angelica Ong",
       "group": "office",
@@ -516,11 +559,14 @@
       "password": "cs",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "CUSTOMER_SUPPORT" }
+        {
+          "system": "BMS",
+          "role": "CUSTOMER_SUPPORT"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000322",
+      "id": "00000000-0000-4000-8000-000000003303",
       "email": "bms.cs3@welinc.com",
       "name": "Mylene Serrano",
       "group": "office",
@@ -528,11 +574,14 @@
       "password": "cs",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "CUSTOMER_SUPPORT" }
+        {
+          "system": "BMS",
+          "role": "CUSTOMER_SUPPORT"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000323",
+      "id": "00000000-0000-4000-8000-000000003304",
       "email": "bms.cs4@welinc.com",
       "name": "Jonathan Lim",
       "group": "office",
@@ -540,11 +589,14 @@
       "password": "cs",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "CUSTOMER_SUPPORT" }
+        {
+          "system": "BMS",
+          "role": "CUSTOMER_SUPPORT"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000324",
+      "id": "00000000-0000-4000-8000-000000003305",
       "email": "bms.cs5@welinc.com",
       "name": "Kristine Valencia",
       "group": "office",
@@ -552,896 +604,14 @@
       "password": "cs",
       "contact": null,
       "roles": [
-        { "system": "BMS", "role": "CUSTOMER_SUPPORT" }
+        {
+          "system": "BMS",
+          "role": "CUSTOMER_SUPPORT"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000401",
-      "email": "multi.chief@welinc.com",
-      "name": "Teodoro Manalastas",
-      "group": "multi",
-      "state": "active",
-      "password": "chief",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" },
-        { "system": "VMMS", "role": "CHIEF_MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000402",
-      "email": "multi.admin@welinc.com",
-      "name": "Felicidad Roxas",
-      "group": "multi",
-      "state": "active",
-      "password": "admin",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "ADMIN" },
-        { "system": "VMMS", "role": "ADMIN" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000403",
-      "email": "multi.mixed@welinc.com",
-      "name": "Arturo Pangilinan",
-      "group": "multi",
-      "state": "active",
-      "password": "chief",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" },
-        { "system": "VMMS", "role": "OPERATIONS" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000404",
-      "email": "multi.lead@welinc.com",
-      "name": "Corazon Villareal",
-      "group": "multi",
-      "state": "active",
-      "password": "chief",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "CHIEF_MECHANIC" },
-        { "system": "VMMS", "role": "OPERATIONS" },
-        { "system": "BMS", "role": "OPERATIONS" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000501",
-      "email": "state.locked@welinc.com",
-      "name": "Lito Concepcion",
-      "group": "state",
-      "state": "locked",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000502",
-      "email": "state.deactivated@welinc.com",
-      "name": "Nonoy Evangelista",
-      "group": "state",
-      "state": "deactivated",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000503",
-      "email": "state.unverified@welinc.com",
-      "name": "Bong Rivera",
-      "group": "state",
-      "state": "unverified",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000504",
-      "email": "state.deleted@welinc.com",
-      "name": "Junjun Marquez",
-      "group": "state",
-      "state": "deleted",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001001",
-      "email": "edgardo.gonzales1@welinc.com",
-      "name": "Edgardo Gonzales",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001002",
-      "email": "ramon.bulaon2@welinc.com",
-      "name": "Ramon Bulaon",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001003",
-      "email": "arnel.perez3@welinc.com",
-      "name": "Arnel Perez",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001004",
-      "email": "bernardo.aquino4@welinc.com",
-      "name": "Bernardo Aquino",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001005",
-      "email": "catalino.torres5@welinc.com",
-      "name": "Catalino Torres",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001006",
-      "email": "dionisio.delacruz6@welinc.com",
-      "name": "Dionisio dela Cruz",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001007",
-      "email": "juan.panganiban7@welinc.com",
-      "name": "Juan Panganiban",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001008",
-      "email": "pedro.lopez8@welinc.com",
-      "name": "Pedro Lopez",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001009",
-      "email": "rommel.sebastian9@welinc.com",
-      "name": "Rommel Sebastian",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001010",
-      "email": "roberto.guzman10@welinc.com",
-      "name": "Roberto Guzman",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001011",
-      "email": "generoso.ramos11@welinc.com",
-      "name": "Generoso Ramos",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001012",
-      "email": "jaime.reyes12@welinc.com",
-      "name": "Jaime Reyes",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001013",
-      "email": "manuel.mendoza13@welinc.com",
-      "name": "Manuel Mendoza",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001014",
-      "email": "restituto.mercado14@welinc.com",
-      "name": "Restituto Mercado",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001015",
-      "email": "reynaldo.bautista15@welinc.com",
-      "name": "Reynaldo Bautista",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001016",
-      "email": "salvador.tolentino16@welinc.com",
-      "name": "Salvador Tolentino",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001017",
-      "email": "vicente.ocampo17@welinc.com",
-      "name": "Vicente Ocampo",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001018",
-      "email": "wilfredo.soriano18@welinc.com",
-      "name": "Wilfredo Soriano",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001019",
-      "email": "renato.castillo19@welinc.com",
-      "name": "Renato Castillo",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001020",
-      "email": "gregorio.delrosario20@welinc.com",
-      "name": "Gregorio del Rosario",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001021",
-      "email": "leopoldo.corpuz21@welinc.com",
-      "name": "Leopoldo Corpuz",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001022",
-      "email": "rolando.cruz22@welinc.com",
-      "name": "Rolando Cruz",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001023",
-      "email": "armando.castro23@welinc.com",
-      "name": "Armando Castro",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001024",
-      "email": "francisco.pascual24@welinc.com",
-      "name": "Francisco Pascual",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001025",
-      "email": "ernesto.dizon25@welinc.com",
-      "name": "Ernesto Dizon",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001026",
-      "email": "fernando.garcia26@welinc.com",
-      "name": "Fernando Garcia",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001027",
-      "email": "mario.villanueva27@welinc.com",
-      "name": "Mario Villanueva",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001028",
-      "email": "antonio.espiritu28@welinc.com",
-      "name": "Antonio Espiritu",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001029",
-      "email": "joseph.gomez29@welinc.com",
-      "name": "Joseph Gomez",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001030",
-      "email": "alberto.santiago30@welinc.com",
-      "name": "Alberto Santiago",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001031",
-      "email": "ricardo.valdez31@welinc.com",
-      "name": "Ricardo Valdez",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001032",
-      "email": "ferdinand.santos32@welinc.com",
-      "name": "Ferdinand Santos",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001033",
-      "email": "eduardo.gonzales33@welinc.com",
-      "name": "Eduardo Gonzales",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001034",
-      "email": "roger.bulaon34@welinc.com",
-      "name": "Roger Bulaon",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001035",
-      "email": "enrique.perez35@welinc.com",
-      "name": "Enrique Perez",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001036",
-      "email": "luis.aquino36@welinc.com",
-      "name": "Luis Aquino",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001037",
-      "email": "carlos.torres37@welinc.com",
-      "name": "Carlos Torres",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001038",
-      "email": "oscar.delacruz38@welinc.com",
-      "name": "Oscar dela Cruz",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001039",
-      "email": "winston.panganiban39@welinc.com",
-      "name": "Winston Panganiban",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001040",
-      "email": "benjamin.lopez40@welinc.com",
-      "name": "Benjamin Lopez",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001041",
-      "email": "danilo.sebastian41@welinc.com",
-      "name": "Danilo Sebastian",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001042",
-      "email": "edgardo.guzman42@welinc.com",
-      "name": "Edgardo Guzman",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001043",
-      "email": "ramon.ramos43@welinc.com",
-      "name": "Ramon Ramos",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001044",
-      "email": "arnel.reyes44@welinc.com",
-      "name": "Arnel Reyes",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001045",
-      "email": "bernardo.mendoza45@welinc.com",
-      "name": "Bernardo Mendoza",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001046",
-      "email": "catalino.mercado46@welinc.com",
-      "name": "Catalino Mercado",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001047",
-      "email": "dionisio.bautista47@welinc.com",
-      "name": "Dionisio Bautista",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001048",
-      "email": "juan.tolentino48@welinc.com",
-      "name": "Juan Tolentino",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001049",
-      "email": "pedro.ocampo49@welinc.com",
-      "name": "Pedro Ocampo",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001050",
-      "email": "rommel.soriano50@welinc.com",
-      "name": "Rommel Soriano",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001051",
-      "email": "roberto.castillo51@welinc.com",
-      "name": "Roberto Castillo",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001052",
-      "email": "generoso.delrosario52@welinc.com",
-      "name": "Generoso del Rosario",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001053",
-      "email": "jaime.corpuz53@welinc.com",
-      "name": "Jaime Corpuz",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001054",
-      "email": "manuel.cruz54@welinc.com",
-      "name": "Manuel Cruz",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001055",
-      "email": "restituto.castro55@welinc.com",
-      "name": "Restituto Castro",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001056",
-      "email": "reynaldo.pascual56@welinc.com",
-      "name": "Reynaldo Pascual",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001057",
-      "email": "salvador.dizon57@welinc.com",
-      "name": "Salvador Dizon",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001058",
-      "email": "vicente.garcia58@welinc.com",
-      "name": "Vicente Garcia",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001059",
-      "email": "wilfredo.villanueva59@welinc.com",
-      "name": "Wilfredo Villanueva",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000001060",
-      "email": "renato.espiritu60@welinc.com",
-      "name": "Renato Espiritu",
-      "group": "bulk",
-      "state": "active",
-      "password": "mechanic",
-      "contact": null,
-      "roles": [
-        { "system": "VRMS", "role": "MECHANIC" },
-        { "system": "VMMS", "role": "MECHANIC" }
-      ]
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000002001",
+      "id": "00000000-0000-4000-8000-000000003401",
       "email": "driver.ramon@welinc.com",
       "name": "Ramon Dela Cruz",
       "group": "driver",
@@ -1449,11 +619,14 @@
       "password": "driver",
       "contact": "+639171234501",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002002",
+      "id": "00000000-0000-4000-8000-000000003402",
       "email": "driver.danilo@welinc.com",
       "name": "Danilo Ramos",
       "group": "driver",
@@ -1461,11 +634,14 @@
       "password": "driver",
       "contact": "+639171234502",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002003",
+      "id": "00000000-0000-4000-8000-000000003403",
       "email": "driver.edgardo@welinc.com",
       "name": "Edgardo Santos",
       "group": "driver",
@@ -1473,11 +649,14 @@
       "password": "driver",
       "contact": "+639171234503",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002004",
+      "id": "00000000-0000-4000-8000-000000003404",
       "email": "driver.eduardo@welinc.com",
       "name": "Eduardo Bautista",
       "group": "driver",
@@ -1485,11 +664,14 @@
       "password": "driver",
       "contact": "+639171234504",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002005",
+      "id": "00000000-0000-4000-8000-000000003405",
       "email": "driver.rogelio@welinc.com",
       "name": "Rogelio Mendoza",
       "group": "driver",
@@ -1497,11 +679,14 @@
       "password": "driver",
       "contact": "+639171234505",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002006",
+      "id": "00000000-0000-4000-8000-000000003406",
       "email": "driver.ernesto@welinc.com",
       "name": "Ernesto Villanueva",
       "group": "driver",
@@ -1509,11 +694,14 @@
       "password": "driver",
       "contact": "+639171234506",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002007",
+      "id": "00000000-0000-4000-8000-000000003407",
       "email": "driver.alberto@welinc.com",
       "name": "Alberto Garcia",
       "group": "driver",
@@ -1521,11 +709,14 @@
       "password": "driver",
       "contact": "+639171234507",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002008",
+      "id": "00000000-0000-4000-8000-000000003408",
       "email": "driver.ricardo@welinc.com",
       "name": "Ricardo Aquino",
       "group": "driver",
@@ -1533,11 +724,14 @@
       "password": "driver",
       "contact": "+639171234508",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002009",
+      "id": "00000000-0000-4000-8000-000000003409",
       "email": "driver.fernando@welinc.com",
       "name": "Fernando Castillo",
       "group": "driver",
@@ -1545,11 +739,14 @@
       "password": "driver",
       "contact": "+639171234509",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002010",
+      "id": "00000000-0000-4000-8000-000000003410",
       "email": "driver.manuel@welinc.com",
       "name": "Manuel Reyes",
       "group": "driver",
@@ -1557,11 +754,14 @@
       "password": "driver",
       "contact": "+639171234510",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002011",
+      "id": "00000000-0000-4000-8000-000000003411",
       "email": "driver.jose@welinc.com",
       "name": "Jose Navarro",
       "group": "driver",
@@ -1569,11 +769,14 @@
       "password": "driver",
       "contact": "+639171234511",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000002012",
+      "id": "00000000-0000-4000-8000-000000003412",
       "email": "driver.antonio@welinc.com",
       "name": "Antonio Flores",
       "group": "driver",
@@ -1581,11 +784,14 @@
       "password": "driver",
       "contact": "+639171234512",
       "roles": [
-        { "system": "BMS", "role": "DRIVER" }
+        {
+          "system": "BMS",
+          "role": "DRIVER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003001",
+      "id": "00000000-0000-4000-8000-000000003501",
       "email": "helper.markanthony@welinc.com",
       "name": "Mark Anthony Cruz",
       "group": "helper",
@@ -1593,11 +799,14 @@
       "password": "helper",
       "contact": "+639172350001",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003002",
+      "id": "00000000-0000-4000-8000-000000003502",
       "email": "helper.johnpaul@welinc.com",
       "name": "John Paul Reyes",
       "group": "helper",
@@ -1605,11 +814,14 @@
       "password": "helper",
       "contact": "+639172350002",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003003",
+      "id": "00000000-0000-4000-8000-000000003503",
       "email": "helper.christian@welinc.com",
       "name": "Christian Bautista",
       "group": "helper",
@@ -1617,11 +829,14 @@
       "password": "helper",
       "contact": "+639172350003",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003004",
+      "id": "00000000-0000-4000-8000-000000003504",
       "email": "helper.jerome@welinc.com",
       "name": "Jerome Santos",
       "group": "helper",
@@ -1629,11 +844,14 @@
       "password": "helper",
       "contact": "+639172350004",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003005",
+      "id": "00000000-0000-4000-8000-000000003505",
       "email": "helper.kevin@welinc.com",
       "name": "Kevin Mendoza",
       "group": "helper",
@@ -1641,11 +859,14 @@
       "password": "helper",
       "contact": "+639172350005",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003006",
+      "id": "00000000-0000-4000-8000-000000003506",
       "email": "helper.ryan@welinc.com",
       "name": "Ryan Villanueva",
       "group": "helper",
@@ -1653,11 +874,14 @@
       "password": "helper",
       "contact": "+639172350006",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003007",
+      "id": "00000000-0000-4000-8000-000000003507",
       "email": "helper.joshua@welinc.com",
       "name": "Joshua Garcia",
       "group": "helper",
@@ -1665,11 +889,14 @@
       "password": "helper",
       "contact": "+639172350007",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003008",
+      "id": "00000000-0000-4000-8000-000000003508",
       "email": "helper.markjoseph@welinc.com",
       "name": "Mark Joseph Aquino",
       "group": "helper",
@@ -1677,11 +904,14 @@
       "password": "helper",
       "contact": "+639172350008",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003009",
+      "id": "00000000-0000-4000-8000-000000003509",
       "email": "helper.carlo@welinc.com",
       "name": "Carlo Castillo",
       "group": "helper",
@@ -1689,11 +919,14 @@
       "password": "helper",
       "contact": "+639172350009",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003010",
+      "id": "00000000-0000-4000-8000-000000003510",
       "email": "helper.jayson@welinc.com",
       "name": "Jayson Torres",
       "group": "helper",
@@ -1701,11 +934,14 @@
       "password": "helper",
       "contact": "+639172350010",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003011",
+      "id": "00000000-0000-4000-8000-000000003511",
       "email": "helper.arnel@welinc.com",
       "name": "Arnel Ramos",
       "group": "helper",
@@ -1713,11 +949,14 @@
       "password": "helper",
       "contact": "+639172350011",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003012",
+      "id": "00000000-0000-4000-8000-000000003512",
       "email": "helper.rodel@welinc.com",
       "name": "Rodel Fernandez",
       "group": "helper",
@@ -1725,11 +964,14 @@
       "password": "helper",
       "contact": "+639172350012",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003013",
+      "id": "00000000-0000-4000-8000-000000003513",
       "email": "helper.jomar@welinc.com",
       "name": "Jomar Pascual",
       "group": "helper",
@@ -1737,11 +979,14 @@
       "password": "helper",
       "contact": "+639172350013",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003014",
+      "id": "00000000-0000-4000-8000-000000003514",
       "email": "helper.renato@welinc.com",
       "name": "Renato Salazar",
       "group": "helper",
@@ -1749,11 +994,14 @@
       "password": "helper",
       "contact": "+639172350014",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003015",
+      "id": "00000000-0000-4000-8000-000000003515",
       "email": "helper.dennis@welinc.com",
       "name": "Dennis Ocampo",
       "group": "helper",
@@ -1761,11 +1009,14 @@
       "password": "helper",
       "contact": "+639172350015",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003016",
+      "id": "00000000-0000-4000-8000-000000003516",
       "email": "helper.allan@welinc.com",
       "name": "Allan Domingo",
       "group": "helper",
@@ -1773,11 +1024,14 @@
       "password": "helper",
       "contact": "+639172350016",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003017",
+      "id": "00000000-0000-4000-8000-000000003517",
       "email": "helper.vincent@welinc.com",
       "name": "Vincent Manalo",
       "group": "helper",
@@ -1785,11 +1039,14 @@
       "password": "helper",
       "contact": "+639172350017",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003018",
+      "id": "00000000-0000-4000-8000-000000003518",
       "email": "helper.jerwin@welinc.com",
       "name": "Jerwin Soriano",
       "group": "helper",
@@ -1797,11 +1054,14 @@
       "password": "helper",
       "contact": "+639172350018",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003019",
+      "id": "00000000-0000-4000-8000-000000003519",
       "email": "helper.paolo@welinc.com",
       "name": "Paolo Mercado",
       "group": "helper",
@@ -1809,11 +1069,14 @@
       "password": "helper",
       "contact": "+639172350019",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
       ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000003020",
+      "id": "00000000-0000-4000-8000-000000003520",
       "email": "helper.bryan@welinc.com",
       "name": "Bryan Galang",
       "group": "helper",
@@ -1821,7 +1084,1401 @@
       "password": "helper",
       "contact": "+639172350020",
       "roles": [
-        { "system": "BMS", "role": "HELPER" }
+        {
+          "system": "BMS",
+          "role": "HELPER"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004001",
+      "email": "multi.chief@welinc.com",
+      "name": "Teodoro Manalastas",
+      "group": "multi",
+      "state": "active",
+      "password": "chief",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "CHIEF_MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004002",
+      "email": "multi.admin@welinc.com",
+      "name": "Felicidad Roxas",
+      "group": "multi",
+      "state": "active",
+      "password": "admin",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "ADMIN"
+        },
+        {
+          "system": "VMMS",
+          "role": "ADMIN"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004003",
+      "email": "multi.mixed@welinc.com",
+      "name": "Arturo Pangilinan",
+      "group": "multi",
+      "state": "active",
+      "password": "chief",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "OPERATIONS"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004004",
+      "email": "multi.lead@welinc.com",
+      "name": "Corazon Villareal",
+      "group": "multi",
+      "state": "active",
+      "password": "chief",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "CHIEF_MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "OPERATIONS"
+        },
+        {
+          "system": "BMS",
+          "role": "OPERATIONS"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004101",
+      "email": "mech.juan@welinc.com",
+      "name": "Juan dela Cruz",
+      "group": "mechanic",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004102",
+      "email": "mech.pedro@welinc.com",
+      "name": "Pedro Santos",
+      "group": "mechanic",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004103",
+      "email": "mech.rommel@welinc.com",
+      "name": "Rommel Cruz",
+      "group": "mechanic",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004104",
+      "email": "mech.isabel@welinc.com",
+      "name": "Isabel Reyes",
+      "group": "mechanic",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004105",
+      "email": "mech.carl@welinc.com",
+      "name": "Carl Santos",
+      "group": "mechanic",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004201",
+      "email": "edgardo.gonzales1@welinc.com",
+      "name": "Edgardo Gonzales",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004202",
+      "email": "ramon.bulaon2@welinc.com",
+      "name": "Ramon Bulaon",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004203",
+      "email": "arnel.perez3@welinc.com",
+      "name": "Arnel Perez",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004204",
+      "email": "bernardo.aquino4@welinc.com",
+      "name": "Bernardo Aquino",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004205",
+      "email": "catalino.torres5@welinc.com",
+      "name": "Catalino Torres",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004206",
+      "email": "dionisio.delacruz6@welinc.com",
+      "name": "Dionisio dela Cruz",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004207",
+      "email": "juan.panganiban7@welinc.com",
+      "name": "Juan Panganiban",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004208",
+      "email": "pedro.lopez8@welinc.com",
+      "name": "Pedro Lopez",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004209",
+      "email": "rommel.sebastian9@welinc.com",
+      "name": "Rommel Sebastian",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004210",
+      "email": "roberto.guzman10@welinc.com",
+      "name": "Roberto Guzman",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004211",
+      "email": "generoso.ramos11@welinc.com",
+      "name": "Generoso Ramos",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004212",
+      "email": "jaime.reyes12@welinc.com",
+      "name": "Jaime Reyes",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004213",
+      "email": "manuel.mendoza13@welinc.com",
+      "name": "Manuel Mendoza",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004214",
+      "email": "restituto.mercado14@welinc.com",
+      "name": "Restituto Mercado",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004215",
+      "email": "reynaldo.bautista15@welinc.com",
+      "name": "Reynaldo Bautista",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004216",
+      "email": "salvador.tolentino16@welinc.com",
+      "name": "Salvador Tolentino",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004217",
+      "email": "vicente.ocampo17@welinc.com",
+      "name": "Vicente Ocampo",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004218",
+      "email": "wilfredo.soriano18@welinc.com",
+      "name": "Wilfredo Soriano",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004219",
+      "email": "renato.castillo19@welinc.com",
+      "name": "Renato Castillo",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004220",
+      "email": "gregorio.delrosario20@welinc.com",
+      "name": "Gregorio del Rosario",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004221",
+      "email": "leopoldo.corpuz21@welinc.com",
+      "name": "Leopoldo Corpuz",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004222",
+      "email": "rolando.cruz22@welinc.com",
+      "name": "Rolando Cruz",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004223",
+      "email": "armando.castro23@welinc.com",
+      "name": "Armando Castro",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004224",
+      "email": "francisco.pascual24@welinc.com",
+      "name": "Francisco Pascual",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004225",
+      "email": "ernesto.dizon25@welinc.com",
+      "name": "Ernesto Dizon",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004226",
+      "email": "fernando.garcia26@welinc.com",
+      "name": "Fernando Garcia",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004227",
+      "email": "mario.villanueva27@welinc.com",
+      "name": "Mario Villanueva",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004228",
+      "email": "antonio.espiritu28@welinc.com",
+      "name": "Antonio Espiritu",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004229",
+      "email": "joseph.gomez29@welinc.com",
+      "name": "Joseph Gomez",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004230",
+      "email": "alberto.santiago30@welinc.com",
+      "name": "Alberto Santiago",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004231",
+      "email": "ricardo.valdez31@welinc.com",
+      "name": "Ricardo Valdez",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004232",
+      "email": "ferdinand.santos32@welinc.com",
+      "name": "Ferdinand Santos",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004233",
+      "email": "eduardo.gonzales33@welinc.com",
+      "name": "Eduardo Gonzales",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004234",
+      "email": "roger.bulaon34@welinc.com",
+      "name": "Roger Bulaon",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004235",
+      "email": "enrique.perez35@welinc.com",
+      "name": "Enrique Perez",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004236",
+      "email": "luis.aquino36@welinc.com",
+      "name": "Luis Aquino",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004237",
+      "email": "carlos.torres37@welinc.com",
+      "name": "Carlos Torres",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004238",
+      "email": "oscar.delacruz38@welinc.com",
+      "name": "Oscar dela Cruz",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004239",
+      "email": "winston.panganiban39@welinc.com",
+      "name": "Winston Panganiban",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004240",
+      "email": "benjamin.lopez40@welinc.com",
+      "name": "Benjamin Lopez",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004241",
+      "email": "danilo.sebastian41@welinc.com",
+      "name": "Danilo Sebastian",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004242",
+      "email": "edgardo.guzman42@welinc.com",
+      "name": "Edgardo Guzman",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004243",
+      "email": "ramon.ramos43@welinc.com",
+      "name": "Ramon Ramos",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004244",
+      "email": "arnel.reyes44@welinc.com",
+      "name": "Arnel Reyes",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004245",
+      "email": "bernardo.mendoza45@welinc.com",
+      "name": "Bernardo Mendoza",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004246",
+      "email": "catalino.mercado46@welinc.com",
+      "name": "Catalino Mercado",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004247",
+      "email": "dionisio.bautista47@welinc.com",
+      "name": "Dionisio Bautista",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004248",
+      "email": "juan.tolentino48@welinc.com",
+      "name": "Juan Tolentino",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004249",
+      "email": "pedro.ocampo49@welinc.com",
+      "name": "Pedro Ocampo",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004250",
+      "email": "rommel.soriano50@welinc.com",
+      "name": "Rommel Soriano",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004251",
+      "email": "roberto.castillo51@welinc.com",
+      "name": "Roberto Castillo",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004252",
+      "email": "generoso.delrosario52@welinc.com",
+      "name": "Generoso del Rosario",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004253",
+      "email": "jaime.corpuz53@welinc.com",
+      "name": "Jaime Corpuz",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004254",
+      "email": "manuel.cruz54@welinc.com",
+      "name": "Manuel Cruz",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004255",
+      "email": "restituto.castro55@welinc.com",
+      "name": "Restituto Castro",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004256",
+      "email": "reynaldo.pascual56@welinc.com",
+      "name": "Reynaldo Pascual",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004257",
+      "email": "salvador.dizon57@welinc.com",
+      "name": "Salvador Dizon",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004258",
+      "email": "vicente.garcia58@welinc.com",
+      "name": "Vicente Garcia",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004259",
+      "email": "wilfredo.villanueva59@welinc.com",
+      "name": "Wilfredo Villanueva",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000004260",
+      "email": "renato.espiritu60@welinc.com",
+      "name": "Renato Espiritu",
+      "group": "bulk",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000005001",
+      "email": "state.locked@welinc.com",
+      "name": "Lito Concepcion",
+      "group": "state",
+      "state": "locked",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000005002",
+      "email": "state.deactivated@welinc.com",
+      "name": "Nonoy Evangelista",
+      "group": "state",
+      "state": "deactivated",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000005003",
+      "email": "state.unverified@welinc.com",
+      "name": "Bong Rivera",
+      "group": "state",
+      "state": "unverified",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000005004",
+      "email": "state.deleted@welinc.com",
+      "name": "Junjun Marquez",
+      "group": "state",
+      "state": "deleted",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VRMS",
+          "role": "MECHANIC"
+        },
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
       ]
     }
   ]

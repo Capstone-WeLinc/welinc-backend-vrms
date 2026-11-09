@@ -50,7 +50,7 @@ describe('seedActor', () => {
   it('gives the chief the CHIEF_MECHANIC role and the shared id', () => {
     // covers: AC-14
     expect(seedActor('vrms.chief@welinc.com')).toEqual({
-      actorUserId: '00000000-0000-4000-8000-000000000020',
+      actorUserId: '00000000-0000-4000-8000-000000001201',
       actorName: 'Ramon Villanueva',
       actorEmail: 'vrms.chief@welinc.com',
       actorRole: 'CHIEF_MECHANIC',

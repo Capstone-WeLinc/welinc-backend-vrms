@@ -37,18 +37,6 @@ function loadPeople(): ManifestPerson[] {
 /** Every manifest person, in id order. */
 export const MANIFEST_PEOPLE: ManifestPerson[] = loadPeople();
 
-const id = (n: number) =>
-  `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-
-export const SEED_IDS = {
-  bmsAdmin: id(1),
-  vrmsAdmin: id(2),
-  vmmsAdmin: id(3),
-  csUser: id(4),
-  opsUser: id(5),
-  chief: id(20),
-};
-
 export type SeedPerson = { id: string; email: string; name: string };
 
 const BY_ID = new Map(MANIFEST_PEOPLE.map((p) => [p.id, p]));
@@ -60,11 +48,20 @@ function seedPerson(personId: string): SeedPerson {
   return { id: p.id, email: p.email, name: p.name };
 }
 
+/** Finds a seed person by email. Seeds never hard code an id: the email is the stable handle. */
+function seedPersonByEmail(email: string): SeedPerson {
+  const p = BY_EMAIL.get(email);
+  if (!p) throw new Error(`Seed person ${email} is not in people.json`);
+  return seedPerson(p.id);
+}
+
 const inGroup = (group: string): SeedPerson[] =>
   MANIFEST_PEOPLE.filter((p) => p.group === group).map((p) => seedPerson(p.id));
 
-export const VRMS_ADMIN: SeedPerson = seedPerson(SEED_IDS.vrmsAdmin);
-export const CHIEF: SeedPerson = seedPerson(SEED_IDS.chief);
+export const VRMS_ADMIN: SeedPerson = seedPersonByEmail(
+  'vrms.admin@welinc.com',
+);
+export const CHIEF: SeedPerson = seedPersonByEmail('vrms.chief@welinc.com');
 /** The mechanics with a demo login (`group: mechanic`). */
 export const NAMED_MECHANICS: SeedPerson[] = inGroup('mechanic');
 /** More mechanics so the user list has pages (`group: bulk`). */
