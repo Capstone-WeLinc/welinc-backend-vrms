@@ -19,6 +19,8 @@ export type UserGrant = {
     name: string;
     email: string;
     roles: { role: string; system: string }[];
+    /** Every system the user holds, launcher order (spec 0007, AC-8); empty from an older welinc-auth. */
+    systems: string[];
   };
 };
 
@@ -184,7 +186,10 @@ export class AuthClient {
   }
 }
 
-function toGrant(body: Record<string, unknown> | null): UserGrant | null {
+/** Reads a user grant answer, or null when it isn't one (exported for tests). */
+export function toGrant(
+  body: Record<string, unknown> | null,
+): UserGrant | null {
   const user = body?.['user'] as Record<string, unknown> | undefined;
   if (
     !body ||
@@ -213,6 +218,9 @@ function toGrant(body: Record<string, unknown> | null): UserGrant | null {
       name: user['name'],
       email: user['email'],
       roles: user['roles'] as { role: string; system: string }[],
+      systems: Array.isArray(user['systems'])
+        ? user['systems'].filter((s): s is string => typeof s === 'string')
+        : [],
     },
   };
 }
