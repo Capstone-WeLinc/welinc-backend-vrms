@@ -133,7 +133,10 @@ export async function seedRepairs(
   );
 
   // ── Crews ────────────────────────────────────────────────────────────────
-  const inHouse = await prisma.mechanic.findMany({ orderBy: { name: 'asc' } });
+  const inHouse = await prisma.mechanic.findMany({
+    where: { isActive: true },
+    orderBy: { name: 'asc' },
+  });
   const garageNames = [...garages.keys()];
   let roundRobin = 0;
   const crews: Crew[] = inHouse.map((m) => {

@@ -1,6 +1,41 @@
-// Fixed ids for the people seeded in both welinc-auth and welinc-backend-vrms (spec 0009, AC-22),
-// so a VRMS Mechanic.authUserId equals the welinc-auth User.id after both seeds run.
-// Keep it in step with welinc-auth/prisma/seeds/shared-ids.ts (only this line differs).
+// The seed people VRMS links its rows to (spec 0006, AC-14). Accounts live in welinc-auth; its
+// prisma/seeds/people.json is the one list of seed people, and people.json here is a byte for
+// byte copy. After pulling welinc-auth, check the copy from the workspace root with:
+//   npm --prefix welinc-auth run seed:check -- welinc-backend-vrms/prisma/seeds/people.json
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+type ManifestPerson = {
+  id: string;
+  email: string;
+  name: string;
+  group: string;
+  state: string;
+  roles: { system: string; role: string }[];
+};
+
+const MANIFEST_PATH = join(__dirname, 'people.json');
+
+function loadPeople(): ManifestPerson[] {
+  let text: string;
+  try {
+    text = readFileSync(MANIFEST_PATH, 'utf8');
+  } catch {
+    throw new Error(
+      `No seed manifest at ${MANIFEST_PATH}. Copy welinc-auth/prisma/seeds/people.json there.`,
+    );
+  }
+  try {
+    return (JSON.parse(text) as { people: ManifestPerson[] }).people;
+  } catch (e) {
+    throw new Error(
+      `${MANIFEST_PATH} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+}
+
+/** Every manifest person, in id order. */
+export const MANIFEST_PEOPLE: ManifestPerson[] = loadPeople();
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -16,142 +51,37 @@ export const SEED_IDS = {
 
 export type SeedPerson = { id: string; email: string; name: string };
 
-export const VRMS_ADMIN: SeedPerson = {
-  id: SEED_IDS.vrmsAdmin,
-  email: 'vrms.admin@welinc.com',
-  name: 'Victor Ramos',
-};
+const BY_ID = new Map(MANIFEST_PEOPLE.map((p) => [p.id, p]));
+const BY_EMAIL = new Map(MANIFEST_PEOPLE.map((p) => [p.email, p]));
 
-export const CHIEF: SeedPerson = {
-  id: SEED_IDS.chief,
-  email: 'vrms.chief@welinc.com',
-  name: 'Ramon Villanueva',
-};
+function seedPerson(personId: string): SeedPerson {
+  const p = BY_ID.get(personId);
+  if (!p) throw new Error(`Seed person ${personId} is not in people.json`);
+  return { id: p.id, email: p.email, name: p.name };
+}
 
-// The mechanics with a demo login
-export const NAMED_MECHANICS: SeedPerson[] = [
-  { id: id(11), email: 'mech.juan@welinc.com', name: 'Juan dela Cruz' },
-  { id: id(12), email: 'mech.pedro@welinc.com', name: 'Pedro Santos' },
-  { id: id(13), email: 'mech.rommel@welinc.com', name: 'Rommel Cruz' },
-  { id: id(14), email: 'mech.isabel@welinc.com', name: 'Isabel Reyes' },
-  { id: id(15), email: 'mech.carl@welinc.com', name: 'Carl Santos' },
-];
+const inGroup = (group: string): SeedPerson[] =>
+  MANIFEST_PEOPLE.filter((p) => p.group === group).map((p) => seedPerson(p.id));
 
-// 60 more mechanics so the user list has pages
-const FIRST_NAMES = [
-  'Danilo',
-  'Edgardo',
-  'Ramon',
-  'Arnel',
-  'Bernardo',
-  'Catalino',
-  'Dionisio',
-  'Juan',
-  'Pedro',
-  'Rommel',
-  'Roberto',
-  'Generoso',
-  'Jaime',
-  'Manuel',
-  'Restituto',
-  'Reynaldo',
-  'Salvador',
-  'Vicente',
-  'Wilfredo',
-  'Renato',
-  'Gregorio',
-  'Leopoldo',
-  'Rolando',
-  'Armando',
-  'Francisco',
-  'Ernesto',
-  'Fernando',
-  'Mario',
-  'Antonio',
-  'Joseph',
-  'Alberto',
-  'Ricardo',
-  'Ferdinand',
-  'Eduardo',
-  'Roger',
-  'Enrique',
-  'Luis',
-  'Carlos',
-  'Oscar',
-  'Winston',
-  'Benjamin',
-];
-const LAST_NAMES = [
-  'Santos',
-  'Ramos',
-  'Cruz',
-  'Gonzales',
-  'Reyes',
-  'Castro',
-  'Bulaon',
-  'Mendoza',
-  'Pascual',
-  'Perez',
-  'Mercado',
-  'Dizon',
-  'Aquino',
-  'Bautista',
-  'Garcia',
-  'Torres',
-  'Tolentino',
-  'Villanueva',
-  'dela Cruz',
-  'Ocampo',
-  'Espiritu',
-  'Panganiban',
-  'Soriano',
-  'Gomez',
-  'Lopez',
-  'Castillo',
-  'Santiago',
-  'Sebastian',
-  'del Rosario',
-  'Valdez',
-  'Guzman',
-  'Corpuz',
-];
+export const VRMS_ADMIN: SeedPerson = seedPerson(SEED_IDS.vrmsAdmin);
+export const CHIEF: SeedPerson = seedPerson(SEED_IDS.chief);
+/** The mechanics with a demo login (`group: mechanic`). */
+export const NAMED_MECHANICS: SeedPerson[] = inGroup('mechanic');
+/** More mechanics so the user list has pages (`group: bulk`). */
+export const BULK_MECHANICS: SeedPerson[] = inGroup('bulk');
 
-export const BULK_MECHANICS: SeedPerson[] = Array.from(
-  { length: 60 },
-  (_, k) => {
-    const i = k + 1;
-    const firstName = FIRST_NAMES[i % FIRST_NAMES.length];
-    const lastName = LAST_NAMES[(i * 3) % LAST_NAMES.length];
-    return {
-      id: id(1000 + i),
-      name: `${firstName} ${lastName}`,
-      email: `${firstName.toLowerCase()}.${lastName.toLowerCase().replace(/\s+/g, '')}${i}@welinc.com`,
-    };
-  },
-);
-
-// The VRMS role each seeded person holds in welinc-auth's seed
-const ROLE_BY_EMAIL = new Map<string, string>([
-  [VRMS_ADMIN.email, 'ADMIN'],
-  [CHIEF.email, 'CHIEF_MECHANIC'],
-  ...[...NAMED_MECHANICS, ...BULK_MECHANICS].map(
-    (p) => [p.email, 'MECHANIC'] as [string, string],
-  ),
-]);
-const PERSON_BY_EMAIL = new Map(
-  [VRMS_ADMIN, CHIEF, ...NAMED_MECHANICS, ...BULK_MECHANICS].map((p) => [
-    p.email,
-    p,
-  ]),
-);
+/** The person's VRMS role code, or null when they hold none. */
+export function vrmsRole(p: Pick<ManifestPerson, 'roles'>): string | null {
+  return p.roles.find((r) => r.system === 'VRMS')?.role ?? null;
+}
 
 /** The actor columns of an audit or knowledge change row, as the API writes them (spec 0010). */
 export function seedActor(email: string) {
-  const person = PERSON_BY_EMAIL.get(email);
+  const person = BY_EMAIL.get(email);
   return {
     actorUserId: person?.id ?? null,
     actorName: person?.name ?? email,
     actorEmail: email,
-    actorRole: ROLE_BY_EMAIL.get(email) ?? null,
+    actorRole: person ? vrmsRole(person) : null,
   };
 }
