@@ -71,23 +71,12 @@ async function main() {
   console.log('Database seeded successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(
-    'Login credentials (accounts live in welinc-auth; run its seed too):',
+    'VRMS logins (accounts live in welinc-auth; run its seed too). Every seed account is in docs/integration/seed-accounts.md:',
   );
-  console.log(
-    '  BMS Admin  → email: bms.admin@welinc.com  password: admin1234',
-  );
-  console.log(
-    '  VRMS Admin → email: vrms.admin@welinc.com password: admin1234',
-  );
-  console.log(
-    '  VMMS Admin → email: vmms.admin@welinc.com password: admin1234',
-  );
-  console.log(
-    '  CS user    → email: cs.user@welinc.com    password: cs1234 (BMS)',
-  );
-  console.log(
-    '  Operations → email: ops.user@welinc.com   password: ops1234 (BMS)',
-  );
+  console.log('  Admin          → vrms.admin@welinc.com    password: admin1234');
+  console.log('  Chief Mechanic → vrms.chief@welinc.com    password: chief1234');
+  console.log('  Mechanic       → mech.juan@welinc.com     password: mechanic1234');
+  console.log('  Two systems    → multi.chief@welinc.com   password: chief1234');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
