@@ -46,7 +46,8 @@ describe('validateEnv', () => {
   });
 
   it('defaults NODE_ENV to development', () => {
-    const { NODE_ENV: _, ...rest } = testEnv;
+    const rest: Record<string, string> = { ...testEnv };
+    delete rest.NODE_ENV;
     expect(validateEnv(rest).NODE_ENV).toBe('development');
   });
 
