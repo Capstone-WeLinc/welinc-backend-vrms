@@ -23,7 +23,7 @@ Baseline: Node 24, NestJS 11, `jose` 6 (ES modules only; see the Jest setting be
 2. In `verify.module.ts`, set `SERVICE_AUDIENCE` to your system (`VMMS` or `BMS`).
 3. Run `npm install jose@^6`.
 4. Import `AuthVerifyModule` once (it is global). It needs `ConfigModule.forRoot({ isGlobal: true })`.
-5. In your auth guard, call `checkPerson(verifier, request)` with the `TOKEN_VERIFIER` you inject. It answers `{ raw, token }`, or throws the right HTTP error. If you also confirm the account with welinc-auth (VRMS does, through `GET /auth/me`), do it after `checkPerson`, so a service token never reaches that check. Let your guard skip routes marked `@ServiceRoute()`, which bring their own guard. VRMS's `src/auth/guards/jwt-auth.guard.ts` shows the whole guard.
+5. In your auth guard, call `checkPerson(verifier, request)` with the `TOKEN_VERIFIER` you inject. It answers `{ raw, token }`, or throws the right HTTP error. If you also confirm the account with welinc-auth (VRMS does, through `GET /auth/session`, cached by `sid` for at most 30 s), do it after `checkPerson`, so a service token never reaches that check. Let your guard skip routes marked `@ServiceRoute()`, which bring their own guard. VRMS's `src/auth/guards/jwt-auth.guard.ts` shows the whole guard.
 6. For a route other services call, put `@ServiceRoute('<scope>')` on it. The checked token is on `request.service`.
 7. To call welinc-auth's directory as yourself, inject `DIRECTORY_TOKENS` and wrap the call. The call must throw an error with `getStatus() === 401` (a Nest `HttpException`) for the retry to happen:
 
