@@ -32,4 +32,25 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  // Spec 0010, AC-11: app code reads settings through ConfigService<Env, true>, never process.env
+  {
+    files: ['src/**/*.ts'],
+    ignores: [
+      'src/config/env.ts',
+      'src/config/check-env.ts',
+      'src/config/test-env.setup.ts',
+      'src/**/*.spec.ts',
+    ],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'process',
+          property: 'env',
+          message:
+            'Read settings through ConfigService<Env, true> (src/config/env.ts, spec 0010).',
+        },
+      ],
+    },
+  },
 );

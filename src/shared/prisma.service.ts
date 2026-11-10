@@ -1,7 +1,9 @@
 import { Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
+import { ConfigService } from '@nestjs/config';
 import pg from 'pg';
+import type { Env } from '../config/env';
 
 @Injectable()
 export class PrismaService
@@ -10,9 +12,9 @@ export class PrismaService
 {
   private readonly pool: pg.Pool;
 
-  constructor() {
+  constructor(config: ConfigService<Env, true>) {
     const pool = new pg.Pool({
-      connectionString: process.env['DATABASE_URL'],
+      connectionString: config.get('DATABASE_URL', { infer: true }),
     });
     const adapter = new PrismaPg(pool);
 

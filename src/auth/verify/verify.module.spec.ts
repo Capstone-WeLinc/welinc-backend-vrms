@@ -1,8 +1,12 @@
 import type { ConfigService } from '@nestjs/config';
+import type { Env } from '../../config/env';
 import { readVerifyConfig } from './verify.module';
 
 const config = (values: Record<string, string>) =>
-  ({ get: (name: string) => values[name] }) as unknown as ConfigService;
+  ({ get: (name: string) => values[name] }) as unknown as ConfigService<
+    Env,
+    true
+  >;
 
 const ALL = {
   AUTH_ISSUER: 'http://localhost:3000/auth',
@@ -11,7 +15,7 @@ const ALL = {
   AUTH_CLIENT_ID: 'vrms',
 };
 
-// covers: spec 0002 AC-22 (refuse to start without the token check settings)
+// covers: spec 0002 AC-22. A missing setting is refused at boot by validateEnv (spec 0010, env.spec.ts).
 describe('readVerifyConfig', () => {
   it('reads the settings and trims a trailing slash from the internal address', () => {
     expect(readVerifyConfig(config(ALL))).toEqual({
@@ -20,11 +24,5 @@ describe('readVerifyConfig', () => {
       internalUrl: 'http://auth-service:3001',
       clientId: 'vrms',
     });
-  });
-
-  it.each(Object.keys(ALL))('refuses to start without %s', (name) => {
-    expect(() => readVerifyConfig(config({ ...ALL, [name]: '' }))).toThrow(
-      `${name} is missing`,
-    );
   });
 });

@@ -8,6 +8,8 @@ RUN npm run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
+# Spec 0010: the boot check holds a hosted build to the production rules
+ENV NODE_ENV=production
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma

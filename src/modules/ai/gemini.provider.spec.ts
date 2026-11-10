@@ -16,41 +16,33 @@ jest.mock('@google/genai', () => ({
   },
 }));
 
+import type { ConfigService } from '@nestjs/config';
+import { validateEnv, testEnv, type Env } from '../../config/env';
 import { GeminiProvider } from './gemini.provider';
 
-const ENV_KEYS = [
-  'GEMINI_API_KEY',
-  'GEMINI_MODEL',
-  'GEMINI_EMBED_MODEL',
-] as const;
-const saved: Record<string, string | undefined> = {};
+/** The provider over a checked environment, so the schema's defaults apply (spec 0010). */
+function provider(extra: Record<string, string> = {}) {
+  const env = validateEnv({ ...testEnv, ...extra });
+  const config = {
+    get: (key: keyof Env) => env[key],
+  } as unknown as ConfigService<Env, true>;
+  return new GeminiProvider(config);
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
-  for (const key of ENV_KEYS) {
-    saved[key] = process.env[key];
-    delete process.env[key];
-  }
-});
-
-afterEach(() => {
-  for (const key of ENV_KEYS) {
-    if (saved[key] === undefined) delete process.env[key];
-    else process.env[key] = saved[key];
-  }
 });
 
 function providerWithKey() {
-  process.env.GEMINI_API_KEY = 'test-key';
-  return new GeminiProvider();
+  return provider({ GEMINI_API_KEY: 'test-key' });
 }
 
 const vector = () => Array<number>(EMBED_DIMENSIONS).fill(1);
 
 describe('GeminiProvider configuration (AC-10, AC-20)', () => {
   it('is not configured and builds no client without a key', () => {
-    const provider = new GeminiProvider();
-    expect(provider.configured).toBe(false);
+    const plain = provider();
+    expect(plain.configured).toBe(false);
     expect(GoogleGenAI).not.toHaveBeenCalled();
   });
 
@@ -60,27 +52,26 @@ describe('GeminiProvider configuration (AC-10, AC-20)', () => {
   });
 
   it('uses the default model names', () => {
-    const provider = new GeminiProvider();
-    expect(provider.generationModel).toBe('gemini-3.5-flash-lite');
-    expect(provider.embedModel).toBe('gemini-embedding-2');
+    const plain = provider();
+    expect(plain.generationModel).toBe('gemini-3.5-flash-lite');
+    expect(plain.embedModel).toBe('gemini-embedding-2');
   });
 
   it('takes model names from the environment', () => {
-    process.env.GEMINI_MODEL = 'custom-gen';
-    process.env.GEMINI_EMBED_MODEL = 'custom-embed';
-    const provider = new GeminiProvider();
-    expect(provider.generationModel).toBe('custom-gen');
-    expect(provider.embedModel).toBe('custom-embed');
+    const custom = provider({
+      GEMINI_MODEL: 'custom-gen',
+      GEMINI_EMBED_MODEL: 'custom-embed',
+    });
+    expect(custom.generationModel).toBe('custom-gen');
+    expect(custom.embedModel).toBe('custom-embed');
   });
 
   it('fails embed and generate with AiProviderError when no key is set', async () => {
-    const provider = new GeminiProvider();
-    await expect(provider.embed(['a'], 'RETRIEVAL_DOCUMENT')).rejects.toThrow(
+    const plain = provider();
+    await expect(plain.embed(['a'], 'RETRIEVAL_DOCUMENT')).rejects.toThrow(
       AiProviderError,
     );
-    await expect(provider.generateJson('p', {})).rejects.toThrow(
-      AiProviderError,
-    );
+    await expect(plain.generateJson('p', {})).rejects.toThrow(AiProviderError);
   });
 });
 

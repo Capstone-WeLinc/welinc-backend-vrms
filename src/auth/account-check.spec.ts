@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Env } from '../config/env';
 import { AccountCheck, CACHE_MAX_ENTRIES, CACHE_TTL_MS } from './account-check';
 import type { UserToken } from './verify';
 
@@ -48,8 +49,8 @@ function setup(url = 'http://auth-service:3001/') {
   const fetchMock = jest.fn();
   global.fetch = fetchMock;
   const config = {
-    getOrThrow: jest.fn().mockReturnValue(url),
-  } as unknown as ConfigService;
+    get: jest.fn().mockReturnValue(url),
+  } as unknown as ConfigService<Env, true>;
   return { fetchMock, check: new AccountCheck(config) };
 }
 
@@ -76,15 +77,6 @@ describe('AccountCheck', () => {
       system: 'VRMS',
       roles: [{ role: 'MECHANIC', system: 'VRMS' }],
     });
-  });
-
-  it('refuses to start without AUTH_INTERNAL_URL', () => {
-    const config = {
-      getOrThrow: jest.fn(() => {
-        throw new Error('missing');
-      }),
-    } as unknown as ConfigService;
-    expect(() => new AccountCheck(config)).toThrow('missing');
   });
 
   it('answers 401 SESSION_ENDED for a token with no sid, without asking', async () => {

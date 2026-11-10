@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DefaultAzureCredential } from '@azure/identity';
 import {
   BlobSASPermissions,
@@ -19,6 +20,7 @@ import {
   StorageUnavailableException,
   StoredFile,
 } from './file-store';
+import type { Env } from '../../config/env';
 
 const HOUR = 60 * 60 * 1000;
 
@@ -26,16 +28,25 @@ type Signer =
   | { kind: 'sharedKey'; credential: StorageSharedKeyCredential }
   | { kind: 'delegation' };
 
-/** The connection string, the account URL, or neither (AC-3). Read once at startup. */
-export function storageConfig(env: NodeJS.ProcessEnv = process.env) {
-  const connectionString = env.STORAGE_CONNECTION_STRING?.trim() || undefined;
-  const accountUrl = env.STORAGE_ACCOUNT_URL?.trim() || undefined;
+type StorageEnv = Pick<
+  Env,
+  | 'STORAGE_CONNECTION_STRING'
+  | 'STORAGE_ACCOUNT_URL'
+  | 'STORAGE_CONTAINER'
+  | 'STORAGE_PUBLIC_URL'
+>;
+
+/**
+ * The connection string, the account URL, or neither (AC-3), from the checked environment
+ * (spec 0010). The connection string wins when both are set; envWarnings says so at boot.
+ */
+export function storageConfig(env: StorageEnv) {
+  const connectionString = env.STORAGE_CONNECTION_STRING;
   return {
     connectionString,
-    accountUrl: connectionString ? undefined : accountUrl,
-    bothSet: Boolean(connectionString && accountUrl),
-    container: env.STORAGE_CONTAINER?.trim() || 'vrms-attachments',
-    publicUrl: env.STORAGE_PUBLIC_URL?.trim().replace(/\/+$/, '') || undefined,
+    accountUrl: connectionString ? undefined : env.STORAGE_ACCOUNT_URL,
+    container: env.STORAGE_CONTAINER,
+    publicUrl: env.STORAGE_PUBLIC_URL?.replace(/\/+$/, ''),
   };
 }
 
@@ -64,13 +75,15 @@ export class BlobFileStore implements FileStore, OnModuleInit {
 
   readonly configured: boolean;
 
-  constructor() {
-    const config = storageConfig();
-    if (config.bothSet) {
-      this.logger.warn(
-        'Both STORAGE_CONNECTION_STRING and STORAGE_ACCOUNT_URL are set; using the connection string',
-      );
-    }
+  constructor(env: ConfigService<Env, true>) {
+    const config = storageConfig({
+      STORAGE_CONNECTION_STRING: env.get('STORAGE_CONNECTION_STRING', {
+        infer: true,
+      }),
+      STORAGE_ACCOUNT_URL: env.get('STORAGE_ACCOUNT_URL', { infer: true }),
+      STORAGE_CONTAINER: env.get('STORAGE_CONTAINER', { infer: true }),
+      STORAGE_PUBLIC_URL: env.get('STORAGE_PUBLIC_URL', { infer: true }),
+    });
 
     if (config.connectionString) {
       this.service = BlobServiceClient.fromConnectionString(
@@ -99,9 +112,10 @@ export class BlobFileStore implements FileStore, OnModuleInit {
     this.container = this.service?.getContainerClient(config.container) ?? null;
     this.host = config.publicUrl ?? this.service?.url ?? '';
 
-    if (!this.configured) {
+    // Unset storage is warned about at boot (envWarnings); this is a connection string without a key
+    if (this.service && !this.signer) {
       this.logger.warn(
-        'File storage is not configured: attachment routes answer 503 STORAGE_UNAVAILABLE',
+        'STORAGE_CONNECTION_STRING has no account key, so links cannot be signed: attachment routes answer 503 STORAGE_UNAVAILABLE',
       );
     }
   }
