@@ -24,7 +24,7 @@ Photos, proof, receipts and other documents on a repair ticket, stored in privat
 ## Gotchas
 
 - Set `STORAGE_CONNECTION_STRING` (Azurite, local) or `STORAGE_ACCOUNT_URL` (Azure, managed identity). With neither the app starts and every attachment route answers 503 `STORAGE_UNAVAILABLE`. `docker-compose.vrms.yml` runs Azurite on port 10000, and links for the browser use `STORAGE_PUBLIC_URL`.
-- The shared gateway must allow 26 MB bodies and a longer read timeout on `/vrms` and `/repairs` (`welinc-auth/nginx.conf`), or large uploads fail before they reach this module.
+- The shared gateway allows 26 MB bodies and a 120 s read timeout on `/vrms/` (`infra/gateway/` in the workspace, spec 0008), or large uploads would fail before they reach this module.
 - `sharp` and `heic-convert` are native or heavy: a Docker image change can break them, so run the `image-pipeline` spec after any base image bump.
 
 _Drafted by /sync from the introducing change, worth a quick human pass._
