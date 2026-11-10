@@ -11,6 +11,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { SessionModule } from './session/session.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { SessionModule } from './session/session.module';
     AttachmentsModule,
     SessionModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [AppService],
 })
 export class AppModule {}
