@@ -143,6 +143,7 @@ describe('Route decorators (AC-7)', () => {
   it('opens only the health check and the cookie session routes (spec 0003, AC-16) to everyone, and only /permissions/me, the attachment routes (spec 0017, AC-12; spec 0018, AC-9) and the session status to any signed in user', () => {
     expect(routes.filter((r) => r.isPublic).map(label)).toEqual([
       'GET /',
+      'GET /vrms/health',
       'GET /vrms/session/start',
       'GET /vrms/session/callback',
       'POST /vrms/session/refresh',
