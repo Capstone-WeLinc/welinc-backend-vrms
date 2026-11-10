@@ -12,10 +12,12 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { SessionModule } from './session/session.module';
 import { HealthController } from './health/health.controller';
+import { validateEnv } from './config/env';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    // Spec 0010: the whole environment is checked here, before any module reads it
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     ScheduleModule.forRoot(),
     SharedModule,
     AuthModule,

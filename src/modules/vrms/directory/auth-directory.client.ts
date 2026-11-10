@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService as EnvConfig } from '@nestjs/config';
+import type { Env } from '../../../config/env';
 import { authInternalUrl } from '../../../auth/account-check';
 import { DIRECTORY_TOKENS, ServiceTokenClient } from '../../../auth/verify';
 
@@ -106,7 +107,7 @@ export class AuthDirectoryClient {
   private readonly base: string;
 
   constructor(
-    env: EnvConfig,
+    env: EnvConfig<Env, true>,
     @Inject(DIRECTORY_TOKENS) private readonly tokens: ServiceTokenClient,
   ) {
     this.base = `${authInternalUrl(env)}/auth/directory`;

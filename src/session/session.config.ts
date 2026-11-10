@@ -1,6 +1,7 @@
 import type { Provider } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { VERIFY_CONFIG, type VerifyConfig } from '../auth/verify';
+import type { Env } from '../config/env';
 
 /**
  * What the VRMS session routes need (spec 0003, Configuration required). Each address is kept
@@ -27,43 +28,29 @@ export type SessionConfig = {
 
 export const SESSION_CONFIG = Symbol('SESSION_CONFIG');
 
-const trim = (value: string) => value.trim().replace(/\/+$/, '');
+type AddressName =
+  | 'WEB_APP_URL'
+  | 'API_PUBLIC_URL'
+  | 'PORTAL_URL'
+  | 'AUTH_PUBLIC_URL';
 
-function address(config: ConfigService, name: string, fallback: string) {
-  const raw = config.get<string>(name)?.trim();
-  if (!raw && config.get<string>('NODE_ENV') === 'production') {
-    throw new Error(`${name} is required in production (spec 0003)`);
-  }
-  const value = trim(raw || fallback);
-  new URL(value); // refuses a malformed address at startup
-  return value;
-}
+/** The boot check (spec 0010) already made each one a required URL; only the slash goes here. */
+const address = (config: ConfigService<Env, true>, name: AddressName) =>
+  config.get(name, { infer: true }).replace(/\/+$/, '');
 
 export function readSessionConfig(
-  config: ConfigService,
+  config: ConfigService<Env, true>,
   verify: VerifyConfig,
 ): SessionConfig {
-  const webAppUrl = address(config, 'WEB_APP_URL', 'http://localhost:8001');
-  const apiPublicUrl = address(
-    config,
-    'API_PUBLIC_URL',
-    'http://localhost:3000',
-  );
-  const secure = config
-    .get<string>('SESSION_COOKIE_SECURE')
-    ?.trim()
-    .toLowerCase();
+  const webAppUrl = address(config, 'WEB_APP_URL');
+  const apiPublicUrl = address(config, 'API_PUBLIC_URL');
   return {
     webAppUrl,
     webAppOrigin: new URL(webAppUrl).origin,
-    portalUrl: address(config, 'PORTAL_URL', 'http://localhost:8000'),
-    authPublicUrl: address(
-      config,
-      'AUTH_PUBLIC_URL',
-      'http://localhost:3000/auth',
-    ),
+    portalUrl: address(config, 'PORTAL_URL'),
+    authPublicUrl: address(config, 'AUTH_PUBLIC_URL'),
     redirectUri: `${apiPublicUrl}/vrms/session/callback`,
-    cookieSecure: secure === 'true' || secure === '1',
+    cookieSecure: config.get('SESSION_COOKIE_SECURE', { infer: true }),
     clientId: verify.clientId,
     tokenUrl: `${verify.internalUrl}/auth/token`,
     logoutUrl: `${verify.internalUrl}/auth/logout`,

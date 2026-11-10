@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
+import type { Env } from '../../config/env';
 import {
   AiProvider,
   AiProviderError,
@@ -12,26 +14,21 @@ import {
 const GENERATE_TIMEOUT_MS = 20_000;
 const EMBED_TIMEOUT_MS = 10_000;
 
-// Spec 0013, Configuration required
-const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
-const DEFAULT_EMBED_MODEL = 'gemini-embedding-2';
-
-/** Gemini through @google/genai, the only file that imports it. */
+/**
+ * Gemini through @google/genai, the only file that imports it. Settings and their defaults come
+ * from the env schema (spec 0013, spec 0010); a missing key is warned about at boot (envWarnings).
+ */
 @Injectable()
 export class GeminiProvider implements AiProvider {
-  private readonly logger = new Logger(GeminiProvider.name);
   private readonly client: GoogleGenAI | null;
-  readonly generationModel = process.env.GEMINI_MODEL || DEFAULT_MODEL;
-  readonly embedModel = process.env.GEMINI_EMBED_MODEL || DEFAULT_EMBED_MODEL;
+  readonly generationModel: string;
+  readonly embedModel: string;
 
-  constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
+  constructor(config: ConfigService<Env, true>) {
+    const apiKey = config.get('GEMINI_API_KEY', { infer: true });
     this.client = apiKey ? new GoogleGenAI({ apiKey }) : null;
-    if (!apiKey) {
-      this.logger.warn(
-        'GEMINI_API_KEY is not set: AI diagnosis answers 503 and embedding is skipped',
-      );
-    }
+    this.generationModel = config.get('GEMINI_MODEL', { infer: true });
+    this.embedModel = config.get('GEMINI_EMBED_MODEL', { infer: true });
   }
 
   get configured() {

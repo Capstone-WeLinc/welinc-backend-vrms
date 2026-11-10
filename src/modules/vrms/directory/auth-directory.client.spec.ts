@@ -1,5 +1,6 @@
 import { HttpException, UnauthorizedException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
+import type { Env } from '../../../config/env';
 import type { ServiceTokenClient } from '../../../auth/verify';
 import {
   AuthDirectoryClient,
@@ -52,8 +53,8 @@ describe('AuthDirectoryClient', () => {
       },
     } as unknown as ServiceTokenClient;
     const env = {
-      getOrThrow: () => 'http://auth:3001/',
-    } as unknown as ConfigService;
+      get: () => 'http://auth:3001/',
+    } as unknown as ConfigService<Env, true>;
     client = new AuthDirectoryClient(env, tokens);
     fetchMock = jest.spyOn(global, 'fetch');
   });
@@ -169,7 +170,7 @@ describe('AuthDirectoryClient', () => {
 
   it('says unavailable when the token client gives up with an HttpException', async () => {
     const failing = new AuthDirectoryClient(
-      { getOrThrow: () => 'http://auth:3001' } as unknown as ConfigService,
+      { get: () => 'http://auth:3001' } as unknown as ConfigService<Env, true>,
       {
         withToken: () => Promise.reject(new HttpException('down', 503)),
       } as unknown as ServiceTokenClient,

@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Env } from '../config/env';
 import { SystemType, UserRole } from './roles';
 import {
   AUTH_UNAVAILABLE_MESSAGE,
@@ -36,11 +37,11 @@ export type AuthUser = {
 export type Confirmed = { user: AuthUser; fresh: boolean };
 
 /**
- * welinc-auth's address on the internal network (`AUTH_INTERNAL_URL`, spec 0002, AC-22). Throws
- * when unset, so backend-vrms refuses to start (spec 0009, AC-4).
+ * welinc-auth's address on the internal network (`AUTH_INTERNAL_URL`, spec 0002, AC-22), without a
+ * trailing slash. The boot check (spec 0010) refuses to start without it.
  */
-export function authInternalUrl(config: ConfigService): string {
-  return config.getOrThrow<string>('AUTH_INTERNAL_URL').replace(/\/+$/, '');
+export function authInternalUrl(config: ConfigService<Env, true>): string {
+  return config.get('AUTH_INTERNAL_URL', { infer: true }).replace(/\/+$/, '');
 }
 
 /**
@@ -120,7 +121,7 @@ export class AccountCheck {
   private readonly inFlight = new Map<string, Promise<SessionAnswer>>();
   private readonly onConfirmed: ((user: AuthUser) => Promise<void>)[] = [];
 
-  constructor(config: ConfigService) {
+  constructor(config: ConfigService<Env, true>) {
     this.sessionUrl = `${authInternalUrl(config)}/auth/session`;
   }
 

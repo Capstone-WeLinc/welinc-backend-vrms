@@ -1,24 +1,11 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import type { Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
-
-/**
- * Proxy hops in front of backend-vrms (spec 0003): 1 locally (nginx), 2 hosted. `req.ip` is then
- * the user's address, which VRMS forwards to welinc-auth as `X-WeLinc-User-Address`. Unset
- * trusts none, so a forged X-Forwarded-For is ignored.
- */
-function trustProxyHops(): number {
-  const raw = process.env['TRUST_PROXY_HOPS'];
-  if (raw === undefined || raw === '') return 0;
-  const hops = Number(raw);
-  if (!Number.isInteger(hops) || hops < 0) {
-    throw new Error('TRUST_PROXY_HOPS must be a whole number, 0 or more');
-  }
-  return hops;
-}
+import { envWarnings, type Env } from './config/env';
 
 function isLocalDevOrigin(origin: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
@@ -26,7 +13,19 @@ function isLocalDevOrigin(origin: string): boolean {
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.set('trust proxy', trustProxyHops());
+  const config = app.get<ConfigService<Env, true>>(ConfigService);
+
+  // Spec 0010, AC-5: the environment the app runs in, and each optional service that is off
+  const envLog = new Logger('Env');
+  envLog.log(`Environment: ${config.get('NODE_ENV', { infer: true })}`);
+  envWarnings((key) => config.get(key, { infer: true })).forEach((line) =>
+    envLog.warn(line),
+  );
+
+  // Proxy hops in front of backend-vrms (spec 0003): 1 locally (nginx), 2 hosted. `req.ip` is then
+  // the user's address, which VRMS forwards to welinc-auth as `X-WeLinc-User-Address`. 0 trusts
+  // none, so a forged X-Forwarded-For is ignored.
+  app.set('trust proxy', config.get('TRUST_PROXY_HOPS', { infer: true }));
   // The vrms_rt refresh cookie and the login state cookie (spec 0003, AC-16)
   app.use(cookieParser());
 
@@ -50,10 +49,8 @@ async function bootstrap() {
     }),
   );
 
-  const corsOrigins = process.env['CORS_ORIGINS']
-    ?.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  // Browser origins allowed besides local development ones (each a bare origin, spec 0010)
+  const corsOrigins = config.get('CORS_ORIGINS', { infer: true });
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -61,25 +58,12 @@ async function bootstrap() {
         callback(null, true);
         return;
       }
-
-      if (corsOrigins && corsOrigins.length > 0) {
-        if (corsOrigins.includes('*')) {
-          callback(null, true);
-          return;
-        }
-        callback(
-          null,
-          corsOrigins.includes(origin) || isLocalDevOrigin(origin),
-        );
-        return;
-      }
-
-      callback(null, isLocalDevOrigin(origin));
+      callback(null, corsOrigins.includes(origin) || isLocalDevOrigin(origin));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type'],
     credentials: true,
   });
-  await app.listen(process.env['PORT'] ?? 3000);
+  await app.listen(config.get('PORT', { infer: true }));
 }
 void bootstrap();

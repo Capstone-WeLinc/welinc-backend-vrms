@@ -1,5 +1,6 @@
 import { Global, Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Env } from '../../config/env';
 import { AssertionSigner } from './assertion-signer';
 import { TOKEN_VERIFIER } from './guards';
 import { ServiceTokenClient } from './service-token-client';
@@ -27,19 +28,17 @@ export const DIRECTORY_TOKENS = Symbol('DIRECTORY_TOKENS');
 /** The audience this service accepts. Change it when copying the folder (`VMMS`, `BMS`). */
 export const SERVICE_AUDIENCE = 'VRMS';
 
-function required(config: ConfigService, name: string): string {
-  const value = config.get<string>(name)?.trim();
-  if (!value)
-    throw new Error(`${name} is missing. See src/auth/verify/README.md.`);
-  return value;
-}
-
-export function readVerifyConfig(config: ConfigService): VerifyConfig {
+/** The boot check (spec 0010) refuses to start when any of these is missing (AC-22). */
+export function readVerifyConfig(
+  config: ConfigService<Env, true>,
+): VerifyConfig {
   return {
-    issuer: required(config, 'AUTH_ISSUER'),
-    jwksUrl: required(config, 'AUTH_JWKS_URL'),
-    internalUrl: required(config, 'AUTH_INTERNAL_URL').replace(/\/+$/, ''),
-    clientId: required(config, 'AUTH_CLIENT_ID'),
+    issuer: config.get('AUTH_ISSUER', { infer: true }),
+    jwksUrl: config.get('AUTH_JWKS_URL', { infer: true }),
+    internalUrl: config
+      .get('AUTH_INTERNAL_URL', { infer: true })
+      .replace(/\/+$/, ''),
+    clientId: config.get('AUTH_CLIENT_ID', { infer: true }),
   };
 }
 
@@ -76,10 +75,10 @@ export function readVerifyConfig(config: ConfigService): VerifyConfig {
       provide: ASSERTION_SIGNER,
       inject: [VERIFY_CONFIG, ConfigService],
       // Async, so a missing or bad AUTH_CLIENT_PRIVATE_KEY stops startup (AC-22)
-      useFactory: (verify: VerifyConfig, config: ConfigService) =>
+      useFactory: (verify: VerifyConfig, config: ConfigService<Env, true>) =>
         AssertionSigner.create({
           clientId: verify.clientId,
-          privateKey: config.get<string>('AUTH_CLIENT_PRIVATE_KEY'),
+          privateKey: config.get('AUTH_CLIENT_PRIVATE_KEY', { infer: true }),
           issuer: verify.issuer,
         }),
     },

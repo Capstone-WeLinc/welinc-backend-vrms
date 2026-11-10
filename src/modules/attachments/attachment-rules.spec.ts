@@ -7,6 +7,7 @@ import {
   type RemoveRights,
 } from './attachments.service';
 import { blobLink, storageConfig } from './blob-file-store';
+import { testEnv, validateEnv } from '../../config/env';
 import {
   attachmentIdFromKey,
   attachmentKeys,
@@ -279,16 +280,25 @@ describe('visibleKinds (AC-16)', () => {
 });
 
 describe('storageConfig and blobLink (AC-3, backend layout)', () => {
+  // Through the boot check, so blanks and defaults behave as at startup (spec 0010)
+  const storage = (extra: Record<string, string>) =>
+    storageConfig(validateEnv({ ...testEnv, ...extra }));
+
   it('prefers the connection string when both are set', () => {
-    const c = storageConfig({
+    const c = storage({
       STORAGE_CONNECTION_STRING: 'UseDevelopmentStorage=true',
       STORAGE_ACCOUNT_URL: 'https://acct.blob.core.windows.net',
     });
-    expect(c).toMatchObject({ accountUrl: undefined, bothSet: true });
+    expect(c).toMatchObject({
+      connectionString: 'UseDevelopmentStorage=true',
+      accountUrl: undefined,
+    });
   });
 
-  it('has neither when nothing is set, and the default container', () => {
-    expect(storageConfig({})).toMatchObject({
+  it('has neither when nothing or blanks are set, and the default container', () => {
+    expect(
+      storage({ STORAGE_CONNECTION_STRING: '  ', STORAGE_ACCOUNT_URL: '' }),
+    ).toMatchObject({
       connectionString: undefined,
       accountUrl: undefined,
       container: 'vrms-attachments',
@@ -296,7 +306,7 @@ describe('storageConfig and blobLink (AC-3, backend layout)', () => {
   });
 
   it('builds the local link on the browser host, keeping the account in the path', () => {
-    const host = storageConfig({
+    const host = storage({
       STORAGE_PUBLIC_URL: 'http://localhost:10000/devstoreaccount1/',
     }).publicUrl!;
     expect(
