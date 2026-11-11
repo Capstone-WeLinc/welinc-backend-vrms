@@ -15,10 +15,11 @@ export type DirectoryUser = {
   name: string;
   email: string;
   phone: string | null;
-  phoneVerified: boolean;
   picture: string | null;
   isActive: boolean;
   deleted: boolean;
+  /** Contract 0001 version 6 (suite spec 0012): the person's data was erased in welinc-auth. */
+  erased: boolean;
   /** Role codes in VRMS only. */
   roles: string[];
   updatedAt: string;

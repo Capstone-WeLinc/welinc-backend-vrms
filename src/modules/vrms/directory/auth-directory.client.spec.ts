@@ -17,7 +17,7 @@ const person = (id: string): DirectoryUser => ({
   name: id,
   email: `${id}@welinc.com`,
   phone: null,
-  phoneVerified: false,
+  erased: false,
   picture: null,
   isActive: true,
   deleted: false,

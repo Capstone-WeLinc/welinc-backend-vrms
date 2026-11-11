@@ -28,7 +28,7 @@ const person = (id: string): DirectoryUser => ({
   name: `Name ${id}`,
   email: `${id}@welinc.com`,
   phone: null,
-  phoneVerified: false,
+  erased: false,
   picture: null,
   isActive: true,
   deleted: false,
@@ -73,6 +73,7 @@ function fakePrisma(state: State, mechanics: MechanicRow[] = []) {
       (_s: TemplateStringsArray, _secs: number, _id: string, owner: string) =>
         Promise.resolve(state.leaseOwner === owner ? 1 : 0),
     ),
+    repairTicket: { findMany: jest.fn(() => Promise.resolve([])) },
     directorySyncState: {
       updateMany: jest.fn((args: Parameters<typeof stateUpdate>[0]) =>
         Promise.resolve(stateUpdate(args)),
@@ -81,6 +82,11 @@ function fakePrisma(state: State, mechanics: MechanicRow[] = []) {
     mechanic: {
       findMany: jest.fn(() =>
         Promise.resolve(mechanics.filter((m) => m.isActive)),
+      ),
+      // Suite spec 0012, AC-24: the leaver release reads the row and their tickets (none here)
+      findUnique: jest.fn(() => Promise.resolve(null)),
+      findUniqueOrThrow: jest.fn(({ where }: { where: { id: string } }) =>
+        Promise.resolve({ id: where.id, name: 'Someone' }),
       ),
       updateMany: jest.fn(({ where }: { where: { id: { in: string[] } } }) => {
         const hit = mechanics.filter(

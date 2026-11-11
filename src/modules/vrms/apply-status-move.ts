@@ -1,9 +1,10 @@
 import { ConflictException, Logger } from '@nestjs/common';
 import { Prisma, RepairStatus, VehicleStatus } from '@prisma/client';
 import {
-  Actor,
+  RowActor,
   AuditEventData,
   auditData,
+  isSystemActor,
   statusEvent,
   whoName,
 } from './audit-events';
@@ -71,7 +72,7 @@ export async function applyStatusMove(
   tx: Prisma.TransactionClient,
   ticket: MovingTicket,
   move: TicketMove,
-  actor: Actor,
+  actor: RowActor,
   note: string | null | undefined,
   now: Date,
   options: MoveOptions = {},
@@ -96,11 +97,12 @@ export async function applyStatusMove(
       isUnlocked: false,
       ...(isFinished(move.to) && { closedAt: now }),
       // Whoever closes the ticket verified it; cancelling records no verifier (AC-7, AC-10)
-      ...(closes && {
-        verifiedByUserId: actor.sub,
-        verifiedByName: whoName(actor),
-        verifiedAt: now,
-      }),
+      ...(closes &&
+        !isSystemActor(actor) && {
+          verifiedByUserId: actor.sub,
+          verifiedByName: whoName(actor),
+          verifiedAt: now,
+        }),
     },
   });
   if (count === 0) throw new ConflictException(STALE_TICKET);
@@ -152,6 +154,10 @@ export async function applyStatusMove(
 
   // 4. The truck goes back to the fleet on a move into a finished status
   if (isFinished(move.to)) {
+    // Suite spec 0012: the system only ever sends a ticket back to Open
+    if (isSystemActor(actor)) {
+      throw new Error('The system never finishes a ticket');
+    }
     // Spec 0020, AC-7: read without a lock on purpose. The toggle is refused while this ticket is
     // open, and the move above holds the ticket row, so nothing else changes the truck meanwhile.
     const vehicle = await tx.vehicle.findUniqueOrThrow({
