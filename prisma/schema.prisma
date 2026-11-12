@@ -501,6 +501,20 @@ model DirectorySyncState {
   @@map("directory_sync_state")
 }
 
+// Suite spec 0013, AC-29: the matrix sync from welinc-auth (one row, id 'auth', a CHECK in the
+// migration). `etag` is the last applied `"v<version>"`; the lease works as directory_sync_state.
+model PermissionSyncState {
+  id           String    @id
+  etag         String?   @db.VarChar(40)
+  syncedAt     DateTime? @map("synced_at") @db.Timestamptz(3)
+  // Set while welinc-auth is failing (or answers an empty matrix), so the job warns once
+  failingSince DateTime? @map("failing_since") @db.Timestamptz(3)
+  leaseUntil   DateTime? @map("lease_until") @db.Timestamptz(3)
+  leaseOwner   String?   @map("lease_owner") @db.Uuid
+
+  @@map("permission_sync_state")
+}
+
 model PermissionMatrix {
   id        Int      @id @db.SmallInt
   version   Int      @default(1)

@@ -9,6 +9,9 @@ import { PermissionMatrixService } from './permissions/permission-matrix.service
 import { PermissionsController } from './permissions/permissions.controller';
 import { PermissionsGuard } from './permissions/permissions.guard';
 import { PermissionsService } from './permissions/permissions.service';
+import { AuthPermissionsClient } from './permissions/sync/auth-permissions.client';
+import { PermissionSync } from './permissions/sync/permission-sync.service';
+import { PermissionSyncJob } from './permissions/sync/permission-sync.job';
 
 // Accounts, passwords and codes live in welinc-auth (spec 0009). VRMS checks tokens with welinc-auth's
 // published keys (spec 0002, src/auth/verify/), confirms who is calling,
@@ -21,6 +24,10 @@ import { PermissionsService } from './permissions/permissions.service';
     AccountCheck,
     PermissionsService,
     PermissionMatrixService,
+    // Suite spec 0013, AC-29: the matrix comes from welinc-auth every 60 s
+    AuthPermissionsClient,
+    PermissionSync,
+    PermissionSyncJob,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
   ],
