@@ -361,10 +361,19 @@ export function knowledgeLinkEvent(
   };
 }
 
+/** The note a release row carries for each reason; the one place these strings live. */
+const RELEASE_NOTES = {
+  DELETED: 'Account deleted',
+  DEACTIVATED: 'Account deactivated',
+  ROLE_REMOVED: 'VRMS role removed',
+} as const;
+
+export type LeaveReason = keyof typeof RELEASE_NOTES;
+
 /** A mechanic's assignment ended because they left VRMS (spec 0011, AC-33). The note says why. */
 export function mechanicUnassignedEvent(
   mechanicName: string,
-  reason: 'DELETED' | 'DEACTIVATED' | 'ROLE_REMOVED',
+  reason: LeaveReason,
   reopened = false,
 ): AuditEventData {
   return {
@@ -375,13 +384,14 @@ export function mechanicUnassignedEvent(
         ? [{ field: 'repairStatus', before: 'ASSIGNED', after: 'OPEN' }]
         : []),
     ],
-    note:
-      reason === 'DELETED'
-        ? 'Account deleted'
-        : reason === 'DEACTIVATED'
-          ? 'Account deactivated'
-          : 'VRMS role removed',
+    note: RELEASE_NOTES[reason],
   };
+}
+
+/** Suite spec 0013, AC-32: the reason back from a release row's note, null for any other note. */
+export function leaveReasonOf(note: string | null): LeaveReason | null {
+  const match = Object.entries(RELEASE_NOTES).find(([, text]) => text === note);
+  return match ? (match[0] as LeaveReason) : null;
 }
 
 /**

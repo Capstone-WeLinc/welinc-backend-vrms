@@ -96,6 +96,14 @@ export class ConfigController {
     return this.mechanicWork.listRoster();
   }
 
+  // GET /vrms/mechanics/released (suite spec 0013, AC-32). The Chief dashboard's "Released after
+  // account changes" notice; static path, before :authUserId
+  @RequirePermission('mechanics.view', 'users.manage', 'team.manage')
+  @Get('mechanics/released')
+  released() {
+    return this.mechanicWork.recentReleases();
+  }
+
   // GET /vrms/mechanics/:authUserId/open-tickets (feature 57; spec 0022, AC-3 opens it to mechanics.view)
   @RequirePermission('users.manage', 'mechanics.view', 'team.manage')
   @Get('mechanics/:authUserId/open-tickets')
