@@ -3,12 +3,20 @@ import { authUnavailable } from '../../../auth/verify/errors';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../shared/prisma.service';
-import { MechanicRoster, type SyncResult } from '../mechanic-roster.service';
+import {
+  MechanicRoster,
+  type ApplyOutcome,
+  type SyncResult,
+} from '../mechanic-roster.service';
+import { releaseInTx, releaseLeaver } from '../mechanic-work.service';
+import { SYSTEM_ACTOR } from '../audit-events';
 import {
   AuthDirectoryClient,
   DirectoryCursorError,
   DirectoryUnavailableError,
+  type DirectoryUser,
 } from './auth-directory.client';
+import { rewriteErased } from './erasure-rewrite';
 
 /** Spec 0005, AC-12: how often the poll job runs. A constant, not a setting. */
 export const DIRECTORY_POLL_MS = 30_000;
@@ -153,7 +161,11 @@ export class DirectorySync {
       startCursor ??= answer.changesCursor;
       for (const user of answer.users) {
         seen.add(user.id);
-        const outcome = await this.roster.apply(user);
+        // Suite spec 0012, AC-24, AC-25: the roster, then the leaver's tickets and an erasure,
+        // together. The first full read after this shipped releases people already inactive
+        const outcome = await this.prisma.$transaction((tx) =>
+          this.applyChange(user, tx),
+        );
         if (outcome !== 'unchanged') result[outcome]++;
       }
       await this.renew(owner);
@@ -173,10 +185,37 @@ export class DirectorySync {
         data: { isActive: false },
       });
       result.deactivated += count;
+      // Suite spec 0012, AC-24: out of the VRMS directory means no VRMS role any more
+      for (const id of ids) {
+        await this.prisma.$transaction((tx) =>
+          releaseInTx(tx, id, 'ROLE_REMOVED', SYSTEM_ACTOR, new Date()),
+        );
+      }
     }
 
     await this.setCursor(this.prisma, owner, startCursor);
     return result;
+  }
+
+  /**
+   * Suite spec 0012, AC-24, AC-25: one person, inside the caller's transaction. The roster first,
+   * as before; then a person who is deleted, inactive or without a mechanic role leaves their
+   * open tickets; then an erased person's name and email copies become "Deleted user". Each step
+   * keys on the snapshot's state, so applying the same change again changes nothing more.
+   */
+  private async applyChange(
+    user: DirectoryUser,
+    tx: Prisma.TransactionClient,
+  ): Promise<ApplyOutcome> {
+    const outcome = await this.roster.apply(user, tx);
+    const released = await releaseLeaver(tx, user);
+    if (released.released > 0) {
+      this.logger.log(
+        `Released ${released.released} tickets from ${user.id} after a directory change`,
+      );
+    }
+    if (user.erased) await rewriteErased(tx, user.id);
+    return outcome;
   }
 
   /**
@@ -197,7 +236,7 @@ export class DirectorySync {
       for (const change of answer.changes) {
         try {
           await this.prisma.$transaction(async (tx) => {
-            await this.roster.apply(change.user, tx);
+            await this.applyChange(change.user, tx);
             await this.setCursor(tx, owner, change.cursor);
           });
         } catch (error) {

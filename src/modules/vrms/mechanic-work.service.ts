@@ -4,10 +4,17 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { RepairStatus } from '@prisma/client';
+import { Prisma, RepairStatus } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import type { AuthUser } from '../../auth/account-check';
-import { auditData, mechanicUnassignedEvent } from './audit-events';
+import {
+  SYSTEM_ACTOR,
+  auditData,
+  mechanicUnassignedEvent,
+  type RowActor,
+} from './audit-events';
+import type { DirectoryUser } from './directory/auth-directory.client';
+import { UserRole } from '../../auth/roles';
 import { MechanicRoster } from './mechanic-roster.service';
 import { OPEN_STATUSES } from './ticket-statuses';
 import { applyStatusMove } from './apply-status-move';
@@ -21,7 +28,7 @@ const UNASSIGN_RELEASE = findMove(RepairStatus.ASSIGNED, RepairStatus.OPEN)!;
 // Spec 0011, AC-32 and AC-33: what a person still holds when they leave VRMS, and how an Admin
 // moves it back to the queue.
 
-export type ReleaseReason = 'DEACTIVATED' | 'ROLE_REMOVED';
+export type ReleaseReason = 'DELETED' | 'DEACTIVATED' | 'ROLE_REMOVED';
 
 /** One row of a person's open tickets on the Users page (feature 57). */
 export type OpenTicket = {
@@ -202,62 +209,108 @@ export class MechanicWorkService {
       throw new ConflictException('They still have access to VRMS.');
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const person = await tx.mechanic.findUniqueOrThrow({
-        where: { id: mechanic.mechanicId },
-        select: { id: true, name: true },
-      });
-      const tickets = await tx.repairTicket.findMany({
-        where: {
-          repairStatus: { in: RELEASABLE_STATUSES },
-          assignments: { some: { mechanicId: person.id } },
-        },
-        select: {
-          id: true,
-          repairStatus: true,
-          updatedAt: true,
-          vehicleId: true,
-          odometer: true,
-          priorVehicleStatus: true,
-          _count: { select: { assignments: true } },
-        },
-      });
-
-      const now = new Date();
-      let released = 0;
-      let reopened = 0;
-      for (const t of tickets) {
-        const { count } = await tx.ticketAssignment.deleteMany({
-          where: { repairTicketId: t.id, mechanicId: person.id },
-        });
-        if (count === 0) continue;
-        const goesBack =
-          t.repairStatus === RepairStatus.ASSIGNED && t._count.assignments <= 1;
-        const event = mechanicUnassignedEvent(person.name, reason, goesBack);
-        if (goesBack) {
-          // M2 through the one status helper; its MECHANIC_UNASSIGNED row already records the
-          // status change, so no STATUS_CHANGE row is added (spec 0014, AC-1)
-          await applyStatusMove(tx, t, UNASSIGN_RELEASE, user, null, now, {
-            audit: event,
-          });
-        } else {
-          await tx.repairTicket.update({
-            where: { id: t.id },
-            data: { lastActivityAt: now },
-          });
-          await tx.auditLog.create({
-            data: { repairTicketId: t.id, ...auditData(user, event, now) },
-          });
-        }
-        released++;
-        if (goesBack) reopened++;
-      }
-      return { released, reopened };
-    });
+    // Suite spec 0012, AC-24: the feed usually got there first, so this often answers 0
+    const result = await this.prisma.$transaction((tx) =>
+      releaseInTx(tx, mechanic.mechanicId, reason, user, new Date()),
+    );
 
     this.logger.log(
       `Released ${result.released} tickets from ${authUserId} (${reason}) by ${user.email}`,
     );
     return result;
   }
+}
+
+/** Why a person's tickets go back, read from a directory snapshot, first match wins (AC-24). */
+export function leaveReason(user: DirectoryUser): ReleaseReason | null {
+  if (user.deleted) return 'DELETED';
+  if (!user.isActive) return 'DEACTIVATED';
+  const works = user.roles.some(
+    (role) => role === UserRole.MECHANIC || role === UserRole.CHIEF_MECHANIC,
+  );
+  return works ? null : 'ROLE_REMOVED';
+}
+
+/**
+ * Suite spec 0012, AC-24: after the roster takes a directory change, a person who is deleted,
+ * inactive or without a mechanic role in VRMS leaves every ticket in a releasable status, inside
+ * the same transaction as the cursor. Keys on the snapshot's state, never the change type, so a
+ * replay changes nothing more. No mechanics row: nothing to release.
+ */
+export async function releaseLeaver(
+  tx: Prisma.TransactionClient,
+  user: DirectoryUser,
+  now = new Date(),
+): Promise<{ released: number; reopened: number }> {
+  const reason = leaveReason(user);
+  if (!reason) return { released: 0, reopened: 0 };
+  const row = await tx.mechanic.findUnique({
+    where: { authUserId: user.id },
+    select: { id: true },
+  });
+  if (!row) return { released: 0, reopened: 0 };
+  return releaseInTx(tx, row.id, reason, SYSTEM_ACTOR, now);
+}
+
+/**
+ * The body of a release, inside the caller's transaction: the person leaves every ticket in
+ * RELEASABLE_STATUSES, one MECHANIC_UNASSIGNED row each, and an Assigned ticket left with no
+ * mechanic goes back to Open (spec 0011, AC-33; suite spec 0012, AC-24).
+ */
+export async function releaseInTx(
+  tx: Prisma.TransactionClient,
+  mechanicId: string,
+  reason: ReleaseReason,
+  actor: RowActor,
+  now: Date,
+): Promise<{ released: number; reopened: number }> {
+  const person = await tx.mechanic.findUniqueOrThrow({
+    where: { id: mechanicId },
+    select: { id: true, name: true },
+  });
+  const tickets = await tx.repairTicket.findMany({
+    where: {
+      repairStatus: { in: RELEASABLE_STATUSES },
+      assignments: { some: { mechanicId: person.id } },
+    },
+    select: {
+      id: true,
+      repairStatus: true,
+      updatedAt: true,
+      vehicleId: true,
+      odometer: true,
+      priorVehicleStatus: true,
+      _count: { select: { assignments: true } },
+    },
+  });
+
+  let released = 0;
+  let reopened = 0;
+  for (const t of tickets) {
+    const { count } = await tx.ticketAssignment.deleteMany({
+      where: { repairTicketId: t.id, mechanicId: person.id },
+    });
+    if (count === 0) continue;
+    const goesBack =
+      t.repairStatus === RepairStatus.ASSIGNED && t._count.assignments <= 1;
+    const event = mechanicUnassignedEvent(person.name, reason, goesBack);
+    if (goesBack) {
+      // M2 through the one status helper; its MECHANIC_UNASSIGNED row already records the
+      // status change, so no STATUS_CHANGE row is added (spec 0014, AC-1)
+      await applyStatusMove(tx, t, UNASSIGN_RELEASE, actor, null, now, {
+        audit: event,
+      });
+    } else {
+      await tx.repairTicket.update({
+        where: { id: t.id },
+        data: { lastActivityAt: now },
+      });
+      await tx.auditLog.create({
+        data: { repairTicketId: t.id, ...auditData(actor, event, now) },
+      });
+    }
+    released++;
+    if (goesBack) reopened++;
+  }
+  return { released, reopened };
 }

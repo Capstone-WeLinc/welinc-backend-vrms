@@ -132,6 +132,19 @@ export type Actor = {
   system: string;
 };
 
+/**
+ * Suite spec 0012, AC-24: a change nobody made by hand (the directory feed unassigning a person
+ * who left). Its rows have no actor id, name or email, and the role `SYSTEM`.
+ */
+export const SYSTEM_ACTOR = { kind: 'SYSTEM' } as const;
+export type SystemActor = typeof SYSTEM_ACTOR;
+/** Who an audit row names: a signed in person, or the system. */
+export type RowActor = Actor | SystemActor;
+
+export function isSystemActor(actor: RowActor): actor is SystemActor {
+  return 'kind' in actor && actor.kind === 'SYSTEM';
+}
+
 export type ActorFields = {
   actorUserId: string | null;
   actorName: string | null;
@@ -152,7 +165,15 @@ export function whoName(user: Pick<Actor, 'name' | 'email'>) {
 }
 
 /** The actor columns, copied from the verified token, never from a request body. */
-export function actorFields(user: Actor): ActorFields {
+export function actorFields(user: RowActor): ActorFields {
+  if (isSystemActor(user)) {
+    return {
+      actorUserId: null,
+      actorName: null,
+      actorEmail: null,
+      actorRole: 'SYSTEM',
+    };
+  }
   const held = user.roles
     .filter((r) => r.system === user.system)
     .map((r) => r.role);
@@ -165,7 +186,7 @@ export function actorFields(user: Actor): ActorFields {
 }
 
 /** The columns of one audit row: actor, event and the shared `now` (AC-10). */
-export function auditData(user: Actor, event: AuditEventData, now: Date) {
+export function auditData(user: RowActor, event: AuditEventData, now: Date) {
   return {
     ...actorFields(user),
     action: event.action,
@@ -343,7 +364,7 @@ export function knowledgeLinkEvent(
 /** A mechanic's assignment ended because they left VRMS (spec 0011, AC-33). The note says why. */
 export function mechanicUnassignedEvent(
   mechanicName: string,
-  reason: 'DEACTIVATED' | 'ROLE_REMOVED',
+  reason: 'DELETED' | 'DEACTIVATED' | 'ROLE_REMOVED',
   reopened = false,
 ): AuditEventData {
   return {
@@ -355,7 +376,11 @@ export function mechanicUnassignedEvent(
         : []),
     ],
     note:
-      reason === 'DEACTIVATED' ? 'Account deactivated' : 'VRMS role removed',
+      reason === 'DELETED'
+        ? 'Account deleted'
+        : reason === 'DEACTIVATED'
+          ? 'Account deactivated'
+          : 'VRMS role removed',
   };
 }
 

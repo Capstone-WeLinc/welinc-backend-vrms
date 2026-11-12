@@ -100,7 +100,7 @@ const asDirectoryUser = (u: ListedUser): DirectoryUser => ({
   name: u.name,
   email: u.email,
   phone: null,
-  phoneVerified: false,
+  erased: false,
   picture: null,
   isActive: u.isActive,
   deleted: false,
