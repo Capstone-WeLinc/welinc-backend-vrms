@@ -242,6 +242,18 @@ export const PERMISSION_CATALOG = [
     locked: ALL_LOCKED,
   },
   {
+    // Suite spec 0013, AC-31: the Users page as a team and work view. Account actions moved to
+    // the portal; slice 5 moves this entry's label and defaults to welinc-auth's catalog.
+    key: 'team.manage',
+    label: 'Manage the team',
+    group: 'Admin',
+    description:
+      'See everyone in VRMS with their open work, and unassign or reassign their tickets.',
+    defaults: { ADMIN: true, CHIEF_MECHANIC: false, MECHANIC: false },
+    // Admin always keeps it, so no matrix edit hides the team from every admin
+    locked: { ADMIN: true },
+  },
+  {
     key: 'permissions.manage',
     label: 'View and change permissions',
     group: 'Admin',

@@ -37,6 +37,7 @@ const EXPECTED: Array<
   ['knowledge.suggest', 'Knowledge', true, true, true],
   ['knowledge.edit', 'Knowledge', true, true, false],
   ['users.manage', 'Admin', true, false, false],
+  ['team.manage', 'Admin', true, false, false],
   ['permissions.manage', 'Admin', true, false, false],
   ['settings.manage', 'Admin', true, false, false],
   ['lookups.manage', 'Admin', true, true, false],
@@ -92,23 +93,27 @@ describe('permission catalog', () => {
   });
 
   // covers: AC-1, AC-2
-  it('seeds one row per matrix role and key, 84 today', () => {
+  it('seeds one row per matrix role and key, 87 today', () => {
     expect(MATRIX_ROLES).toEqual(['ADMIN', 'CHIEF_MECHANIC', 'MECHANIC']);
-    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(84);
+    expect(MATRIX_ROLES.length * PERMISSION_CATALOG.length).toBe(87);
   });
 
-  // covers: AC-4. Spec 0017, AC-15 locks ticket.files.remove_any off for the Mechanic
-  it('locks users.manage and permissions.manage for every role, settings.manage for Admin and remove_any for Mechanic', () => {
+  // covers: AC-4. Spec 0017, AC-15 locks ticket.files.remove_any off for the Mechanic. Suite
+  // spec 0013, AC-31 locks team.manage on for Admin, like settings.manage
+  it('locks users.manage and permissions.manage for every role, team.manage and settings.manage for Admin and remove_any for Mechanic', () => {
     const locked = PERMISSION_CATALOG.filter((e) => 'locked' in e).map(
       (e) => e.key,
     );
 
     expect(locked).toEqual([
       'ticket.files.remove_any',
-      ...LOCKED_KEYS,
+      'users.manage',
+      'team.manage',
+      'permissions.manage',
       'settings.manage',
     ]);
     expect(catalogEntry('settings.manage')?.locked).toEqual({ ADMIN: true });
+    expect(catalogEntry('team.manage')?.locked).toEqual({ ADMIN: true });
     expect(catalogEntry('ticket.files.remove_any')?.locked).toEqual({
       MECHANIC: true,
     });
@@ -175,7 +180,7 @@ describe('permission catalog', () => {
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(allowed('ADMIN')).toHaveLength(27);
+    expect(allowed('ADMIN')).toHaveLength(28);
     expect(allowed('ADMIN')).not.toContain('ticket.work');
   });
 
