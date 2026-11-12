@@ -13,7 +13,10 @@ import {
   mechanicUnassignedEvent,
   type RowActor,
 } from './audit-events';
-import type { DirectoryUser } from './directory/auth-directory.client';
+import {
+  permanentRoles,
+  type DirectoryUser,
+} from './directory/auth-directory.client';
 import { UserRole } from '../../auth/roles';
 import { MechanicRoster } from './mechanic-roster.service';
 import { OPEN_STATUSES } from './ticket-statuses';
@@ -225,7 +228,7 @@ export class MechanicWorkService {
 export function leaveReason(user: DirectoryUser): ReleaseReason | null {
   if (user.deleted) return 'DELETED';
   if (!user.isActive) return 'DEACTIVATED';
-  const works = user.roles.some(
+  const works = permanentRoles(user).some(
     (role) => role === UserRole.MECHANIC || role === UserRole.CHIEF_MECHANIC,
   );
   return works ? null : 'ROLE_REMOVED';

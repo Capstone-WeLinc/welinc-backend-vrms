@@ -3,7 +3,8 @@ import { RepairStatus } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import type { AuthUser } from '../../auth/account-check';
 import { MechanicRoster } from './mechanic-roster.service';
-import { MechanicWorkService } from './mechanic-work.service';
+import { leaveReason, MechanicWorkService } from './mechanic-work.service';
+import { permanentRoles } from './directory/auth-directory.client';
 
 // Spec 0011, AC-32 and AC-33: open work and release, against an in memory ticket list.
 // Spec 0014, AC-1: the release to Open goes through applyStatusMove with its one audit row.
@@ -188,5 +189,43 @@ describe('MechanicWorkService.release', () => {
     await expect(
       none.service.release('u1', 'DEACTIVATED', admin),
     ).rejects.toThrow(NotFoundException);
+  });
+});
+
+// Suite spec 0013, AC-11
+describe('temporary roles', () => {
+  const person = {
+    id: 'a',
+    name: 'A',
+    email: 'a@welinc.com',
+    phone: null,
+    picture: null,
+    isActive: true,
+    deleted: false,
+    erased: false,
+    updatedAt: '2026-11-13T00:00:00.000Z',
+  };
+
+  it('leaves temporary codes out, and reads a missing list as none', () => {
+    expect(
+      permanentRoles({
+        roles: ['ADMIN', 'MECHANIC'],
+        temporaryRoles: ['ADMIN'],
+      }),
+    ).toEqual(['MECHANIC']);
+    expect(permanentRoles({ roles: ['MECHANIC'] })).toEqual(['MECHANIC']);
+  });
+
+  it('counts only a permanent Mechanic or Chief Mechanic role as still working', () => {
+    expect(
+      leaveReason({
+        ...person,
+        roles: ['MECHANIC'],
+        temporaryRoles: ['MECHANIC'],
+      }),
+    ).toBe('ROLE_REMOVED');
+    expect(
+      leaveReason({ ...person, roles: ['MECHANIC'], temporaryRoles: [] }),
+    ).toBeNull();
   });
 });

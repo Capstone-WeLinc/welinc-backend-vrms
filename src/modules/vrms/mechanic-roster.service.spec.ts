@@ -330,6 +330,18 @@ describe('MechanicRoster role', () => {
     expect(rows[0].role).toBe('MECHANIC');
   });
 
+  // Suite spec 0013, AC-11
+  it("never makes a suite admin's temporary Mechanic role a roster mechanic", async () => {
+    const rows: Row[] = [];
+    const { roster } = setup(rows, []);
+    const temporary = {
+      ...asDirectoryUser(user('a', 'MECHANIC')),
+      temporaryRoles: ['MECHANIC'],
+    };
+    expect(await roster.apply(temporary)).not.toBe('created');
+    expect(rows.filter((r) => r.isActive)).toHaveLength(0);
+  });
+
   it('keeps the last known role when the person loses VRMS access', async () => {
     const rows = [row({ role: 'CHIEF_MECHANIC' })];
     const { roster, prisma } = setup(rows, [user('a', 'ADMIN')]);
