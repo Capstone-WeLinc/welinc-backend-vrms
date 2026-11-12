@@ -2480,6 +2480,17 @@
           "role": "MECHANIC"
         }
       ]
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000009001",
+      "email": "suite.admin@welinc.com",
+      "name": "Ramon Villanueva",
+      "group": "office",
+      "state": "active",
+      "password": "admin",
+      "contact": null,
+      "roles": [],
+      "suiteAdmin": true
     }
   ]
 }

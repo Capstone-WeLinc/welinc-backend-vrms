@@ -61,7 +61,7 @@ export class ConfigController {
   // POST /vrms/mechanics/sync. The recovery path (spec 0005, AC-17): reads every VRMS user from
   // welinc-auth's directory again and restarts the feed from there. The app no longer calls it;
   // the 30 s poll keeps the list current
-  @RequirePermission('users.manage')
+  @RequirePermission('team.manage')
   @Post('mechanics/sync')
   @HttpCode(HttpStatus.OK)
   syncMechanics() {
@@ -70,7 +70,7 @@ export class ConfigController {
 
   // POST /vrms/mechanics/:authUserId/refresh (spec 0005, AC-18). The Users page calls it after
   // each save, so the picker shows the change at once instead of on the next poll
-  @RequirePermission('users.manage')
+  @RequirePermission('team.manage')
   @Post('mechanics/:authUserId/refresh')
   @HttpCode(HttpStatus.OK)
   async refreshMechanic(
@@ -83,35 +83,43 @@ export class ConfigController {
   }
 
   // GET /vrms/mechanics/workload (feature 57). Static path, so it sits before the :authUserId routes
-  @RequirePermission('users.manage')
+  @RequirePermission('team.manage')
   @Get('mechanics/workload')
   workload() {
     return this.mechanicWork.workload();
   }
 
   // GET /vrms/mechanics/roster (spec 0022, AC-2). The Team section's roster; static path, before :authUserId
-  @RequirePermission('mechanics.view', 'users.manage')
+  @RequirePermission('mechanics.view', 'team.manage')
   @Get('mechanics/roster')
   roster() {
     return this.mechanicWork.listRoster();
   }
 
+  // GET /vrms/mechanics/released (suite spec 0013, AC-32). The Chief dashboard's "Released after
+  // account changes" notice; static path, before :authUserId
+  @RequirePermission('mechanics.view', 'team.manage')
+  @Get('mechanics/released')
+  released() {
+    return this.mechanicWork.recentReleases();
+  }
+
   // GET /vrms/mechanics/:authUserId/open-tickets (feature 57; spec 0022, AC-3 opens it to mechanics.view)
-  @RequirePermission('users.manage', 'mechanics.view')
+  @RequirePermission('mechanics.view', 'team.manage')
   @Get('mechanics/:authUserId/open-tickets')
   openTickets(@Param('authUserId', ParseUUIDPipe) authUserId: string) {
     return this.mechanicWork.openTickets(authUserId);
   }
 
   // GET /vrms/mechanics/:authUserId/open-work (spec 0011, AC-32)
-  @RequirePermission('users.manage')
+  @RequirePermission('team.manage')
   @Get('mechanics/:authUserId/open-work')
   openWork(@Param('authUserId', ParseUUIDPipe) authUserId: string) {
     return this.mechanicWork.openWork(authUserId);
   }
 
   // POST /vrms/mechanics/:authUserId/release-tickets (spec 0011, AC-33)
-  @RequirePermission('users.manage')
+  @RequirePermission('team.manage')
   @Post('mechanics/:authUserId/release-tickets')
   @HttpCode(HttpStatus.OK)
   releaseTickets(

@@ -1,8 +1,6 @@
 import { Body, Controller, Get, Patch, Query, Req } from '@nestjs/common';
 import { RequirePermission } from '../auth/permissions/permission.decorators';
 import type { PermittedRequest } from '../auth/permissions/permissions.guard';
-import { CurrentAbility } from '../auth/permissions/current-ability.decorator';
-import type { AppAbility } from '../auth/permissions/ability.factory';
 import { ListChangesQueryDto } from './dto/list-changes.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { SettingsAdminService } from './settings-admin.service';
@@ -25,16 +23,10 @@ export class SettingsController {
     return this.admin.update(dto, req.user);
   }
 
-  // AC-26. Permission rows only for a caller who also holds permissions.manage.
+  // AC-26: settings and lookup changes (permission changes are in the portal, suite spec 0013)
   @RequirePermission('settings.manage')
   @Get('changes')
-  changes(
-    @Query() query: ListChangesQueryDto,
-    @CurrentAbility() ability: AppAbility,
-  ) {
-    return this.admin.changes(
-      query,
-      ability.can('permissions.manage', 'Permission'),
-    );
+  changes(@Query() query: ListChangesQueryDto) {
+    return this.admin.changes(query);
   }
 }

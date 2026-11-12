@@ -122,11 +122,12 @@ describe('Route decorators (AC-7)', () => {
     );
   });
 
-  it('opens mechanics.view only on the two Team section reads, never a write (spec 0022, AC-3)', () => {
+  it('opens mechanics.view only on the Chief dashboard reads, never a write (spec 0022, AC-3; suite spec 0013, AC-32)', () => {
     expect(
       routes.filter((r) => r.keys?.includes('mechanics.view')).map(label),
     ).toEqual([
       'GET /vrms/mechanics/roster',
+      'GET /vrms/mechanics/released',
       'GET /vrms/mechanics/:authUserId/open-tickets',
     ]);
   });

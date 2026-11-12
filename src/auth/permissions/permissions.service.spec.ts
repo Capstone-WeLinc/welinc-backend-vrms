@@ -1,20 +1,23 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import type { PrismaService } from '../../shared/prisma.service';
 import { MATRIX_ROLES, PERMISSION_CATALOG } from './catalog';
+import { defaultKeys } from './permissions.fake';
+import type { UserRole } from '../roles';
 import { PermissionsService } from './permissions.service';
 import { FakeSettings } from '../../settings/settings.fake';
 
 type Row = { role: string; permission: string; allowed: boolean };
 
-/** Every role and key at its catalog default, as the backfill would write them. */
+/** Every role and key at welinc-auth's defaults, as the matrix sync writes them (suite spec 0013). */
 function defaultRows(): Row[] {
-  return MATRIX_ROLES.flatMap((role) =>
-    PERMISSION_CATALOG.map((entry) => ({
+  return MATRIX_ROLES.flatMap((role) => {
+    const held = defaultKeys([role]);
+    return PERMISSION_CATALOG.map((entry) => ({
       role,
       permission: entry.key,
-      allowed: entry.defaults[role],
-    })),
-  );
+      allowed: held.has(entry.key),
+    }));
+  });
 }
 
 function setup(
@@ -61,7 +64,7 @@ function setup(
   return { service, prisma, tx, state, settings };
 }
 
-const vrms = (...roles: string[]) =>
+const vrms = (...roles: UserRole[]) =>
   roles.map((role) => ({ role, system: 'VRMS' }));
 
 describe('PermissionsService', () => {
@@ -83,9 +86,7 @@ describe('PermissionsService', () => {
       const { service } = setup();
       await service.onApplicationBootstrap();
 
-      const expected = PERMISSION_CATALOG.filter((e) => e.defaults[role]).map(
-        (e) => e.key,
-      );
+      const expected = [...defaultKeys([role])];
       expect([...service.keysFor([role])].sort()).toEqual(expected.sort());
     },
   );
@@ -110,25 +111,24 @@ describe('PermissionsService', () => {
     const rows = defaultRows().filter(
       (r) => !(r.role === 'MECHANIC' && r.permission === 'knowledge.view'),
     );
-    const { service, tx } = setup(rows);
-    // Stop the backfill from restoring the row, so the load sees it missing
-    tx.rolePermission.createMany.mockResolvedValueOnce({ count: 0 });
+    const { service } = setup(rows);
     await service.onApplicationBootstrap();
 
     expect(service.keysFor(['MECHANIC']).has('knowledge.view')).toBe(false);
   });
 
-  it('takes a locked cell from the catalog, whatever its row says (AC-4)', async () => {
+  it('takes every cell from its row, locks included: welinc-auth keeps the locks (suite spec 0013, AC-29)', async () => {
     const rows = defaultRows().map((r) =>
-      r.permission === 'users.manage'
-        ? { ...r, allowed: r.role !== 'ADMIN' }
+      r.role === 'MECHANIC' && r.permission === 'ticket.files.remove_any'
+        ? { ...r, allowed: true }
         : r,
     );
     const { service } = setup(rows);
     await service.onApplicationBootstrap();
 
-    expect(service.keysFor(['ADMIN']).has('users.manage')).toBe(true);
-    expect(service.keysFor(['MECHANIC']).has('users.manage')).toBe(false);
+    expect(service.keysFor(['MECHANIC']).has('ticket.files.remove_any')).toBe(
+      true,
+    );
   });
 
   it('follows an unlocked edit stored in the database', async () => {
@@ -173,11 +173,11 @@ describe('PermissionsService', () => {
 
   it('answers 503 and stays not ready until a cold replica loads (AC-21)', async () => {
     const { service, prisma } = setup();
-    prisma.$transaction.mockRejectedValueOnce(new Error('down'));
+    prisma.permissionMatrix.findUnique.mockRejectedValueOnce(new Error('down'));
     await service.onApplicationBootstrap();
     expect(service.isReady).toBe(false);
 
-    prisma.$transaction.mockRejectedValueOnce(new Error('down'));
+    prisma.permissionMatrix.findUnique.mockRejectedValueOnce(new Error('down'));
     await expect(service.ensureFresh()).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
@@ -186,63 +186,14 @@ describe('PermissionsService', () => {
     expect(service.isReady).toBe(true);
   });
 
-  describe('startup backfill (AC-3)', () => {
-    it('inserts every row on an empty table, logs each as System and bumps the version once', async () => {
-      const { service, tx, state } = setup([]);
-      await service.onApplicationBootstrap();
+  it('writes nothing at startup: the sync owns role_permissions (suite spec 0013, AC-30)', async () => {
+    const { service, tx, state } = setup([]);
+    await service.onApplicationBootstrap();
 
-      const total = MATRIX_ROLES.length * PERMISSION_CATALOG.length;
-      expect(state.rows).toHaveLength(total);
-      const [[{ data: changes }]] = tx.permissionChange.createMany.mock
-        .calls as [[{ data: { before: unknown; actorUserId?: unknown }[] }]];
-      expect(changes).toHaveLength(total);
-      expect(changes.every((c) => c.before === null && !c.actorUserId)).toBe(
-        true,
-      );
-      expect(state.version).toBe(2);
-    });
-
-    it('takes the advisory lock before reading the rows', async () => {
-      const { service, tx } = setup([]);
-      await service.onApplicationBootstrap();
-
-      expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
-        tx.rolePermission.findMany.mock.invocationCallOrder[0],
-      );
-    });
-
-    it('inserts only the missing rows and never changes an existing one', async () => {
-      const edited = defaultRows().map((r) =>
-        r.role === 'MECHANIC' && r.permission === 'knowledge.suggest'
-          ? { ...r, allowed: false }
-          : r,
-      );
-      const missing = edited.filter((r) => r.permission !== 'audit.view');
-      const { service, tx, state } = setup(missing);
-      await service.onApplicationBootstrap();
-
-      const [[{ data }]] = tx.rolePermission.createMany.mock.calls as [
-        [{ data: Row[] }],
-      ];
-      expect(data.map((r) => r.permission)).toEqual([
-        'audit.view',
-        'audit.view',
-        'audit.view',
-      ]);
-      expect(service.keysFor(['MECHANIC']).has('knowledge.suggest')).toBe(
-        false,
-      );
-      expect(state.version).toBe(2);
-    });
-
-    it('writes nothing and keeps the version when every row exists', async () => {
-      const { service, tx, state } = setup();
-      await service.onApplicationBootstrap();
-
-      expect(tx.rolePermission.createMany).not.toHaveBeenCalled();
-      expect(tx.permissionChange.createMany).not.toHaveBeenCalled();
-      expect(state.version).toBe(1);
-    });
+    expect(tx.rolePermission.createMany).not.toHaveBeenCalled();
+    expect(tx.permissionChange.createMany).not.toHaveBeenCalled();
+    expect(state.version).toBe(1);
+    expect(service.keysFor(['ADMIN']).size).toBe(0);
   });
 
   it('builds a separate ability per caller, even with the same roles (AC-9)', async () => {

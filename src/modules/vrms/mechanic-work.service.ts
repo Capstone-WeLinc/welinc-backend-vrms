@@ -10,10 +10,16 @@ import type { AuthUser } from '../../auth/account-check';
 import {
   SYSTEM_ACTOR,
   auditData,
+  leaveReasonOf,
   mechanicUnassignedEvent,
+  type AuditChange,
+  type LeaveReason,
   type RowActor,
 } from './audit-events';
-import type { DirectoryUser } from './directory/auth-directory.client';
+import {
+  permanentRoles,
+  type DirectoryUser,
+} from './directory/auth-directory.client';
 import { UserRole } from '../../auth/roles';
 import { MechanicRoster } from './mechanic-roster.service';
 import { OPEN_STATUSES } from './ticket-statuses';
@@ -28,7 +34,7 @@ const UNASSIGN_RELEASE = findMove(RepairStatus.ASSIGNED, RepairStatus.OPEN)!;
 // Spec 0011, AC-32 and AC-33: what a person still holds when they leave VRMS, and how an Admin
 // moves it back to the queue.
 
-export type ReleaseReason = 'DELETED' | 'DEACTIVATED' | 'ROLE_REMOVED';
+export type ReleaseReason = LeaveReason;
 
 /** One row of a person's open tickets on the Users page (feature 57). */
 export type OpenTicket = {
@@ -56,6 +62,25 @@ export type RosterRow = {
   role: MechanicRole | null;
   isActive: boolean;
 } & Workload;
+
+/** Suite spec 0013, AC-32: how far back the Chief's released notice looks, and its row cap. */
+const RELEASE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const RELEASE_LIMIT = 50;
+
+/** One ticket the directory feed released because its mechanic left (suite spec 0013, AC-32). */
+export type ReleasedTicket = {
+  /** The audit row id: a ticket released from two people has two rows. */
+  id: string;
+  ticketId: string;
+  repairNumber: string;
+  /** The ticket's status now, so the notice can say whether it still waits on someone. */
+  repairStatus: RepairStatus;
+  plateNumber: string;
+  /** The name the row recorded; "Deleted user" after an erasure. */
+  person: string | null;
+  reason: LeaveReason | null;
+  releasedAt: string;
+};
 
 /** Tickets a release changes. FOR_VERIFICATION and later are the verifier's and are left alone. */
 const RELEASABLE_STATUSES: RepairStatus[] = [
@@ -202,6 +227,51 @@ export class MechanicWorkService {
     };
   }
 
+  /**
+   * Suite spec 0013, AC-32: tickets the directory feed released in the last 7 days, newest first.
+   * Only rows the feed wrote (actor role SYSTEM); an Admin's own release names the Admin and is
+   * left out. The person and reason come from the row itself, so they survive the person's erasure
+   * as "Deleted user".
+   */
+  async recentReleases(now = new Date()): Promise<ReleasedTicket[]> {
+    const rows = await this.prisma.auditLog.findMany({
+      where: {
+        action: 'MECHANIC_UNASSIGNED',
+        actorRole: 'SYSTEM',
+        createdAt: { gte: new Date(now.getTime() - RELEASE_WINDOW_MS) },
+      },
+      select: {
+        id: true,
+        changes: true,
+        note: true,
+        createdAt: true,
+        repairTicket: {
+          select: {
+            id: true,
+            repairNumber: true,
+            repairStatus: true,
+            vehicle: { select: { plateNumber: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: RELEASE_LIMIT,
+    });
+    return rows.map((row) => {
+      const changes = (row.changes ?? []) as AuditChange[];
+      return {
+        id: row.id,
+        ticketId: row.repairTicket.id,
+        repairNumber: row.repairTicket.repairNumber,
+        repairStatus: row.repairTicket.repairStatus,
+        plateNumber: row.repairTicket.vehicle.plateNumber,
+        person: changes.find((c) => c.field === 'mechanic')?.before ?? null,
+        reason: leaveReasonOf(row.note),
+        releasedAt: row.createdAt.toISOString(),
+      };
+    });
+  }
+
   async release(authUserId: string, reason: ReleaseReason, user: AuthUser) {
     const mechanic = await this.roster.refreshOne(authUserId);
     if (!mechanic) throw new NotFoundException('Mechanic not found');
@@ -225,7 +295,7 @@ export class MechanicWorkService {
 export function leaveReason(user: DirectoryUser): ReleaseReason | null {
   if (user.deleted) return 'DELETED';
   if (!user.isActive) return 'DEACTIVATED';
-  const works = user.roles.some(
+  const works = permanentRoles(user).some(
     (role) => role === UserRole.MECHANIC || role === UserRole.CHIEF_MECHANIC,
   );
   return works ? null : 'ROLE_REMOVED';

@@ -22,8 +22,24 @@ export type DirectoryUser = {
   erased: boolean;
   /** Role codes in VRMS only. */
   roles: string[];
+  /**
+   * Suite spec 0013, AC-11: the codes in `roles` that are a suite admin's temporary access. Left
+   * out by a welinc-auth from before contract version 7, which reads as none.
+   */
+  temporaryRoles?: string[];
   updatedAt: string;
 };
+
+/**
+ * The roles that count for VRMS work: every role but a suite admin's temporary access, which never
+ * makes anyone a pickable mechanic (suite spec 0013, AC-11).
+ */
+export function permanentRoles(
+  user: Pick<DirectoryUser, 'roles' | 'temporaryRoles'>,
+): string[] {
+  const temporary = new Set(user.temporaryRoles ?? []);
+  return user.roles.filter((role) => !temporary.has(role));
+}
 
 export type DirectoryChange = {
   cursor: string;
@@ -84,6 +100,8 @@ function readUser(raw: unknown): DirectoryUser | null {
     typeof u.deleted === 'boolean' &&
     Array.isArray(u.roles) &&
     u.roles.every(isString) &&
+    (u.temporaryRoles === undefined ||
+      (Array.isArray(u.temporaryRoles) && u.temporaryRoles.every(isString))) &&
     isString(u.updatedAt);
   return ok ? (u as unknown as DirectoryUser) : null;
 }

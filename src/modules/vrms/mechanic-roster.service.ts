@@ -6,6 +6,7 @@ import { SystemType, UserRole } from '../../auth/roles';
 import {
   AuthDirectoryClient,
   DirectoryUnavailableError,
+  permanentRoles,
   type DirectoryUser,
 } from './directory/auth-directory.client';
 import { authUnavailable } from '../../auth/verify/errors';
@@ -155,7 +156,11 @@ export class MechanicRoster implements OnModuleInit {
     const role = user.deleted
       ? null
       : roleOf(
-          user.roles.map((code) => ({ role: code, system: SystemType.VRMS })),
+          // Suite spec 0013, AC-11: a temporary role never makes a roster mechanic
+          permanentRoles(user).map((code) => ({
+            role: code,
+            system: SystemType.VRMS,
+          })),
         );
     const row = await db.mechanic.findUnique({
       where: { authUserId: user.id },

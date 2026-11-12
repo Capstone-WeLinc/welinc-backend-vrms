@@ -132,7 +132,7 @@ describe('buildAbility', () => {
     const ability = buildAbility(ME, keys('audit.view'));
 
     expect(ability.can('audit.view', 'Permission')).toBe(true);
-    expect(ability.can('users.manage', 'Permission')).toBe(false);
+    expect(ability.can('team.manage', 'Permission')).toBe(false);
     expect(ability.can('read', 'RepairTicket')).toBe(false);
   });
 });

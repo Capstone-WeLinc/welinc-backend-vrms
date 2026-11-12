@@ -25,6 +25,9 @@ export const ASSERTION_SIGNER = Symbol('ASSERTION_SIGNER');
 /** This service's token for welinc-auth's directory: `audience=AUTH`, `scope=directory.read`. */
 export const DIRECTORY_TOKENS = Symbol('DIRECTORY_TOKENS');
 
+/** This service's token for its permission matrix (suite spec 0013, AC-29): `scope=permissions.read`. */
+export const PERMISSIONS_TOKENS = Symbol('PERMISSIONS_TOKENS');
+
 /** The audience this service accepts. Change it when copying the folder (`VMMS`, `BMS`). */
 export const SERVICE_AUDIENCE = 'VRMS';
 
@@ -97,7 +100,28 @@ export function readVerifyConfig(
         });
       },
     },
+    {
+      provide: PERMISSIONS_TOKENS,
+      inject: [VERIFY_CONFIG, ASSERTION_SIGNER],
+      useFactory: (verify: VerifyConfig, signer: AssertionSigner) => {
+        const logger = new Logger('ServiceToken');
+        return new ServiceTokenClient({
+          tokenUrl: `${verify.internalUrl}/auth/token`,
+          signer,
+          audience: 'AUTH',
+          scope: 'permissions.read',
+          onError: (reason) =>
+            logger.warn(`could not get a permissions token: ${reason}`),
+        });
+      },
+    },
   ],
-  exports: [VERIFY_CONFIG, TOKEN_VERIFIER, ASSERTION_SIGNER, DIRECTORY_TOKENS],
+  exports: [
+    VERIFY_CONFIG,
+    TOKEN_VERIFIER,
+    ASSERTION_SIGNER,
+    DIRECTORY_TOKENS,
+    PERMISSIONS_TOKENS,
+  ],
 })
 export class AuthVerifyModule {}
