@@ -523,23 +523,6 @@ model PermissionMatrix {
   @@map("permission_matrix")
 }
 
-// Every applied matrix change, kept forever. A null actor is System (the startup backfill).
-model PermissionChange {
-  id          String   @id @default(uuid()) @db.Uuid
-  role        String   @db.VarChar(30)
-  permission  String   @db.VarChar(60)
-  before      Boolean? // null when the row was created
-  after       Boolean? // null when the row was removed
-  actorUserId String?  @map("actor_user_id") @db.Uuid
-  actorName   String?  @map("actor_name") @db.VarChar(100)
-  actorEmail  String?  @map("actor_email") @db.VarChar(255)
-  note        String?  @db.Text
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-
-  @@index([createdAt(sort: Desc), id(sort: Desc)])
-  @@map("permission_changes")
-}
-
 // Spec 0012: a value an Admin set. No row means the catalog default (src/settings/catalog.ts).
 model AppSetting {
   key             String   @id @db.VarChar(60)

@@ -7,7 +7,6 @@ import {
   encodeCursor,
   whoName,
 } from '../modules/vrms/audit-events';
-import { catalogEntry, ROLE_LABELS } from '../auth/permissions/catalog';
 import {
   LOOKUP_LISTS,
   isLookupList,
@@ -34,7 +33,7 @@ function lookupLabel(key: string, before: unknown, after: unknown): string {
 }
 
 type ChangeRow = {
-  kind: 'setting' | 'permission' | 'lookup';
+  kind: 'setting' | 'lookup';
   id: string;
   key: string;
   role: string | null;
@@ -184,33 +183,26 @@ export class SettingsAdminService {
     return this.view();
   }
   /**
-   * Setting and permission changes merged, newest first (spec 0012, AC-26). One UNION ALL
-   * projects the same columns from both tables, filters by kind and by keys (AC-31) before the limit and pages on
-   * (createdAt, id). Permission rows show only to a caller who also holds `permissions.manage`.
+   * Setting and lookup changes merged, newest first (spec 0012, AC-26). One UNION ALL projects
+   * the same columns from both tables, filters by kind and by keys (AC-31) before the limit and
+   * pages on (createdAt, id). Permission changes left with the matrix editor (suite spec 0013,
+   * AC-30): their history is in the portal's Permissions view.
    */
-  async changes(query: ListChangesQueryDto, canSeePermissions: boolean) {
+  async changes(query: ListChangesQueryDto) {
     const limit = query.limit ?? CHANGES_PAGE_SIZE;
     const kind = query.kind ?? 'all';
     const cursor = query.cursor ? decodeCursor(query.cursor) : null;
     const keys = query.keys === undefined ? null : parseKeys(query.keys);
 
-    const kinds: ('setting' | 'permission' | 'lookup')[] = [];
+    const kinds: ('setting' | 'lookup')[] = [];
     if (kind === 'all' || kind === 'setting') kinds.push('setting');
     if (kind === 'all' || kind === 'lookup') kinds.push('lookup');
-    if ((kind === 'all' || kind === 'permission') && canSeePermissions) {
-      kinds.push('permission');
-    }
-    if (kinds.length === 0) return { data: [], nextCursor: null };
 
     const rows = await this.prisma.$queryRaw<ChangeRow[]>`
       SELECT * FROM (
         SELECT 'setting'::text AS kind, id, key, NULL::text AS role, before, after,
                action::text AS action, actor_name, actor_email, note, created_at
         FROM setting_changes
-        UNION ALL
-        SELECT 'permission'::text, id, permission, role, to_jsonb(before), to_jsonb(after),
-               NULL::text, actor_name, actor_email, note, created_at
-        FROM permission_changes
         UNION ALL
         SELECT 'lookup'::text, l.id, 'lookup.' || v.list, NULL::text, l.before, l.after,
                l.action, l.actor_name, l.actor_email, NULL::text, l.created_at
@@ -238,14 +230,9 @@ export class SettingsAdminService {
         label:
           row.kind === 'lookup'
             ? lookupLabel(row.key, row.before, row.after)
-            : ((row.kind === 'setting'
-                ? settingEntry(row.key)?.label
-                : catalogEntry(row.key)?.label) ?? row.key),
+            : (settingEntry(row.key)?.label ?? row.key),
         role: row.role,
-        roleLabel:
-          row.role === null
-            ? null
-            : ((ROLE_LABELS as Record<string, string>)[row.role] ?? row.role),
+        roleLabel: null,
         before: row.before,
         after: row.after,
         action: row.action,

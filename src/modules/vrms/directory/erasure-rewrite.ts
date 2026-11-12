@@ -65,12 +65,7 @@ export const ERASURE_COPY_COLUMNS: readonly {
     nameColumn: 'actor_name',
     emailColumn: 'actor_email',
   },
-  {
-    table: 'permission_changes',
-    idColumn: 'actor_user_id',
-    nameColumn: 'actor_name',
-    emailColumn: 'actor_email',
-  },
+  // permission_changes moved to welinc-auth (suite spec 0013, AC-30), whose erasure blanks it
   {
     table: 'setting_changes',
     idColumn: 'actor_user_id',

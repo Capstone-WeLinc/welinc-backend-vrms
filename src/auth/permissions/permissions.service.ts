@@ -10,7 +10,6 @@ import type { AuthUser } from '../account-check';
 import { AppAbility, buildAbility } from './ability.factory';
 import {
   catalogEntry,
-  isLocked,
   isMatrixRole,
   MATRIX_ROLES,
   MatrixRole,
@@ -18,9 +17,9 @@ import {
   PermissionKey,
 } from './catalog';
 
-// Spec 0011, AC-3 and AC-20: every booting replica takes this lock before the backfill, so two
-// never both insert. Any constant works as long as nothing else in this database uses it.
-const BACKFILL_LOCK_ID = 110011;
+// Spec 0011, read side. Since suite spec 0013 (AC-29, AC-30) role_permissions is written only by
+// the matrix sync from welinc-auth (sync/permission-sync.service.ts), which also enforces locks;
+// there is no startup backfill any more.
 
 export const MATRIX_UNAVAILABLE =
   'Permissions are not loaded yet. Try again in a moment.';
@@ -73,7 +72,7 @@ export class PermissionsService implements OnApplicationBootstrap {
         return;
       }
       const versions = await this.readVersions();
-      if (versions.matrix !== this.version) await this.load(false);
+      if (versions.matrix !== this.version) await this.load();
       if (versions.settings !== this.settings.currentVersion) {
         await this.settings.load();
         this.keyCache.clear();
@@ -116,9 +115,9 @@ export class PermissionsService implements OnApplicationBootstrap {
     return buildAbility(user.sub, this.keysFor(user.roles.map((r) => r.role)));
   }
 
-  /** The first load: the matrix with its backfill, and the settings. */
+  /** The first load: the matrix, and the settings. */
   private async loadCold() {
-    if (!this.grants) await this.load(true);
+    if (!this.grants) await this.load();
     if (!this.settings.isReady) {
       await this.settings.load();
       this.keyCache.clear();
@@ -126,10 +125,9 @@ export class PermissionsService implements OnApplicationBootstrap {
   }
 
   /** Runs one load at a time; concurrent requests wait for the same one. */
-  private load(withBackfill: boolean): Promise<void> {
+  private load(): Promise<void> {
     this.loading ??= (async () => {
       try {
-        if (withBackfill) await this.backfill();
         await this.reload();
       } finally {
         this.loading = null;
@@ -176,11 +174,8 @@ export class PermissionsService implements OnApplicationBootstrap {
     for (const role of MATRIX_ROLES) {
       const keys = new Set<PermissionKey>();
       for (const entry of PERMISSION_CATALOG) {
-        // A locked cell ignores its row (AC-4); a missing row denies (AC-6)
-        const allowed = isLocked(entry, role)
-          ? entry.defaults[role]
-          : stored.get(`${role}|${entry.key}`) === true;
-        if (allowed) keys.add(entry.key);
+        // A missing row denies (AC-6); locks are kept by welinc-auth, so the row is the value
+        if (stored.get(`${role}|${entry.key}`) === true) keys.add(entry.key);
       }
       grants.set(role, keys);
     }
@@ -188,51 +183,6 @@ export class PermissionsService implements OnApplicationBootstrap {
     this.grants = grants;
     this.version = version;
     this.keyCache.clear();
-  }
-
-  /**
-   * Inserts every missing role and key row from the catalog defaults, and never updates or
-   * deletes one, so an Admin's edit survives restarts, deploys and rollbacks (AC-3).
-   */
-  private async backfill() {
-    const inserted = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(${BACKFILL_LOCK_ID}::bigint)::text`;
-
-      const existing = await tx.rolePermission.findMany({
-        select: { role: true, permission: true },
-      });
-      const have = new Set(existing.map((r) => `${r.role}|${r.permission}`));
-      const missing = MATRIX_ROLES.flatMap((role) =>
-        PERMISSION_CATALOG.filter(
-          (entry) => !have.has(`${role}|${entry.key}`),
-        ).map((entry) => ({
-          role,
-          permission: entry.key,
-          allowed: entry.defaults[role],
-        })),
-      );
-      if (missing.length === 0) return 0;
-
-      await tx.rolePermission.createMany({ data: missing });
-      // A null actor is System
-      await tx.permissionChange.createMany({
-        data: missing.map((m) => ({
-          role: m.role,
-          permission: m.permission,
-          before: null,
-          after: m.allowed,
-        })),
-      });
-      await tx.permissionMatrix.update({
-        where: { id: 1 },
-        data: { version: { increment: 1 } },
-      });
-      return missing.length;
-    });
-
-    if (inserted > 0) {
-      this.logger.log(`Permission backfill inserted ${inserted} rows`);
-    }
   }
 }
 

@@ -11,7 +11,8 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 
-export const CHANGE_KINDS = ['all', 'setting', 'permission', 'lookup'] as const;
+// Suite spec 0013, AC-30: permission changes left this feed; their history is in the portal
+export const CHANGE_KINDS = ['all', 'setting', 'lookup'] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 
 // Spec 0012, API surface: GET /vrms/settings/changes

@@ -34,66 +34,45 @@ const settingRow = (n: number) => ({
 });
 
 describe('SettingsAdminService.changes', () => {
-  it('labels rows from the catalogs and shows a null actor as null', async () => {
+  it('labels rows from the settings catalog and shows a null actor as null', async () => {
     const { service } = setup([
       settingRow(2),
-      {
-        kind: 'permission',
-        id: ID(1),
-        key: 'knowledge.edit',
-        role: 'MECHANIC',
-        before: null,
-        after: true,
-        action: null,
-        actor_name: null,
-        actor_email: null,
-        note: null,
-        created_at: at(1),
-      },
+      { ...settingRow(1), actor_name: null, actor_email: null },
       { ...settingRow(0), key: 'gone.key' },
     ]);
-    const res = await service.changes({}, true);
+    const res = await service.changes({});
     expect(res.data[0]).toMatchObject({
       label: 'Repairs before typical time and cost',
       actor: { name: 'Ana', email: 'ana@welinc.com' },
     });
-    expect(res.data[1]).toMatchObject({
-      kind: 'permission',
-      roleLabel: 'Mechanic',
-      actor: null,
-    });
+    expect(res.data[1]).toMatchObject({ roleLabel: null, actor: null });
     expect(res.data[2].label).toBe('gone.key');
     expect(res.nextCursor).toBeNull();
   });
 
   it('returns a cursor when there is another page', async () => {
     const { service } = setup([settingRow(3), settingRow(2), settingRow(1)]);
-    const res = await service.changes({ limit: 2 }, true);
+    const res = await service.changes({ limit: 2 });
     expect(res.data).toHaveLength(2);
     expect(res.nextCursor).toEqual(expect.any(String));
   });
 
-  it('hides permission rows from a caller without permissions.manage, without a query', async () => {
+  it('asks only setting and lookup changes: permission history is in the portal (suite spec 0013, AC-30)', async () => {
     const { service, queryRaw } = setup([]);
-    expect(await service.changes({ kind: 'permission' }, false)).toEqual({
-      data: [],
-      nextCursor: null,
-    });
-    expect(queryRaw).not.toHaveBeenCalled();
+    await service.changes({});
+    const [strings] = queryRaw.mock.calls[0] as [string[]];
+    expect(strings.join('?')).not.toContain('permission_changes');
   });
 });
 
 describe('SettingsAdminService.changes with keys (AC-31)', () => {
   it('filters on the keys in the same query, after kind and before the limit', async () => {
     const { service, queryRaw } = setup([settingRow(2)]);
-    await service.changes(
-      {
-        kind: 'setting',
-        keys: 'module.ai,module.ai,knowledge.min_samples',
-        limit: 5,
-      },
-      true,
-    );
+    await service.changes({
+      kind: 'setting',
+      keys: 'module.ai,module.ai,knowledge.min_samples',
+      limit: 5,
+    });
     const [strings, ...values] = queryRaw.mock.calls[0] as [
       string[],
       ...unknown[],
@@ -113,17 +92,11 @@ describe('SettingsAdminService.changes with keys (AC-31)', () => {
 
   it('pages with keys: a cursor comes back and the filter stays', async () => {
     const { service } = setup([settingRow(3), settingRow(2), settingRow(1)]);
-    const res = await service.changes(
-      { keys: 'knowledge.min_samples', limit: 2 },
-      true,
-    );
+    const res = await service.changes({
+      keys: 'knowledge.min_samples',
+      limit: 2,
+    });
     expect(res.nextCursor).toEqual(expect.any(String));
-  });
-
-  it('asks nothing for permission rows without permissions.manage, whatever keys holds', async () => {
-    const { service, queryRaw } = setup([]);
-    await service.changes({ kind: 'permission', keys: 'ticket.view' }, false);
-    expect(queryRaw).not.toHaveBeenCalled();
   });
 });
 

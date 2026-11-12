@@ -1,14 +1,12 @@
-import { Body, Controller, Get, Patch, Query, Req } from '@nestjs/common';
+import { Controller, Get, Req } from '@nestjs/common';
 import { SettingsService } from '../../settings/settings.service';
-import {
-  ListPermissionChangesQueryDto,
-  UpdatePermissionsDto,
-} from './dto/update-permissions.dto';
 import { Authenticated, RequirePermission } from './permission.decorators';
 import { PermissionMatrixService } from './permission-matrix.service';
 import type { PermittedRequest } from './permissions.guard';
 import { PermissionsService } from './permissions.service';
 
+// Suite spec 0013, AC-30: the matrix is edited in the portal (welinc-auth) and synced here, so
+// PATCH /vrms/permissions and GET /vrms/permissions/changes are gone.
 @Controller('vrms/permissions')
 export class PermissionsController {
   constructor(
@@ -29,24 +27,11 @@ export class PermissionsController {
     };
   }
 
-  // AC-17
-  @RequirePermission('permissions.manage')
+  // Spec 0011, AC-17: the synced copy, read only. permissions.manage left with the editor, so
+  // the Admins who hold settings.manage (locked on for Admin) read it.
+  @RequirePermission('settings.manage')
   @Get()
   view() {
     return this.matrix.view();
-  }
-
-  // AC-18
-  @RequirePermission('permissions.manage')
-  @Patch()
-  update(@Body() dto: UpdatePermissionsDto, @Req() req: PermittedRequest) {
-    return this.matrix.update(dto, req.user);
-  }
-
-  // AC-19
-  @RequirePermission('permissions.manage')
-  @Get('changes')
-  changes(@Query() query: ListPermissionChangesQueryDto) {
-    return this.matrix.changes(query);
   }
 }

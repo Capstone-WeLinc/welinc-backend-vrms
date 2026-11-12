@@ -45,9 +45,26 @@ async function main(): Promise<number> {
         select: { role: true, permission: true, allowed: true },
         orderBy: [{ role: 'asc' }, { permission: 'asc' }],
       }),
-      changes: await tx.permissionChange.findMany({
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      }),
+      // Raw SQL: the model left the schema with the drop migration, and this script must run
+      // before that migration deploys (AC-28)
+      changes: await tx.$queryRaw<
+        {
+          role: string;
+          permission: string;
+          before: boolean | null;
+          after: boolean | null;
+          actorUserId: string | null;
+          actorName: string | null;
+          actorEmail: string | null;
+          note: string | null;
+          createdAt: Date;
+        }[]
+      >`
+        SELECT "role", "permission", "before", "after",
+               "actor_user_id" AS "actorUserId", "actor_name" AS "actorName",
+               "actor_email" AS "actorEmail", "note", "created_at" AS "createdAt"
+          FROM "permission_changes"
+         ORDER BY "created_at" ASC, "id" ASC`,
     }),
     { isolationLevel: 'RepeatableRead' },
   );

@@ -24,7 +24,6 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
-    "permissions:prune": "ts-node -r tsconfig-paths/register prisma/permissions-prune.ts",
     "permissions:export": "ts-node -r tsconfig-paths/register prisma/permissions-export.ts",
     "settings:prune": "ts-node -r tsconfig-paths/register prisma/settings-prune.ts",
     "ai:embed-all": "ts-node -r tsconfig-paths/register prisma/ai-embed-all.ts",
