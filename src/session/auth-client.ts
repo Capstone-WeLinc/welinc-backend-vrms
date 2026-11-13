@@ -26,12 +26,14 @@ export type UserGrant = {
 
 /**
  * How a grant ended (AC-16a): `ended` for `invalid_grant` (the cookie is cleared), `no_access`
- * for 403 `NO_SYSTEM_ACCESS`, `unavailable` for anything else (the cookie is kept).
+ * for 403 `NO_SYSTEM_ACCESS`, `not_allowed` for 403 `APP_NOT_ALLOWED` (the person's roles here
+ * use a phone app, suite spec 0014 AC-3), `unavailable` for anything else (the cookie is kept).
  */
 export type GrantResult =
   | { kind: 'ok'; grant: UserGrant }
   | { kind: 'ended' }
   | { kind: 'no_access' }
+  | { kind: 'not_allowed' }
   | { kind: 'unavailable'; reason: string };
 
 /** The VRMS backend's calls to welinc-auth with its client assertion (spec 0003). */
@@ -141,6 +143,9 @@ export class AuthClient {
     }
     if (res.status === 403 && body?.['code'] === 'NO_SYSTEM_ACCESS') {
       return { kind: 'no_access' };
+    }
+    if (res.status === 403 && body?.['code'] === 'APP_NOT_ALLOWED') {
+      return { kind: 'not_allowed' };
     }
     const error = typeof body?.['error'] === 'string' ? body['error'] : '-';
     return this.unavailable(`status ${res.status} error=${error}`);

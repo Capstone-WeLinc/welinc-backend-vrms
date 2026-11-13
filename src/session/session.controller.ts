@@ -112,6 +112,7 @@ export class SessionController {
     @Query('code') code: unknown,
     @Query('state') state: unknown,
     @Query('error') error: unknown,
+    @Query('error_description') errorDescription: unknown,
     @Req() req: Request,
     @Res() res: Response,
   ) {
@@ -128,9 +129,12 @@ export class SessionController {
       return fail('LOGIN_STATE_INVALID');
     }
     if (error !== undefined) {
-      return error === 'access_denied'
-        ? fail('NO_SYSTEM_ACCESS', { system: 'VRMS' })
-        : fail('LOGIN_FAILED');
+      if (error !== 'access_denied') return fail('LOGIN_FAILED');
+      // Suite spec 0014, AC-3: roles held here, but for the phone app. `system` is this
+      // system's own upper case code in every copy (VRMS, VMMS, BMS)
+      return errorDescription === 'APP_NOT_ALLOWED'
+        ? fail('APP_NOT_ALLOWED', { system: 'VRMS' })
+        : fail('NO_SYSTEM_ACCESS', { system: 'VRMS' });
     }
     if (typeof code !== 'string' || code === '') return fail('LOGIN_FAILED');
 
@@ -141,6 +145,9 @@ export class SessionController {
     );
     if (result.kind === 'no_access') {
       return fail('NO_SYSTEM_ACCESS', { system: 'VRMS' });
+    }
+    if (result.kind === 'not_allowed') {
+      return fail('APP_NOT_ALLOWED', { system: 'VRMS' });
     }
     if (result.kind !== 'ok') return fail('LOGIN_FAILED');
     this.setCookie(res, result.grant);
@@ -175,6 +182,19 @@ export class SessionController {
           message: 'This account has no access to VRMS',
           error: 'Forbidden',
           code: 'NO_SYSTEM_ACCESS',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    // Suite spec 0014, AC-3: a role change moved this person to the phone app
+    if (result.kind === 'not_allowed') {
+      clearRefreshCookie(res, this.config);
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.FORBIDDEN,
+          message: 'Your role in VRMS uses the WeLinc mobile app, not the web',
+          error: 'Forbidden',
+          code: 'APP_NOT_ALLOWED',
         },
         HttpStatus.FORBIDDEN,
       );
