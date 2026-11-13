@@ -19,6 +19,7 @@ import type { AuthUser } from '../../../auth/account-check';
 import { MechanicRoster } from '../mechanic-roster.service';
 import { MechanicWorkService } from '../mechanic-work.service';
 import { DirectorySync } from '../directory/directory-sync.service';
+import { PeopleCopy } from '../directory/people-copy';
 import { ReleaseTicketsDto } from '../dto/release-tickets.dto';
 
 @Controller('vrms')
@@ -28,6 +29,7 @@ export class ConfigController {
     private readonly mechanicRoster: MechanicRoster,
     private readonly mechanicWork: MechanicWorkService,
     private readonly directorySync: DirectorySync,
+    private readonly peopleCopy: PeopleCopy,
   ) {}
 
   // GET /vrms/config/garages
@@ -80,6 +82,14 @@ export class ConfigController {
     return row
       ? { mechanicId: row.mechanicId, isActive: row.stillActive }
       : { mechanicId: null };
+  }
+
+  // GET /vrms/people (suite spec 0014, task 13a): the Users page list, every VRMS person from the
+  // directory copy, so the page no longer calls welinc-auth's GET /auth/users
+  @RequirePermission('team.manage')
+  @Get('people')
+  people() {
+    return this.peopleCopy.list();
   }
 
   // GET /vrms/mechanics/workload (feature 57). Static path, so it sits before the :authUserId routes

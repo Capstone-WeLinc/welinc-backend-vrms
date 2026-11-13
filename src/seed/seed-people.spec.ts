@@ -11,11 +11,11 @@ import {
 // its own rows to the shared fixed ids.
 
 describe('people.json copy', () => {
-  it('holds the 146 people (145 plus the suite admin, suite spec 0013) with unique ids and emails', () => {
+  it('holds the 147 people (145, the suite admin from suite spec 0013, vmms.mech@ from suite spec 0014) with unique ids and emails', () => {
     // covers: AC-1, AC-14
-    expect(MANIFEST_PEOPLE).toHaveLength(146);
-    expect(new Set(MANIFEST_PEOPLE.map((p) => p.id)).size).toBe(146);
-    expect(new Set(MANIFEST_PEOPLE.map((p) => p.email)).size).toBe(146);
+    expect(MANIFEST_PEOPLE).toHaveLength(147);
+    expect(new Set(MANIFEST_PEOPLE.map((p) => p.id)).size).toBe(147);
+    expect(new Set(MANIFEST_PEOPLE.map((p) => p.email)).size).toBe(147);
   });
 
   it('no longer holds the old ops.user and cs.user logins', () => {

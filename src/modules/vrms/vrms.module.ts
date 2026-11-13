@@ -15,6 +15,7 @@ import { MechanicRoster } from './mechanic-roster.service';
 import { AuthDirectoryClient } from './directory/auth-directory.client';
 import { DirectorySync } from './directory/directory-sync.service';
 import { DirectoryPollJob } from './directory/directory-poll.job';
+import { PeopleCopy } from './directory/people-copy';
 import { MechanicWorkService } from './mechanic-work.service';
 
 @Module({
@@ -36,6 +37,7 @@ import { MechanicWorkService } from './mechanic-work.service';
     AuthDirectoryClient,
     DirectorySync,
     DirectoryPollJob,
+    PeopleCopy,
     MechanicWorkService,
   ],
 })

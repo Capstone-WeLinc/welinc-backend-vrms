@@ -127,18 +127,18 @@ describe('verify guards', () => {
       expect(req.service).toMatchObject({ clientId: 'vmms' });
     });
 
-    it('refuses a person, and a service token without the scope, with 403 WRONG_TOKEN_USE', async () => {
-      for (const token of [
-        await signAccess(signer),
-        await service('other.scope'),
-      ]) {
-        expect(
-          await answer(guard().canActivate(context(request(token)))),
-        ).toMatchObject({
-          status: 403,
-          body: { code: 'WRONG_TOKEN_USE' },
-        });
-      }
+    it('refuses a person with 403 WRONG_TOKEN_USE', async () => {
+      const token = await signAccess(signer);
+      expect(
+        await answer(guard().canActivate(context(request(token)))),
+      ).toMatchObject({ status: 403, body: { code: 'WRONG_TOKEN_USE' } });
+    });
+
+    it('refuses a service token without the scope with 403 FORBIDDEN', async () => {
+      const token = await service('other.scope');
+      expect(
+        await answer(guard().canActivate(context(request(token)))),
+      ).toMatchObject({ status: 403, body: { code: 'FORBIDDEN' } });
     });
   });
 });

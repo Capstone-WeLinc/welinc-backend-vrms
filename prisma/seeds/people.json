@@ -386,6 +386,21 @@
       ]
     },
     {
+      "id": "00000000-0000-4000-8000-000000002401",
+      "email": "vmms.mech@welinc.com",
+      "name": "Ramil Aquino",
+      "group": "office",
+      "state": "active",
+      "password": "mechanic",
+      "contact": null,
+      "roles": [
+        {
+          "system": "VMMS",
+          "role": "MECHANIC"
+        }
+      ]
+    },
+    {
       "id": "00000000-0000-4000-8000-000000003101",
       "email": "bms.admin@welinc.com",
       "name": "Bernardo Mendoza",

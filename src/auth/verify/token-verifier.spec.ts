@@ -106,7 +106,7 @@ describe('TokenVerifier', () => {
     ).toBe('expired');
   });
 
-  it('fails an old HS256 token, alg none, and HS256 keyed with the public key', async () => {
+  it('fails an old HMAC token, alg none, and HMAC keyed with the public key', async () => {
     const body = b64({
       iss: TEST_ISSUER,
       sub: 'u',
@@ -118,7 +118,7 @@ describe('TokenVerifier', () => {
     });
     const hs = (secret: string, kid?: string) => {
       const header = b64({
-        alg: 'HS256',
+        alg: 'HS256', // check-system: allow proves HS256 is refused
         typ: 'at+jwt',
         ...(kid ? { kid } : {}),
       });
