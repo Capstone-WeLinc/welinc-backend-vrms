@@ -54,6 +54,17 @@ export const wrongTokenUse = (
   message = 'This route does not accept this token',
 ) => error(HttpStatus.FORBIDDEN, message, 'WRONG_TOKEN_USE');
 
+/**
+ * A service token without the route's scope (contract 0001 section 4, version 8; the directory's
+ * rule too): 403 `FORBIDDEN`, so a caller can tell a missing grant from a wrong kind of token.
+ */
+export const missingScope = (scope: string) =>
+  error(
+    HttpStatus.FORBIDDEN,
+    `This route needs the ${scope} scope`,
+    'FORBIDDEN',
+  );
+
 /** welinc-auth's keys can't be reached and no usable copy is left. Never a 401. */
 export const authUnavailable = () =>
   error(

@@ -11,7 +11,7 @@ Baseline: Node 24, NestJS 11, `jose` 6 (ES modules only; see the Jest setting be
 | `key-set.ts` | `ResilientKeySet`: fetches welinc-auth's public keys (`AUTH_JWKS_URL`), keeps them 5 minutes, fetches again for an unknown `kid` at most once a minute, and keeps using the last good set for up to an hour while welinc-auth is down |
 | `token-verifier.ts` | `TokenVerifier`: accepts only ES256, `typ: at+jwt`, your `AUTH_ISSUER`, an unexpired `exp` (5 s leeway) and a single `aud` equal to your system. Answers a user token or a service token |
 | `guards.ts` | `checkPerson` (for routes meant for people: refuses a service token), `requireService(scope)` and `@ServiceRoute(scope)` (for routes meant for services: refuses a person's token) |
-| `errors.ts` | The answers: 401 `Invalid session`, 401 `WRONG_AUDIENCE`, 403 `WRONG_TOKEN_USE`, 503 `AUTH_UNAVAILABLE` |
+| `errors.ts` | The answers: 401 `Invalid session`, 401 `WRONG_AUDIENCE`, 403 `WRONG_TOKEN_USE` (the wrong kind of token), 403 `FORBIDDEN` (a service token without the route's scope), 503 `AUTH_UNAVAILABLE` |
 | `assertion-signer.ts` | Signs the `private_key_jwt` client assertion your service proves itself with (a new one for every token request, 60 s life) |
 | `service-token-client.ts` | `ServiceTokenClient`: gets your service token from `POST /auth/token`, keeps it until 60 s before it expires, shares one request between callers, and retries a call once if it answers 401 |
 | `verify.module.ts` | `AuthVerifyModule`: reads the settings and provides `TOKEN_VERIFIER`, `VERIFY_CONFIG` and `DIRECTORY_TOKENS` |

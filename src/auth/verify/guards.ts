@@ -12,6 +12,7 @@ import type { Request } from 'express';
 import {
   authUnavailable,
   invalidSession,
+  missingScope,
   tokenExpired,
   wrongAudience,
   wrongTokenUse,
@@ -72,8 +73,8 @@ export async function checkPerson(
 }
 
 /**
- * A guard for routes meant for services: a service token holding `scope`, else 403
- * `WRONG_TOKEN_USE`. The checked token is put on `request.service`.
+ * A guard for routes meant for services: a person's token answers 403 `WRONG_TOKEN_USE`, a
+ * service token without `scope` 403 `FORBIDDEN` (contract 0001 section 4, version 8). The checked token is put on `request.service`.
  */
 export function requireService(scope: string): Type<CanActivate> {
   @Injectable()
@@ -91,7 +92,7 @@ export function requireService(scope: string): Type<CanActivate> {
         throw wrongTokenUse('This route is for services, not people');
       }
       if (!token.scopes.includes(scope)) {
-        throw wrongTokenUse(`This route needs the ${scope} scope`);
+        throw missingScope(scope);
       }
       request.service = token;
       return true;
