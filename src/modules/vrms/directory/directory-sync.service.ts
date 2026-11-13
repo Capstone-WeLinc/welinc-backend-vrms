@@ -17,6 +17,7 @@ import {
   type DirectoryUser,
 } from './auth-directory.client';
 import { rewriteErased } from './erasure-rewrite';
+import { applyPerson, sweepPeople } from './people-copy';
 
 /** Spec 0005, AC-12: how often the poll job runs. A constant, not a setting. */
 export const DIRECTORY_POLL_MS = 30_000;
@@ -129,7 +130,9 @@ export class DirectorySync {
     owner: string,
     cursor: string | null,
   ): Promise<TickOutcome> {
-    if (cursor === null) {
+    // Suite spec 0014 (task 13a): an empty Users page copy was never filled (an older copy of VRMS
+    // may have run the full read the migration asked for), so read everything once more
+    if (cursor === null || (await this.prisma.vrmsPerson.count()) === 0) {
       return { kind: 'full', result: await this.fullRead(owner) };
     }
     try {
@@ -172,6 +175,9 @@ export class DirectorySync {
       page = answer.next;
     } while (page !== null);
 
+    // Suite spec 0014 (task 13a): out of the VRMS directory means off the Users page too
+    await sweepPeople(this.prisma, seen);
+
     const gone = await this.prisma.mechanic.findMany({
       where: { isActive: true },
       select: { id: true, authUserId: true },
@@ -207,6 +213,8 @@ export class DirectorySync {
     user: DirectoryUser,
     tx: Prisma.TransactionClient,
   ): Promise<ApplyOutcome> {
+    // Suite spec 0014 (task 13a): the Users page copy, for every VRMS person
+    await applyPerson(tx, user);
     const outcome = await this.roster.apply(user, tx);
     const released = await releaseLeaver(tx, user);
     if (released.released > 0) {

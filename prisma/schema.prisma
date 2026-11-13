@@ -134,6 +134,26 @@ model Mechanic {
   @@map("mechanics")
 }
 
+// Suite spec 0014 (task 13a): every person holding a VRMS role, permanent or temporary, copied from
+// welinc-auth's directory for the Users page. Written only by the directory sync (people-copy.ts).
+// An erased person, or one with no VRMS role left, has no row, so no erasure rewrite is needed.
+model VrmsPerson {
+  authUserId     String   @id @map("auth_user_id") @db.Uuid // welinc-auth User.id, no foreign key
+  name           String   @db.VarChar(255)
+  email          String   @db.VarChar(255) // lowercased
+  // welinc-auth's stored picture path (relative to the gateway), or null
+  picture        String?
+  // Every VRMS role code the person holds; temporaryRoles is the subset from a temporary grant
+  roles          String[]
+  temporaryRoles String[] @map("temporary_roles")
+  isActive       Boolean  @map("is_active")
+  // Soft deleted at welinc-auth: in the grace period, restorable from the portal
+  deleted        Boolean
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("vrms_people")
+}
+
 model Driver {
   id            String         @id @default(uuid()) @db.Uuid
   name          String         @db.VarChar(100)

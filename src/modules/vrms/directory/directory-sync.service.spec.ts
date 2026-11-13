@@ -74,6 +74,13 @@ function fakePrisma(state: State, mechanics: MechanicRow[] = []) {
         Promise.resolve(state.leaseOwner === owner ? 1 : 0),
     ),
     repairTicket: { findMany: jest.fn(() => Promise.resolve([])) },
+    // Suite spec 0014 (task 13a): the Users page copy
+    vrmsPerson: {
+      // Filled already, so a stored cursor reads the feed
+      count: jest.fn(() => Promise.resolve(1)),
+      upsert: jest.fn(() => Promise.resolve({})),
+      deleteMany: jest.fn(() => Promise.resolve({ count: 0 })),
+    },
     directorySyncState: {
       updateMany: jest.fn((args: Parameters<typeof stateUpdate>[0]) =>
         Promise.resolve(stateUpdate(args)),
