@@ -2,48 +2,44 @@
 
 ## Overview
 
-The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL, listening on port 3002 (set by `PORT`). It owns repair tickets, issues, parts, vehicles, garages, mechanics, drivers, the knowledge base and audit logs. It owns no accounts: it verifies JWTs issued by `welinc-auth`, then checks the caller's session with `welinc-auth` (spec 0009, spec 0003). It also serves the VRMS login and refresh routes under `/vrms/session`. It is reached through the gateway at `/vrms/` only (`/repairs` was dropped with the suite gateway, spec 0008 in `docs/specs/_root/`).
+The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL. It owns repair tickets, issues, parts, vehicles, garages, mechanics, drivers, the knowledge base and audit logs. It owns no accounts: it verifies JWTs issued by `welinc-auth`, then checks the caller's session with `welinc-auth` (spec 0009, suite spec 0003). It also serves the VRMS login and refresh routes under `/vrms/session`. It is reached through the gateway at `/vrms/` only.
 
 ## Key files
 
 | File | Owns |
 |---|---|
 | `src/main.ts` | Bootstrap, `trust proxy` from `TRUST_PROXY_HOPS`, `cookie-parser`, global `ValidationPipe`, listen on `PORT` |
-| `src/app.module.ts` | Root module wiring |
-| `src/auth/` | `JwtAuthGuard`, `account-check.ts` (the session check: `GET /auth/session`, cached by `sid` for 30 s, ended answers until the token's `exp`, one shared call per `sid`, fail closed; the caller's name comes from it, the roles from the token) and `roles.ts` (`UserRole` and `SystemType`) |
-| `src/session/` | The VRMS session routes (spec 0003), the reference other groups copy: `session.controller.ts` (`start`, `callback`, `refresh`, `activity`, `logout` are `@Public()`, `status` is `@Authenticated()`; `refresh` also answers `sessionAbsoluteExpiresAt`, the 12 hour end; `logout` falls back to the bearer token's `sid`), `auth-client.ts` (the code exchange and refresh calls to `/auth/token` with the client assertion and `X-WeLinc-User-Address`, 3 s timeout, `ended`, `no_access` or `unavailable`), `cookies.ts` (`vrms_rt` and the per attempt `vrms_login_<state prefix>`, both on `/vrms/session`), `csrf.guard.ts` (`SessionCsrfGuard`, `Origin` must equal `WEB_APP_URL`), `session.config.ts` |
-| `src/auth/verify/` | The token check (spec 0002): ES256 verify against welinc-auth's published keys, and this service's own token for calls to welinc-auth. Self contained so other groups can copy it; see its `README.md` |
-| `src/auth/permissions/` | The permission matrix (spec 0011; edited in welinc-auth since suite spec 0013): `catalog.ts` (the keys VRMS checks and the module that owns each; labels, defaults and locks live in welinc-auth's `prisma/catalog/vrms.ts`), `permissions.service.ts` (stored grants and the version cache; a missing row denies), `sync/` (the 60 s matrix sync: `GET /auth/permissions/VRMS` with the `permissions.read` service token and `If-None-Match`, a lease on `permission_sync_state`, an empty matrix refused, warn once), `ability.factory.ts` (CASL ability per request), `permissions.guard.ts` and `permission.decorators.ts` (`@RequirePermission`, `@Authenticated`, `@Public`), `permissions.controller.ts` (`GET /vrms/permissions/me`, and `GET /vrms/permissions`, the synced copy read only behind `settings.manage`), `permissions.fake.ts` (a test copy of welinc-auth's defaults) |
-| `src/modules/vrms/mechanic-work.service.ts` | Open work for a person who leaves VRMS: `GET /vrms/mechanics/:authUserId/open-work` and `POST .../release-tickets`. Also the Users page workload: `GET /vrms/mechanics/workload` and `GET /vrms/mechanics/:authUserId/open-tickets`, all behind `team.manage`, except that `open-tickets` also accepts `mechanics.view` (the Chief dashboard Team dialog, spec 0022). `GET /vrms/mechanics/released` (`mechanics.view` or `team.manage`) lists the tickets the directory feed released in the last 7 days, from `MECHANIC_UNASSIGNED` audit rows with the `SYSTEM` actor (suite spec 0013, AC-32) |
+| `src/auth/` | `JwtAuthGuard`, `account-check.ts` (the session check against welinc-auth, cached per `sid`, fail closed; see Gotchas) and `roles.ts` (`UserRole`, `SystemType`) |
+| `src/session/` | The VRMS session routes (suite spec 0003), the reference other groups copy: the controller, `auth-client.ts` (calls to `/auth/token`), `cookies.ts` (`vrms_rt` and the login cookies on `/vrms/session`), `csrf.guard.ts` (`Origin` must equal `WEB_APP_URL`) |
+| `src/auth/verify/` | The token check (suite spec 0002): ES256 verify against welinc-auth's published keys, and this service's own token for calls to welinc-auth. Self contained so other groups can copy it; see its `README.md` |
+| `src/auth/permissions/` | The permission matrix (spec 0011; edited in welinc-auth since suite spec 0013): `catalog.ts` (the keys VRMS checks; labels and defaults live in welinc-auth's `prisma/catalog/vrms.ts`), `permissions.service.ts` and `permission-matrix.service.ts` (grants and the version cache; a missing row denies), `sync/` (the 60 s pull from welinc-auth), `ability.factory.ts` (CASL), `permission.decorators.ts`, `permissions.fake.ts` (a test copy of welinc-auth's defaults) |
+| `src/modules/vrms/mechanic-work.service.ts` | Open work, workload and the release of a person's tickets (routes in `config/config.controller.ts`); the released list reads `MECHANIC_UNASSIGNED` rows with the `SYSTEM` actor |
 | `src/modules/vrms/mechanic-workload.ts` | The one "Occupied" rule (`isOccupied`: at least one In Progress ticket) and the workload counts by open status |
-| `src/modules/vrms/mechanic-roster.service.ts` | Keeps in house `Mechanic` rows in step with `welinc-auth` users: `apply` (one directory person, used by the poll), `refreshOne` (`POST /vrms/mechanics/:authUserId/refresh`, through the directory lookup) and the just in time row on first request. Each row stores the person's VRMS role in `mechanics.role` (`MECHANIC`, `CHIEF_MECHANIC` or empty; kept when someone loses access), and `GET /vrms/mechanics/roster` (`mechanics.view` or `team.manage`) returns the active roster plus inactive people holding open tickets, with `mechanicId`, `occupied`, `total` and `byStatus` per row |
-| `src/modules/vrms/directory/` | Spec 0005: `auth-directory.client.ts` (the only reader of welinc-auth's `/auth/directory/*`, with VRMS's service token; `DirectoryCursorError` means read everything again, `DirectoryUnavailableError` anything else), `directory-sync.service.ts` (one tick: a full read when `directory_sync_state.cursor` is null or `vrms_people` is empty, else up to 10 feed pages; a lease so one copy runs at a time; one warning while welinc-auth fails; `recover()` behind `POST /vrms/mechanics/sync`, 409 `SYNC_RUNNING`) `directory-poll.job.ts` (every 30 s, no overlap in one process) and `people-copy.ts` (suite spec 0014, task 13a: the `vrms_people` copy of everyone holding a VRMS role, permanent or temporary, kept by each feed change and swept after a full read; served to the Users page as `GET /vrms/people` behind `team.manage`) |
-| `src/modules/vrms/directory/erasure-rewrite.ts`, `mechanic-work.service.ts` | Spec 0012: the directory sync rewrites name copies (mechanic row, ticket names, audit actors and audit `changes`) to "Deleted user" when the feed says `erased`, and unassigns a mechanic's open tickets when they are deleted, deactivated or lose the role (Assigned goes back to Open, In progress keeps its status with no mechanic). Ticket notes are never rewritten |
+| `src/modules/vrms/mechanic-roster.service.ts` | Keeps in house `Mechanic` rows in step with welinc-auth users (the poll, a refresh, the just in time row on first request); `mechanics.role` keeps the last VRMS role when someone loses access |
+| `src/modules/vrms/directory/` | Suite spec 0005 directory sync: `auth-directory.client.ts` (the only reader of `/auth/directory/*`), `directory-sync.service.ts` (one leased tick, `recover()`), `directory-poll.job.ts` (every 30 s), `people-copy.ts` (`vrms_people`, the Users page list) |
+| `src/modules/vrms/directory/erasure-rewrite.ts`, `src/modules/vrms/mechanic-work.service.ts` | Suite spec 0012: an `erased` feed entry rewrites name copies to "Deleted user" (emails to null, ticket notes never); a deleted, deactivated or de-roled mechanic's open tickets are unassigned (Assigned goes back to Open, In progress keeps its status) |
 | `src/modules/vrms/repairs.controller.ts`, `repairs.service.ts` | Repair ticket endpoints and business rules |
 | `src/modules/vrms/audit-events.ts` | Audit event names and builders for the ticket timeline; each event carries a `changes` list of field, before and after |
 | `src/modules/vrms/ticket-statuses.ts` | The one definition of open and finished ticket statuses (spec 0010); queries read it, never a list of their own |
 | `src/modules/vrms/odometer.ts` | The odometer floor (`vehicleOdometerFloor`) and the below last and jump rules for a new ticket (spec 0016); create and the vehicle summary both read it. `ticketOdometerBounds` gives an edited ticket its floor and ceiling from the truck's other tickets, ordered by `(createdAt, id)` (spec 0019) |
 | `src/modules/vrms/ticket-edits.service.ts`, `ticket-edits.ts`, `ticket-inputs.ts` | Editing a ticket after create (spec 0019): details, the full mechanic list and issues; `ticket-edits.ts` holds the lock, stale and stamp helpers, `ticket-inputs.ts` the driver, corporation and issue text helpers that create shares |
 | `src/modules/vrms/lookups/`, `src/modules/vrms/vehicles/` | Generic lookup lists (`vehicle_type`, `corporation`) behind `lookups.manage` with a `LookupValueChange` history, and the Settings Vehicles endpoints behind `vehicle.manage` with a `VehicleChange` history (spec 0016) |
-| `src/modules/vrms/config/` | VRMS configuration endpoints (dropdown lists and settings) |
-| `src/modules/vrms/dto/` | Request DTOs validated with `class-validator` |
+| `src/modules/vrms/config/` | Dropdown lists, the vehicle summary, and the `/vrms/mechanics/*` and `/vrms/people` routes |
 | `src/modules/knowledge/` | Knowledge base API at `/vrms/knowledge` (spec 0007): categories, entries, stats, suggestions and grouping; its four business values come from `SettingsService`, the fixed tuning constants stay in `knowledge.tuning.ts` |
 | `src/modules/analytics/` | The eight `/vrms/analytics/*` endpoints (spec 0013): `AnalyticsService` runs live `$queryRaw` over the VRMS tables, and `maskCosts()` nulls the peso fields without `ticket.costs.view` |
 | `src/modules/ai/` | AI diagnosis and embeddings (spec 0013): `ai-provider.ts` is the one seam to a provider (`gemini.provider.ts`, `ai-provider.fake.ts` for tests), `diagnosis.service.ts` runs and stores diagnoses, `embedding.service.ts` and `embedding-catchup.job.ts` keep `issue_embeddings` current |
 | `src/settings/` | Settings and module switches (spec 0012): `catalog.ts` is the one definition of every setting, `SettingsService.get(key)` reads them, `GET` and `PATCH /vrms/settings` and `GET /vrms/settings/changes` save and log them, and `module-disabled.ts` is the 403 `MODULE_DISABLED` answer |
 | `src/modules/vrms/ticket-knowledge.ts` | What a ticket's issues carry from the knowledge base, and the "What fixed it" rules on the move to For verification |
-| `src/modules/vrms/checklist-edits.service.ts`, `checklist-edits.ts` | Per ticket checklist edits (spec 0023): `PUT /vrms/repairs/:id/issues/:issueId/steps` behind `ticket.checklist.edit` (CASL `editChecklist`), and the pure rules (`normalizeStepText`, `cleanSteps`, `checklistDiff` with the moved set, the four `STEP_*` audit builders) |
-| `src/config/` | Spec 0010: `env.ts` (the one zod schema for every runtime variable, `validateEnv` run by `ConfigModule` at boot, the production rules, `envWarnings`, `testEnv`), `check-env.ts` (`npm run env:check`), the Jest `setupFiles` fixture |
-| `src/shared/` | `PrismaService`, `SharedModule` |
-| `prisma/schema.prisma`, `prisma/migrations/` | Data model and migration history |
-| `prisma/seed.ts`, `prisma/seeds/` | Seed data (`npm run seed`): `people.json` is a byte for byte copy of welinc-auth's manifest (spec 0006; check it with `npm --prefix welinc-auth run seed:check -- welinc-backend-vrms/prisma/seeds/people.json`), `shared-ids.ts` reads it (`seedActor`, `vrmsRole`) and `mechanics.seed.ts` makes a `Mechanic` row per VRMS mechanic or chief in it; `catalog.ts` holds the fleet, problems, parts and prices; `repairs.seed.ts` plays out each truck's history in order |
+| `src/modules/vrms/checklist-edits.service.ts`, `checklist-edits.ts` | Per ticket checklist edits (spec 0023) and their pure rules |
+| `src/config/` | `env.ts` (the one env schema, suite spec 0010, see Conventions), `check-env.ts` (`npm run env:check`), the Jest setup fixture |
+| `prisma/seed.ts`, `prisma/seeds/` | Seed data: `people.json` is a byte for byte copy of welinc-auth's manifest (suite spec 0006); check it with `npm --prefix welinc-auth run seed:check -- welinc-backend-vrms/prisma/seeds/people.json` |
 
 ## Commands
 
 ```bash
 npm run start:dev    # nest --watch
-npm run lint         # runs eslint with --fix, so it edits files
-npm run build
+npm run lint         # eslint --fix edits files; check git diff afterwards
+npm run build        # also the typecheck
 npm run env:check    # checks the environment without starting the app (after a build); exits 1 with the list
 npm run test         # Jest unit tests
 npm run test:e2e
@@ -53,7 +49,7 @@ npm run settings:prune      # deletes stored settings whose key left the catalog
 npm run ai:embed-all        # embeds every issue that has no current embedding, 50 at a time with a pause; safe to run again, run once per environment after deploy
 npm run studio       # Prisma Studio on 5555
 npx prisma generate
-npx prisma migrate dev   # asks first, see root rules
+npx prisma migrate dev   # creates the migration folder; ask before running
 ```
 
 ## Conventions
@@ -73,10 +69,10 @@ npx prisma migrate dev   # asks first, see root rules
 - A truck has at most one ticket in an open status, enforced only by `RepairsService.create` (a row lock on the vehicle, then the check). Any new path that inserts a ticket must go through `create` (spec 0016).
 - Knowledge entry and category writes log one `KnowledgeEntryChange` row per event, its changed fields as a `changes` JSON list (spec 0010), in the same transaction (`knowledge-changes.ts`). Knowledge "who" fields hold the JWT email with no foreign key, like `AuditLog`.
 - Every schema change needs a migration folder under `prisma/migrations/`, named with a timestamp. The history starts at one baseline, `20261029000000_baseline` (spec 0010); add new folders after it.
-- New variables go in `.env.example` only (today: `PORT`, `NODE_ENV`, `DATABASE_URL`, `AUTH_ISSUER`, `AUTH_JWKS_URL`, `AUTH_INTERNAL_URL`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_PRIVATE_KEY` (all five required, the app refuses to start without them), `WEB_APP_URL`, `PORTAL_URL`, `AUTH_PUBLIC_URL`, `API_PUBLIC_URL` (all four required in every mode since spec 0010; `<API_PUBLIC_URL>/vrms/session/callback` must equal welinc-auth's registry row), `SESSION_COOKIE_SECURE`, `TRUST_PROXY_HOPS`, `CORS_ORIGINS`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_EMBED_MODEL`, `STORAGE_CONNECTION_STRING`, `STORAGE_ACCOUNT_URL`, `STORAGE_CONTAINER`, `STORAGE_PUBLIC_URL`). With no `GEMINI_API_KEY` the app still starts: AI runs answer 503 `AI_UNAVAILABLE` and analytics works. With no storage setting the app starts and attachment routes answer 503 `STORAGE_UNAVAILABLE`.
-- Every runtime variable is defined once in `src/config/env.ts` (spec 0010). A new one goes in that schema and in `.env.example` together, or the drift test in `env.spec.ts` fails. Read it through `ConfigService<Env, true>` (`config.get('NAME', { infer: true })`), never `process.env`: lint fails on `process.env` outside `src/config/`, `prisma/`, `prisma.config.ts`, `scripts/` and tests. A module that needs config at setup uses `registerAsync` with `useFactory`, never a read at import time. `CORS_ORIGINS` entries must be bare origins (`*` is refused). Production adds rules: `https` and no `localhost` URLs (except `AUTH_INTERNAL_URL` and `STORAGE_PUBLIC_URL`), `SESSION_COOKIE_SECURE=true`, `TRUST_PROXY_HOPS` at least 1, and a storage setting; AI stays optional.
+- `<API_PUBLIC_URL>/vrms/session/callback` must equal welinc-auth's registry row. With no `GEMINI_API_KEY` the app still starts: AI runs answer 503 `AI_UNAVAILABLE` and analytics works.
+- Every runtime variable is defined once in `src/config/env.ts` (suite spec 0010). A new one goes in that schema and in `.env.example` together, or the drift test in `env.spec.ts` fails. Read it through `ConfigService<Env, true>` (`config.get('NAME', { infer: true })`), never `process.env`: lint fails on `process.env` outside `src/config/`, `prisma/`, `prisma.config.ts`, `scripts/` and tests. A module that needs config at setup uses `registerAsync` with `useFactory`, never a read at import time.
 - "Occupied" is defined once, as `isOccupied` in `mechanic-workload.ts`. The Users page workload and the assignment picker's `busy` both read it, so never work it out again somewhere else. Unassign and Reassign on that page go through `PUT /vrms/repairs/:id/assignments`, not a new write route.
-- Read people from welinc-auth only through `AuthDirectoryClient` (spec 0005). Never call `/auth/users` from this service: it answers service tokens 403 (AC-21).
+- Read people from welinc-auth only through `AuthDirectoryClient` (suite spec 0005). Never call `/auth/users` from this service: it answers service tokens 403 (AC-21).
 - Roles and systems come from `src/auth/roles.ts`, not `@prisma/client`: this database holds no users. `Mechanic.authUserId` and `AuditLog.actorUserId` are `welinc-auth` user ids (no foreign key); look a caller up by `req.user.sub`, never by email or name.
 
 ## Gotchas
@@ -84,9 +80,8 @@ npx prisma migrate dev   # asks first, see root rules
 - In the local Docker stack, the `welinc_vrms_backend` container does not see edits made from Windows. Run `docker restart welinc_vrms_backend` and wait for "Nest application successfully started" before testing the API.
 - There is no `JWT_SECRET`: tokens are checked with welinc-auth's published keys. `AUTH_CLIENT_PRIVATE_KEY` comes from `npm run keys:dev` in welinc-auth, and `AUTH_ISSUER` must equal welinc-auth's string exactly, or every request returns 401. If welinc-auth's keys can't be reached and no copy is left, requests answer 503 `AUTH_UNAVAILABLE`, never 401.
 - `@nestjs/platform-express` pins its own `multer`, and that copy handles uploads, so bumping the top level `multer` alone changes nothing. `"multer": "$multer"` in `package.json` `overrides` makes Nest use ours; check `npm ls multer` after any upgrade. The `glob` and `minimatch` overrides there patch dev tools only.
-- `npm run lint` fixes files in place, so check `git diff` afterwards.
 - A deactivation or an ended session in `welinc-auth` reaches VRMS within 30 seconds, because each session's answer is cached in memory by `sid` for that long. A role change reaches VRMS at the next refresh (15 minutes at most), because the roles come from the token. A lock ends no live session. If `welinc-auth` is down, uncached requests get 503.
-- A token without a `sid` (from before spec 0003) gets 401 `SESSION_ENDED`, and an expired one 401 `TOKEN_EXPIRED`, which the web app answers with one refresh and one retry.
+- A token without a `sid` (from before suite spec 0003) gets 401 `SESSION_ENDED`, and an expired one 401 `TOKEN_EXPIRED`, which the web app answers with one refresh and one retry.
 - The matrix is edited by suite admins in the portal (welinc-auth) and reaches VRMS within about a minute: the sync rewrites `role_permissions` and bumps `permission_matrix.version`, and every replica reloads on its next checked request. A hand edit to `role_permissions` is overwritten by the next changed matrix, so change it in the portal instead. While welinc-auth is down VRMS keeps its last copy. A replica that has never loaded the matrix answers 503 on `GET /` until a request loads it.
 - Settings work the same way through `settings_state.version`, read together with the matrix version. A module switched off removes its permission keys and answers 403 `MODULE_DISABLED`. Every `/vrms/ai/*` route and the embedding paths check the AI switch.
 - The baseline migration needs the `pg_trgm` extension and seeds the issue categories itself (Brakes to Transmission, plus General), so `npm run seed` must not create or delete them.
@@ -95,10 +90,8 @@ npx prisma migrate dev   # asks first, see root rules
 
 ## Agent skills
 
-- [nestjs-best-practices](../.claude/skills/nestjs-best-practices/): `kadajett/agent-nestjs-skills`, modules, DI and security
-- [prisma-client-api](../.claude/skills/prisma-client-api/), [prisma-cli](../.claude/skills/prisma-cli/): `prisma/skills`, Prisma 7 queries and CLI
 - [azure-blob-storage](../.claude/skills/azure-blob-storage/): `microsoftdocs/agent-skills`, Blob Storage, signed links and managed identity (ticket attachments)
-- Declined: Agent Skills for `sharp`, `pdf-lib`, `heic-convert`, `multer` and `@nestjs/throttler` (2026-11-01 search found only weak matches)
+- Declined: Agent Skills for `sharp`, `pdf-lib`, `heic-convert`, `multer` and `@nestjs/throttler` (only weak matches)
 
 ## Context files
 
