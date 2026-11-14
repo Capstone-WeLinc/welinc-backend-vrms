@@ -12,6 +12,7 @@ import { seedKnowledge } from './seeds/knowledge.seed';
 import { seedPermissions } from './seeds/permissions.seed';
 import { seedSettings } from './seeds/settings.seed';
 import { SEED } from './seeds/random';
+import { referenceProblem, seedGuard } from './seeds/guard';
 
 const pool = new pg.Pool({
   connectionString: process.env['DATABASE_URL'],
@@ -51,7 +52,42 @@ async function cleanDatabase(prisma: PrismaClient) {
   console.log('Database cleaned successfully!\n');
 }
 
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
+/**
+ * `npm run seed -- --reference` (spec 0008, AC-15): garages, vehicles, the knowledge base and the
+ * settings defaults, no people and no tickets, into an empty database only. Production runs this.
+ */
+async function seedReference() {
+  const counts = {
+    garages: await prisma.garage.count(),
+    vehicles: await prisma.vehicle.count(),
+    knowledgeEntries: await prisma.knowledgeEntry.count(),
+  };
+  const problem = referenceProblem(counts);
+  if (problem) fail(problem);
+
+  console.log('Seeding reference data only (no people, no tickets)...\n');
+  await seedGarages(prisma);
+  await seedVehicles(prisma);
+  await seedKnowledge(prisma, Date.now(), { reference: true });
+  await seedSettings(prisma);
+  console.log('Reference data seeded.');
+}
+
 async function main() {
+  // AC-13: decided before the first query
+  const decision = seedGuard({
+    nodeEnv: process.env['NODE_ENV'],
+    seedAllow: process.env['SEED_ALLOW'],
+    args: process.argv.slice(2),
+  });
+  if (!decision.ok) fail(decision.message);
+  if (decision.mode === 'reference') return seedReference();
+
   console.log(
     `Seeding database with SEED=${SEED} (the same SEED rebuilds the same data, dated from today)...\n`,
   );

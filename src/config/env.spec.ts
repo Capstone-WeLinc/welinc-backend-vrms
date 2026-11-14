@@ -232,7 +232,7 @@ describe('envWarnings (AC-5)', () => {
 
 describe('.env.example and the schema stay in step (AC-10)', () => {
   /** Names only scripts, compose or the platform read. */
-  const SKIP_NAMES = new Set(['TZ', 'NODE_OPTIONS']);
+  const SKIP_NAMES = new Set(['SEED_ALLOW', 'TZ', 'NODE_OPTIONS']);
   const SKIP_PREFIXES = ['AZURE_', 'POSTGRES_', 'PRISMA_'];
   const skipped = (name: string) =>
     SKIP_NAMES.has(name) || SKIP_PREFIXES.some((p) => name.startsWith(p));

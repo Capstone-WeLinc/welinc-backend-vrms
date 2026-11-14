@@ -1,3 +1,8 @@
+# Hosted image (spec 0008). Two targets from one build:
+#   docker build -f Dockerfile.prod .                 the runner (the default, last stage)
+#   docker build -f Dockerfile.prod --target seed .   the full source image every job runs from
+#                                                     (migrations and seeds)
+
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
@@ -6,13 +11,27 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
+# Jobs: ts-node needs src/, prisma/, tsconfig.json and prisma.config.ts, and env:check reads
+# dist/. Started with a command, so the default below only checks the settings.
+FROM builder AS seed
+ENV NODE_ENV=production
+RUN chown -R node:node /app
+USER node
+CMD ["npm", "run", "env:check"]
+
+FROM builder AS prod-deps
+RUN npm prune --omit=dev
+
 FROM node:24-alpine AS runner
 WORKDIR /app
 # Spec 0010: the boot check holds a hosted build to the production rules
 ENV NODE_ENV=production
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
+ENV PORT=3002
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
-EXPOSE 3000
-CMD ["node", "dist/main"]
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./
+USER node
+EXPOSE 3002
+CMD ["node", "dist/src/main"]

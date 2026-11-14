@@ -73,6 +73,8 @@ export const envSchema = z.object({
   TRUST_PROXY_HOPS: whole(0, 10, 0),
   CORS_ORIGINS: originList,
   DATABASE_URL: required,
+  /** The `pg.Pool` size (spec 0008, AC-21): 3 when hosted, where a server has about 35. */
+  DB_POOL_MAX: whole(1, 50, 5),
 
   // Token check (spec 0002)
   AUTH_ISSUER: required,
