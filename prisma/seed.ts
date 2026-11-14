@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 
@@ -60,21 +60,34 @@ function fail(message: string): never {
 /**
  * `npm run seed -- --reference` (spec 0008, AC-15): garages, vehicles, the knowledge base and the
  * settings defaults, no people and no tickets, into an empty database only. Production runs this.
+ * One transaction: a failure part way leaves nothing behind, so a rerun works.
  */
 async function seedReference() {
-  const counts = {
-    garages: await prisma.garage.count(),
-    vehicles: await prisma.vehicle.count(),
-    knowledgeEntries: await prisma.knowledgeEntry.count(),
-  };
-  const problem = referenceProblem(counts);
-  if (problem) fail(problem);
+  const problem = await prisma.$transaction(
+    async (tx) => {
+      // Counted inside the transaction, so two runs at once can't both see an empty database
+      const found = referenceProblem({
+        garages: await tx.garage.count(),
+        vehicles: await tx.vehicle.count(),
+        knowledgeEntries: await tx.knowledgeEntry.count(),
+      });
+      if (found) return found;
 
-  console.log('Seeding reference data only (no people, no tickets)...\n');
-  await seedGarages(prisma);
-  await seedVehicles(prisma);
-  await seedKnowledge(prisma, Date.now(), { reference: true });
-  await seedSettings(prisma);
+      console.log('Seeding reference data only (no people, no tickets)...\n');
+      await seedGarages(tx);
+      await seedVehicles(tx);
+      await seedKnowledge(tx, Date.now(), { reference: true });
+      await seedSettings(tx);
+      return null;
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      // A cold hosted server is slow; the default 5 seconds is too short for 70 vehicles
+      timeout: 120_000,
+      maxWait: 30_000,
+    },
+  );
+  if (problem) fail(problem);
   console.log('Reference data seeded.');
 }
 
@@ -102,7 +115,7 @@ async function main() {
   const { entries, categoryId } = await seedKnowledge(prisma, now);
   await seedRepairs(prisma, { now, vehicles, drivers, entries, categoryId });
   await seedPermissions(prisma);
-  await seedSettings(prisma);
+  await prisma.$transaction((tx) => seedSettings(tx));
 
   console.log('Database seeded successfully!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

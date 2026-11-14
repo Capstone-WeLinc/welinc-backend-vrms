@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
-export async function seedGarages(prisma: PrismaClient) {
+export async function seedGarages(prisma: Prisma.TransactionClient) {
   console.log('Creating garages...');
 
   const garages = await Promise.all([

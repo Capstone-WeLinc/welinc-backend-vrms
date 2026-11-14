@@ -1,4 +1,4 @@
-import { KnowledgeEntryStatus, Prisma, PrismaClient } from '@prisma/client';
+import { KnowledgeEntryStatus, Prisma } from '@prisma/client';
 import { DECLINED_SUGGESTIONS, PROBLEMS } from './catalog';
 import {
   DAY,
@@ -44,7 +44,7 @@ const numbered = (items: string[]) =>
 
 /** Knowledge entries for every problem that has one, with steps, parts and their change log. */
 export async function seedKnowledge(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   now: number,
   options: { reference?: boolean } = {},
 ) {
