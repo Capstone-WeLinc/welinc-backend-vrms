@@ -44,6 +44,7 @@ npm run env:check    # checks the environment without starting the app (after a 
 npm run test         # Jest unit tests
 npm run test:e2e
 npm run seed         # wipes and rebuilds the data (and clears the matrix sync's ETag, so the next tick applies welinc-auth's matrix again); SEED=<n> npm run seed repeats a run
+npm run seed -- --reference   # hosted bootstrap (spec 0008): garages, vehicles, knowledge and settings only, into an empty database, in one transaction; with NODE_ENV=production a plain seed refuses unless SEED_ALLOW=staging
 npm run permissions:export -- <file>   # one time (suite spec 0013, AC-28): cells and matrix history to JSON for welinc-auth's permissions:import; run it before the drop migration deploys
 npm run settings:prune      # deletes stored settings whose key left the catalog, logged as a reset by System
 npm run ai:embed-all        # embeds every issue that has no current embedding, 50 at a time with a pause; safe to run again, run once per environment after deploy
