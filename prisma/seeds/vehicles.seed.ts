@@ -1,8 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { VEHICLES } from './catalog';
 
 // Odometer and status start at the beginning of the history; the repairs seed moves them forward
-export async function seedVehicles(prisma: PrismaClient) {
+export async function seedVehicles(prisma: Prisma.TransactionClient) {
   console.log('Creating fleet vehicles...');
 
   // The starting vehicle types come from the migration (spec 0016, AC-20)

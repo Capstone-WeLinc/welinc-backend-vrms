@@ -15,6 +15,7 @@ export class PrismaService
   constructor(config: ConfigService<Env, true>) {
     const pool = new pg.Pool({
       connectionString: config.get('DATABASE_URL', { infer: true }),
+      max: config.get('DB_POOL_MAX', { infer: true }),
     });
     const adapter = new PrismaPg(pool);
 

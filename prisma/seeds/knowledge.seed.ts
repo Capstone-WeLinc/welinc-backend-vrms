@@ -1,4 +1,4 @@
-import { KnowledgeEntryStatus, Prisma, PrismaClient } from '@prisma/client';
+import { KnowledgeEntryStatus, Prisma } from '@prisma/client';
 import { DECLINED_SUGGESTIONS, PROBLEMS } from './catalog';
 import {
   DAY,
@@ -13,6 +13,17 @@ import {
 import { seedActor } from './shared-ids';
 
 const EDITORS = ['vrms.admin@welinc.com', 'vrms.chief@welinc.com'];
+
+/**
+ * Spec 0008, AC-15: production gets the knowledge base without seed people, so `--reference`
+ * credits every entry to this fixed setup actor (no account, no user id).
+ */
+export const SETUP_ACTOR = {
+  actorUserId: null,
+  actorName: 'WeLinc setup',
+  actorEmail: 'setup@welinc.tech',
+  actorRole: null,
+};
 
 export type SeededEntry = {
   id: string;
@@ -32,7 +43,11 @@ const numbered = (items: string[]) =>
   items.map((item, i) => `${i + 1}. ${item}`).join('\n');
 
 /** Knowledge entries for every problem that has one, with steps, parts and their change log. */
-export async function seedKnowledge(prisma: PrismaClient, now: number) {
+export async function seedKnowledge(
+  prisma: Prisma.TransactionClient,
+  now: number,
+  options: { reference?: boolean } = {},
+) {
   console.log('Creating knowledge base entries...');
 
   // The categories come from the knowledge base migration, never from this seed
@@ -54,6 +69,41 @@ export async function seedKnowledge(prisma: PrismaClient, now: number) {
     const spec = problem.entry;
     if (!spec) continue;
     const id = uuid();
+
+    // `--reference`: the entry as it stands today, written once by the setup actor
+    if (options.reference) {
+      entryRows.push({
+        id,
+        name: spec.name,
+        nameKey: spec.name.trim().toLowerCase(),
+        categoryId: categoryId.get(problem.category)!,
+        status: spec.status,
+        symptoms: spec.symptoms,
+        descriptionTemplate: spec.descriptionTemplate ?? null,
+        suggestedPriority: problem.priority,
+        estimatedHours: spec.estimatedHours ?? null,
+        safetyNotes: spec.safetyNotes ?? null,
+        createdByEmail: SETUP_ACTOR.actorEmail,
+        updatedByEmail: SETUP_ACTOR.actorEmail,
+        createdAt: new Date(now),
+        updatedAt: new Date(now),
+      });
+      spec.steps.forEach((text, i) =>
+        stepRows.push({ id: uuid(), entryId: id, position: i + 1, text }),
+      );
+      spec.parts.forEach((name, i) =>
+        partRows.push({ id: uuid(), entryId: id, position: i + 1, name }),
+      );
+      changeRows.push({
+        id: uuid(),
+        entryId: id,
+        ...SETUP_ACTOR,
+        action: 'ENTRY_CREATED',
+        changes: [{ field: 'status', before: null, after: spec.status }],
+        createdAt: new Date(now),
+      });
+      continue;
+    }
     const author =
       spec.status === 'DRAFT' ? 'vrms.chief@welinc.com' : pick(EDITORS);
     const createdAt = duringShopHours(now - spec.writtenMonthsAgo * 30 * DAY);
@@ -196,10 +246,11 @@ export async function seedKnowledge(prisma: PrismaClient, now: number) {
   await prisma.knowledgeEntryPart.createMany({ data: partRows });
   await prisma.knowledgeEntryChange.createMany({ data: changeRows });
 
-  // Mechanic suggestions an editor already handled (open ones are added with the tickets)
+  // Mechanic suggestions an editor already handled (open ones are added with the tickets);
+  // they name seed people, so `--reference` leaves them out
   const byName = new Map([...entries.values()].map((e) => [e.name, e]));
   await prisma.knowledgeSuggestion.createMany({
-    data: DECLINED_SUGGESTIONS.map((s) => {
+    data: (options.reference ? [] : DECLINED_SUGGESTIONS).map((s) => {
       const createdAt = duringShopHours(now - int(35, 50) * DAY);
       return {
         id: uuid(),
