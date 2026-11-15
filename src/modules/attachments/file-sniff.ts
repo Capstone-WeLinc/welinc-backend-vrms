@@ -2,10 +2,7 @@
 // browser's type. No dependency.
 
 export type SniffedType =
-  | 'image/jpeg'
-  | 'image/png'
-  | 'image/heic'
-  | 'application/pdf';
+  'image/jpeg' | 'image/png' | 'image/heic' | 'application/pdf';
 
 const HEIF_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1']);
 

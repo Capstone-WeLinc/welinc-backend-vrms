@@ -32,6 +32,14 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  // Tests pass jest mocks to expect(), such as expect(res.setHeader); a mock is not a real method,
+  // so unbound-method only raises false alarms there (typescript-eslint's own advice)
+  {
+    files: ['src/**/*.spec.ts', 'test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+    },
+  },
   // Spec 0010, AC-11: app code reads settings through ConfigService<Env, true>, never process.env
   {
     files: ['src/**/*.ts'],

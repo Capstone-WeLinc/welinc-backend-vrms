@@ -276,8 +276,7 @@ describe('ChecklistEditsService.save (spec 0023)', () => {
   it('answers 409 STALE_CHECKLIST when the version moved (AC-6)', async () => {
     const { tx, service } = setup({ locked: false });
     const err = (await save(service, []).catch((e: unknown) => e)) as
-      | ConflictException
-      | undefined;
+      ConflictException | undefined;
     expect(err).toBeInstanceOf(ConflictException);
     expect(err?.getResponse()).toMatchObject({ code: 'STALE_CHECKLIST' });
     expect(tx.$queryRaw).not.toHaveBeenCalled();

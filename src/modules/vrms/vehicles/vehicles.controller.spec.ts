@@ -12,8 +12,7 @@ const proto = VehiclesController.prototype as unknown as Record<
 
 function keysOf(method: string) {
   return Reflect.getMetadata(PERMISSION_KEY, proto[method]) as
-    | string[]
-    | undefined;
+    string[] | undefined;
 }
 
 describe('VehiclesController permissions (AC-14)', () => {

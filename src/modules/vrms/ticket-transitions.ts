@@ -6,11 +6,7 @@ import { OPEN_STATUSES, STATUS_LABELS } from './ticket-statuses';
 
 /** Who switches a move on: the status endpoint, or the later feature that owns it. */
 export type MoveTrigger =
-  | 'status'
-  | 'assignment'
-  | 'hold'
-  | 'outsource'
-  | 'approval';
+  'status' | 'assignment' | 'hold' | 'outsource' | 'approval';
 /** The right a status endpoint move needs (AC-6). Owner features check their own rights. */
 export type MoveRight = 'work' | 'verify' | 'administer';
 export type MoveNeed = 'resolutions' | 'remarks' | 'cancellationReason';

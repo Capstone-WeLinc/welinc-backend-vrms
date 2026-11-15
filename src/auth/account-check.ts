@@ -243,8 +243,7 @@ export class AccountCheck {
       };
     }
     const user = body?.user as
-      | { id?: unknown; name?: unknown; email?: unknown }
-      | undefined;
+      { id?: unknown; name?: unknown; email?: unknown } | undefined;
     if (
       res.status !== 200 ||
       body?.active !== true ||

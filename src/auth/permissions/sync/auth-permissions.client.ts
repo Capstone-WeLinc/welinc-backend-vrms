@@ -21,8 +21,7 @@ export class PermissionsUnavailableError extends Error {
 }
 
 export type MatrixAnswer =
-  | { kind: 'unchanged' }
-  | { kind: 'changed'; etag: string; matrix: AuthMatrix };
+  { kind: 'unchanged' } | { kind: 'changed'; etag: string; matrix: AuthMatrix };
 
 /**
  * Suite spec 0013, AC-29: VRMS's reader of `GET /auth/permissions/VRMS`, with its own service

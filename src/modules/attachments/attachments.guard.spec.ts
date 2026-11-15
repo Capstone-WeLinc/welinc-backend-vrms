@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method -- jest mocks are asserted on, never called detached */
 import {
   ExecutionContext,
   HttpException,

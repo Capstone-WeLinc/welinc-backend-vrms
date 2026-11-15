@@ -85,8 +85,7 @@ function routesOf(controller: Type): Route[] {
     if (path === undefined) return [];
     const meta = <T>(key: string) =>
       (Reflect.getMetadata(key, fn) ?? Reflect.getMetadata(key, controller)) as
-        | T
-        | undefined;
+        T | undefined;
     return [
       {
         controller,

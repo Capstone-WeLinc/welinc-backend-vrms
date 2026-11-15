@@ -29,10 +29,7 @@ export type SessionConfig = {
 export const SESSION_CONFIG = Symbol('SESSION_CONFIG');
 
 type AddressName =
-  | 'WEB_APP_URL'
-  | 'API_PUBLIC_URL'
-  | 'PORTAL_URL'
-  | 'AUTH_PUBLIC_URL';
+  'WEB_APP_URL' | 'API_PUBLIC_URL' | 'PORTAL_URL' | 'AUTH_PUBLIC_URL';
 
 /** The boot check (spec 0010) already made each one a required URL; only the slash goes here. */
 const address = (config: ConfigService<Env, true>, name: AddressName) =>

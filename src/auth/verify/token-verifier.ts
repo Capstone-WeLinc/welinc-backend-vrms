@@ -33,10 +33,7 @@ export type AccessToken = UserToken | ServiceToken;
 
 /** Why a token was refused. `unavailable` answers 503, the others 401. */
 export type TokenFailure =
-  | 'invalid'
-  | 'expired'
-  | 'wrong_audience'
-  | 'unavailable';
+  'invalid' | 'expired' | 'wrong_audience' | 'unavailable';
 
 export class TokenCheckError extends Error {
   constructor(
