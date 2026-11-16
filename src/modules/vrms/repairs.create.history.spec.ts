@@ -113,9 +113,9 @@ describe('RepairsService.create status history (spec 0020, AC-6, AC-15)', () => 
       order.indexOf('vehicleChange.create'),
     );
     // The answer shows the truck as it is now
-    expect((out as { vehicle: { status: string } }).vehicle.status).toBe(
-      'UNDER_REPAIR',
-    );
+    expect(
+      (out as unknown as { vehicle: { status: string } }).vehicle.status,
+    ).toBe('UNDER_REPAIR');
   });
 
   it('keeps the status read under the lock as before and as priorVehicleStatus on a Disabled truck (AC-6, AC-15)', async () => {
