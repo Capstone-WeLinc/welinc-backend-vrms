@@ -15,11 +15,16 @@ import { CurrentAbility } from '../../auth/permissions/current-ability.decorator
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { DiagnosisService } from './diagnosis.service';
 import { DiagnosisFeedbackDto } from './dto/diagnosis-feedback.dto';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
 
 type AuthRequest = { user: AuthUser };
 
 // Spec 0013, API surface. ai.use belongs to module ai, so the guard answers MODULE_DISABLED
 // while AI is off (AC-17); ticket access comes from the ability.
+@ApiTags('AI Diagnosis')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/ai')
 export class AiController {
   constructor(private readonly diagnoses: DiagnosisService) {}

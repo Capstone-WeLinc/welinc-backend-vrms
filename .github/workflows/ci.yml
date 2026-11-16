@@ -31,4 +31,6 @@ jobs:
       # lint:ci checks only. npm run lint would fix files in place.
       - run: npm run lint:ci
       - run: npm run build
+      # VRMS spec 0026, AC-9: the committed API docs file must match what the code builds
+      - run: npm run openapi:check
       - run: npm test

@@ -4,7 +4,12 @@ import type { PermittedRequest } from '../auth/permissions/permissions.guard';
 import { ListChangesQueryDto } from './dto/list-changes.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { SettingsAdminService } from './settings-admin.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../openapi/decorators';
 
+@ApiTags('Settings')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/settings')
 export class SettingsController {
   constructor(private readonly admin: SettingsAdminService) {}

@@ -1,0 +1,7252 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/vrms/ai/diagnoses/{id}/feedback": {
+      "put": {
+        "operationId": "AiController_feedback",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosisFeedbackDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "AI Diagnosis"
+        ]
+      }
+    },
+    "/vrms/ai/stats": {
+      "get": {
+        "operationId": "AiController_stats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "AI Diagnosis"
+        ]
+      }
+    },
+    "/vrms/ai/tickets/{ticketId}/diagnoses": {
+      "post": {
+        "operationId": "AiController_run",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "AI Diagnosis"
+        ]
+      }
+    },
+    "/vrms/ai/tickets/{ticketId}/diagnoses/latest": {
+      "get": {
+        "operationId": "AiController_latest",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "AI Diagnosis"
+        ]
+      }
+    },
+    "/vrms/analytics/aging": {
+      "get": {
+        "operationId": "AnalyticsController_aging",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/analytics/cost-trends": {
+      "get": {
+        "operationId": "AnalyticsController_costTrends",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/analytics/garage-costs": {
+      "get": {
+        "operationId": "AnalyticsController_garageCosts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/analytics/issue-frequency": {
+      "get": {
+        "operationId": "AnalyticsController_issueFrequency",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/analytics/status-breakdown": {
+      "get": {
+        "operationId": "AnalyticsController_statusBreakdown",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/analytics/summary": {
+      "get": {
+        "operationId": "AnalyticsController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/analytics/vehicle-kpis": {
+      "get": {
+        "operationId": "AnalyticsController_vehicleKpis",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/analytics/velocity": {
+      "get": {
+        "operationId": "AnalyticsController_velocity",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Analytics"
+        ]
+      }
+    },
+    "/vrms/config/drivers": {
+      "get": {
+        "operationId": "ConfigController_listDrivers",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/config/garages": {
+      "get": {
+        "operationId": "ConfigController_listGarages",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/config/vehicles": {
+      "get": {
+        "operationId": "ConfigController_listVehicles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/health": {
+      "get": {
+        "operationId": "HealthController_health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Operations"
+        ]
+      }
+    },
+    "/vrms/knowledge/categories": {
+      "get": {
+        "operationId": "KnowledgeController_listCategories",
+        "parameters": [
+          {
+            "name": "includeInactive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      },
+      "post": {
+        "operationId": "KnowledgeController_createCategory",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/categories/{id}": {
+      "patch": {
+        "operationId": "KnowledgeController_updateCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/entries": {
+      "get": {
+        "operationId": "KnowledgeController_listEntries",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "DRAFT",
+                "INACTIVE",
+                "ALL"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "seen",
+                "updated",
+                "name"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      },
+      "post": {
+        "operationId": "KnowledgeController_createEntry",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEntryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/entries/{id}": {
+      "get": {
+        "operationId": "KnowledgeController_findEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      },
+      "patch": {
+        "operationId": "KnowledgeController_updateEntry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEntryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/entries/{id}/changes": {
+      "get": {
+        "operationId": "KnowledgeController_entryChanges",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/entries/{id}/status": {
+      "patch": {
+        "operationId": "KnowledgeController_setEntryStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEntryStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/entries/options": {
+      "get": {
+        "operationId": "KnowledgeController_entryOptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/suggestions": {
+      "get": {
+        "operationId": "KnowledgeController_listSuggestions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      },
+      "post": {
+        "operationId": "KnowledgeController_createSuggestion",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSuggestionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/suggestions/{id}": {
+      "patch": {
+        "operationId": "KnowledgeController_resolveSuggestion",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveSuggestionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/suggestions/count": {
+      "get": {
+        "operationId": "KnowledgeController_suggestionCount",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/knowledge/suggestions/dismiss-group": {
+      "post": {
+        "operationId": "KnowledgeController_dismissGroup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissGroupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Knowledge Base"
+        ]
+      }
+    },
+    "/vrms/lookups/{list}": {
+      "get": {
+        "operationId": "LookupsController_listActive",
+        "parameters": [
+          {
+            "name": "list",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Lookups"
+        ]
+      },
+      "post": {
+        "operationId": "LookupsController_create",
+        "parameters": [
+          {
+            "name": "list",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLookupValueDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Lookups"
+        ]
+      }
+    },
+    "/vrms/lookups/{list}/{id}": {
+      "patch": {
+        "operationId": "LookupsController_update",
+        "parameters": [
+          {
+            "name": "list",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLookupValueDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Lookups"
+        ]
+      }
+    },
+    "/vrms/lookups/{list}/all": {
+      "get": {
+        "operationId": "LookupsController_listAll",
+        "parameters": [
+          {
+            "name": "list",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Lookups"
+        ]
+      }
+    },
+    "/vrms/mechanics/{authUserId}/open-tickets": {
+      "get": {
+        "operationId": "ConfigController_openTickets",
+        "parameters": [
+          {
+            "name": "authUserId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/{authUserId}/open-work": {
+      "get": {
+        "operationId": "ConfigController_openWork",
+        "parameters": [
+          {
+            "name": "authUserId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/{authUserId}/refresh": {
+      "post": {
+        "operationId": "ConfigController_refreshMechanic",
+        "parameters": [
+          {
+            "name": "authUserId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/{authUserId}/release-tickets": {
+      "post": {
+        "operationId": "ConfigController_releaseTickets",
+        "parameters": [
+          {
+            "name": "authUserId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseTicketsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/available": {
+      "get": {
+        "operationId": "ConfigController_listAvailableMechanics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/released": {
+      "get": {
+        "operationId": "ConfigController_released",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/roster": {
+      "get": {
+        "operationId": "ConfigController_roster",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/sync": {
+      "post": {
+        "operationId": "ConfigController_syncMechanics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/mechanics/workload": {
+      "get": {
+        "operationId": "ConfigController_workload",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/people": {
+      "get": {
+        "operationId": "ConfigController_people",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/permissions": {
+      "get": {
+        "operationId": "PermissionsController_view",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Permissions"
+        ]
+      }
+    },
+    "/vrms/permissions/me": {
+      "get": {
+        "operationId": "PermissionsController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Permissions"
+        ]
+      }
+    },
+    "/vrms/repairs": {
+      "get": {
+        "operationId": "RepairsController_findAll",
+        "parameters": [
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "ASSIGNED",
+                "IN_PROGRESS",
+                "ON_HOLD",
+                "FOR_VERIFICATION",
+                "OUTSOURCED",
+                "PENDING_APPROVAL",
+                "CLOSED",
+                "CANCELLED"
+              ]
+            }
+          },
+          {
+            "name": "garageId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "mechanicId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "overdue",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      },
+      "post": {
+        "operationId": "RepairsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRepairDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}": {
+      "get": {
+        "operationId": "RepairsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/assignments": {
+      "post": {
+        "operationId": "RepairsController_assignMechanics",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignMechanicsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      },
+      "put": {
+        "operationId": "RepairsController_setMechanics",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMechanicsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/attachments": {
+      "get": {
+        "operationId": "AttachmentsController_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Attachments"
+        ]
+      },
+      "post": {
+        "operationId": "AttachmentsController_upload",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadAttachmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Attachments"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/attachments/{attachmentId}": {
+      "delete": {
+        "operationId": "AttachmentsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Attachments"
+        ]
+      },
+      "patch": {
+        "operationId": "AttachmentsController_move",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attachmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveAttachmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Attachments"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/costs": {
+      "patch": {
+        "operationId": "RepairsController_updateCosts",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCostsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/details": {
+      "patch": {
+        "operationId": "RepairsController_editDetails",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditTicketDetailsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/issues": {
+      "post": {
+        "operationId": "RepairsController_addIssue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddIssueDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/issues/{issueId}": {
+      "patch": {
+        "operationId": "RepairsController_editIssue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditIssueDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/issues/{issueId}/knowledge": {
+      "patch": {
+        "operationId": "RepairsController_linkKnowledge",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIssueKnowledgeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/issues/{issueId}/remove": {
+      "post": {
+        "operationId": "RepairsController_removeIssue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketEditDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/issues/{issueId}/steps": {
+      "put": {
+        "operationId": "RepairsController_saveChecklist",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveChecklistDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/issues/{issueId}/steps/{stepId}": {
+      "patch": {
+        "operationId": "RepairsController_checkStep",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "issueId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stepId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckIssueStepDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/status": {
+      "patch": {
+        "operationId": "RepairsController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRepairStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/unlock": {
+      "patch": {
+        "operationId": "RepairsController_unlockTicket",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockTicketDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/audit-logs": {
+      "get": {
+        "operationId": "RepairsController_findAuditEvents",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CREATED",
+                "STATUS_CHANGE",
+                "COST_UPDATE",
+                "UNLOCK",
+                "GARAGE_CHANGE",
+                "KNOWLEDGE_LINK",
+                "MECHANIC_UNASSIGNED",
+                "MECHANIC_ASSIGNED",
+                "ATTACHMENT_ADDED",
+                "ATTACHMENT_REMOVED",
+                "ATTACHMENT_MOVED",
+                "TICKET_EDITED",
+                "ISSUE_ADDED",
+                "ISSUE_EDITED",
+                "ISSUE_REMOVED",
+                "LOCKED",
+                "STEP_CHECKED",
+                "STEP_UNCHECKED",
+                "STEP_ADDED",
+                "STEP_REMOVED",
+                "STEP_EDITED",
+                "STEP_MOVED",
+                "STATUS_OVERRIDE",
+                "TRANSFER_REQUESTED",
+                "TRANSFER_APPROVED",
+                "TRANSFER_DECLINED",
+                "TRANSFER_CANCELLED"
+              ]
+            }
+          },
+          {
+            "name": "categories",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "STATUS",
+                  "ASSIGNMENT",
+                  "EDITS",
+                  "COSTS",
+                  "FILES",
+                  "CHECKLIST",
+                  "KNOWLEDGE"
+                ]
+              }
+            }
+          },
+          {
+            "name": "types",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxItems": 30,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "CREATED",
+                  "STATUS_CHANGE",
+                  "COST_UPDATE",
+                  "UNLOCK",
+                  "GARAGE_CHANGE",
+                  "KNOWLEDGE_LINK",
+                  "MECHANIC_UNASSIGNED",
+                  "MECHANIC_ASSIGNED",
+                  "ATTACHMENT_ADDED",
+                  "ATTACHMENT_REMOVED",
+                  "ATTACHMENT_MOVED",
+                  "TICKET_EDITED",
+                  "ISSUE_ADDED",
+                  "ISSUE_EDITED",
+                  "ISSUE_REMOVED",
+                  "LOCKED",
+                  "STEP_CHECKED",
+                  "STEP_UNCHECKED",
+                  "STEP_ADDED",
+                  "STEP_REMOVED",
+                  "STEP_EDITED",
+                  "STEP_MOVED",
+                  "STATUS_OVERRIDE",
+                  "TRANSFER_REQUESTED",
+                  "TRANSFER_APPROVED",
+                  "TRANSFER_DECLINED",
+                  "TRANSFER_CANCELLED"
+                ]
+              }
+            }
+          },
+          {
+            "name": "actorRole",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ADMIN",
+                "CHIEF_MECHANIC",
+                "MECHANIC",
+                "SYSTEM"
+              ]
+            }
+          },
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "repairNumber",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 50,
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticketId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/audit-logs/actors": {
+      "get": {
+        "operationId": "RepairsController_findAuditActors",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/audit-logs/catalog": {
+      "get": {
+        "operationId": "RepairsController_findAuditCatalog",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/history": {
+      "get": {
+        "operationId": "RepairsController_findHistory",
+        "parameters": [
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CLOSED",
+                "CANCELLED"
+              ]
+            }
+          },
+          {
+            "name": "garageId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "verifiedBy",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/session/activity": {
+      "post": {
+        "description": "Called by a web app with its cookie. A request sent from this docs page is refused by the Origin check (403 `CSRF_REJECTED`), so try it from the VRMS web app instead.",
+        "operationId": "SessionController_activity",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "vrmsSession": []
+          }
+        ],
+        "summary": "A real input ping from the app (AC-22): passed to `/auth/session/activity`. The app sends\nit at most once a minute; welinc-auth ignores more than 2 a minute per session.",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
+    "/vrms/session/callback": {
+      "get": {
+        "operationId": "SessionController_callback",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "The login comes back. The state cookie is checked and cleared before welinc-auth is\ncalled, so a retried or prefetched callback fails as `LOGIN_STATE_INVALID` (AC-15).",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
+    "/vrms/session/logout": {
+      "post": {
+        "description": "Called by a web app with its cookie. A request sent from this docs page is refused by the Origin check (403 `CSRF_REJECTED`), so try it from the VRMS web app instead.",
+        "operationId": "SessionController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "vrmsSession": []
+          }
+        ],
+        "summary": "Logout (AC-24, AC-42). Always clears `vrms_rt`. The session is ended by the cookie's token,\nor by the access token's `sid` when the cookie's token matches nothing at welinc-auth. If\nwelinc-auth can't be reached it answers 503, so the app can offer a retry, which still\nworks through the access token's `sid`.",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
+    "/vrms/session/refresh": {
+      "post": {
+        "description": "Called by a web app with its cookie. A request sent from this docs page is refused by the Origin check (403 `CSRF_REJECTED`), so try it from the VRMS web app instead.",
+        "operationId": "SessionController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "vrmsSession": []
+          }
+        ],
+        "summary": "Swaps the refresh cookie for an access token, rotating the cookie (AC-16, AC-16a).",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
+    "/vrms/session/start": {
+      "get": {
+        "operationId": "SessionController_start",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Starts a login: a state, a PKCE verifier and the return path, then `/auth/authorize`.",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
+    "/vrms/session/status": {
+      "get": {
+        "operationId": "SessionController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "summary": "The server's own cutoff, asked fresh, for the idle warning (AC-23, AC-26).",
+        "tags": [
+          "Session"
+        ]
+      }
+    },
+    "/vrms/settings": {
+      "get": {
+        "operationId": "SettingsController_view",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Settings"
+        ]
+      },
+      "patch": {
+        "operationId": "SettingsController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/vrms/settings/changes": {
+      "get": {
+        "operationId": "SettingsController_changes",
+        "parameters": [
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "setting",
+                "lookup"
+              ]
+            }
+          },
+          {
+            "name": "keys",
+            "required": false,
+            "in": "query",
+            "description": "One comma separated string; keys given twice arrives as an array and fails (AC-31).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Settings"
+        ]
+      }
+    },
+    "/vrms/vehicles": {
+      "get": {
+        "operationId": "VehiclesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Vehicles"
+        ]
+      }
+    },
+    "/vrms/vehicles/{id}": {
+      "patch": {
+        "operationId": "VehiclesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVehicleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Vehicles"
+        ]
+      }
+    },
+    "/vrms/vehicles/{id}/changes": {
+      "get": {
+        "operationId": "VehiclesController_changes",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Vehicles"
+        ]
+      }
+    },
+    "/vrms/vehicles/{id}/status": {
+      "post": {
+        "operationId": "VehiclesController_setStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetVehicleStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Vehicles"
+        ]
+      }
+    },
+    "/vrms/vehicles/{id}/summary": {
+      "get": {
+        "operationId": "ConfigController_vehicleSummary",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "VRMS API",
+    "description": "The VRMS API: repair tickets, issues and checklists, vehicles, the knowledge base, attachments,\nanalytics, AI diagnosis and settings. Every API route takes a VRMS user access token; the\n`/vrms/session` routes are the web app's login and refresh, with the `vrms_rt` cookie.\n\nThese docs are generated from the code and show the shapes of each route. Sign in and tokens\nare welinc-auth's: see its docs at `/auth/docs` and\n[contract 0001](https://github.com/Capstone-WeLinc/welinc-workspace/blob/main/docs/specs/_root/0001-shared-services-contract/index.md).",
+    "version": "0.0.1",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "userToken": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "A VRMS user access token (`aud: VRMS`, `token_use: user`), from `/vrms/session/refresh`."
+      },
+      "vrmsSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "vrms_rt",
+        "description": "The VRMS web session's refresh cookie (`__Secure-vrms_rt` when hosted), on `/vrms/session`."
+      }
+    },
+    "schemas": {
+      "AddIssueDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "knowledgeEntryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rootCause": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "categoryId",
+          "rootCause",
+          "lastUpdatedAt"
+        ]
+      },
+      "AssignMechanicsDto": {
+        "type": "object",
+        "properties": {
+          "mechanics": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MechanicAssignmentDto"
+            }
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mechanics",
+          "lastUpdatedAt"
+        ]
+      },
+      "CheckIssueStepDto": {
+        "type": "object",
+        "properties": {
+          "checked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "checked"
+        ]
+      },
+      "ChecklistStepDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "CodedError": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 400
+          },
+          "message": {
+            "description": "A sentence for people; may change. Match on `code`, never on this.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "error": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "code": {
+            "type": "string",
+            "description": "The stable error code (contract 0001 section 11). Absent on a plain validation 400.",
+            "example": "VALIDATION_FAILED"
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "error"
+        ]
+      },
+      "CreateCategoryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreateEntryDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE"
+            ]
+          },
+          "linkIssueIds": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "suggestionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 100
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "suggestedPriority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "estimatedHours": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0.25,
+            "maximum": 200
+          },
+          "symptoms": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 1000
+          },
+          "descriptionTemplate": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          },
+          "safetyNotes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "steps": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 3
+            }
+          },
+          "parts": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 2
+            }
+          }
+        },
+        "required": [
+          "status",
+          "name",
+          "categoryId",
+          "suggestedPriority",
+          "symptoms",
+          "steps"
+        ]
+      },
+      "CreateLookupValueDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "CreateRepairDto": {
+        "type": "object",
+        "properties": {
+          "vehiclePlate": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "driverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "newDriver": {
+            "$ref": "#/components/schemas/NewDriverDto"
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "ONLINE",
+              "CORPORATE"
+            ]
+          },
+          "corporationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "garageLocation": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "odometerReading": {
+            "type": "number",
+            "minimum": 0
+          },
+          "confirmOdometerJump": {
+            "type": "boolean"
+          },
+          "mechanics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MechanicAssignmentDto"
+            }
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "issues": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepairIssueDto"
+            }
+          },
+          "repairNumber": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "vehiclePlate",
+          "accountType",
+          "garageLocation",
+          "odometerReading",
+          "priority",
+          "issues"
+        ]
+      },
+      "CreateSuggestionDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "CHANGE",
+              "NEW_ENTRY"
+            ]
+          },
+          "entryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repairIssueId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "kind",
+          "body"
+        ]
+      },
+      "DiagnosisFeedbackDto": {
+        "type": "object",
+        "properties": {
+          "helpful": {
+            "type": "boolean"
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "helpful"
+        ]
+      },
+      "DismissGroupDto": {
+        "type": "object",
+        "properties": {
+          "issueIds": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "issueIds"
+        ]
+      },
+      "EditIssueDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 600
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "categoryId",
+          "text",
+          "lastUpdatedAt"
+        ]
+      },
+      "EditTicketDetailsDto": {
+        "type": "object",
+        "properties": {
+          "driverId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "newDriver": {
+            "$ref": "#/components/schemas/NewDriverDto"
+          },
+          "odometerReading": {
+            "type": "number",
+            "minimum": 0
+          },
+          "confirmOdometerJump": {
+            "type": "boolean"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "accountType": {
+            "type": "string",
+            "enum": [
+              "ONLINE",
+              "CORPORATE"
+            ]
+          },
+          "corporationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lastUpdatedAt"
+        ]
+      },
+      "IssueResolutionDto": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resolutionNote": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "hoursSpent": {
+            "type": "number",
+            "minimum": 0.25,
+            "maximum": 200
+          },
+          "followedKnownFix": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      },
+      "LinkIssueKnowledgeDto": {
+        "type": "object",
+        "properties": {
+          "knowledgeEntryId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledgeEntryId",
+          "lastUpdatedAt"
+        ]
+      },
+      "MechanicAssignmentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "MoveAttachmentDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "NewDriverDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "licenseNumber": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "licenseNumber"
+        ]
+      },
+      "ReleaseTicketsDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "DEACTIVATED",
+              "ROLE_REMOVED"
+            ]
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "RepairIssueDto": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "knowledgeEntryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rootCause": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "categoryId",
+          "rootCause"
+        ]
+      },
+      "RepairPartDto": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "unitCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "description",
+          "unitCost",
+          "quantity"
+        ]
+      },
+      "ResolveSuggestionDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACCEPTED",
+              "DISMISSED"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "SaveChecklistDto": {
+        "type": "object",
+        "properties": {
+          "checklistVersion": {
+            "type": "number",
+            "minimum": 0
+          },
+          "steps": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChecklistStepDto"
+            }
+          }
+        },
+        "required": [
+          "checklistVersion",
+          "steps"
+        ]
+      },
+      "SetMechanicsDto": {
+        "type": "object",
+        "properties": {
+          "mechanics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MechanicAssignmentDto"
+            }
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "mechanics",
+          "lastUpdatedAt"
+        ]
+      },
+      "SettingChangeDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "value": {
+            "type": "object"
+          },
+          "reset": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "SetVehicleStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "DISABLED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "updatedAt"
+        ]
+      },
+      "TicketAbilitiesView": {
+        "type": "object",
+        "properties": {
+          "work": {
+            "type": "boolean"
+          },
+          "administer": {
+            "type": "boolean"
+          },
+          "verify": {
+            "type": "boolean",
+            "description": "False on a ticket the caller is assigned to"
+          },
+          "editCosts": {
+            "type": "boolean"
+          },
+          "unlock": {
+            "type": "boolean"
+          },
+          "assign": {
+            "type": "boolean"
+          },
+          "edit": {
+            "type": "boolean"
+          },
+          "editChecklist": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "work",
+          "administer",
+          "verify",
+          "editCosts",
+          "unlock",
+          "assign",
+          "edit",
+          "editChecklist"
+        ]
+      },
+      "TicketDetailResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repairNumber": {
+            "type": "string",
+            "example": "REP-20261116-A1B2"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "FOR_VERIFICATION",
+              "OUTSOURCED",
+              "PENDING_APPROVAL",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "vehiclePlate": {
+            "type": "string"
+          },
+          "vehicleModel": {
+            "type": "string"
+          },
+          "driverName": {
+            "type": "string"
+          },
+          "driverId": {
+            "type": "string"
+          },
+          "garageLocation": {
+            "type": "string",
+            "description": "The garage name"
+          },
+          "odometerReading": {
+            "type": "number"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "dueAtSource": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "PRIORITY",
+              "ISSUE_TYPE",
+              "MANUAL"
+            ]
+          },
+          "reportedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountType": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "ONLINE",
+              "CORPORATE"
+            ],
+            "description": "Null on tickets made before it was stored"
+          },
+          "corporation": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifiedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifiedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "editedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "The last edit after create; null until someone edits"
+          },
+          "editedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "issueDescription": {
+            "type": "string",
+            "description": "Every issue description, joined with commas"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "statusChangedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "cancellationReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "remarks": {
+            "type": "string",
+            "nullable": true
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketIssueView"
+            }
+          },
+          "mechanics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketMechanicView"
+            }
+          },
+          "mechanicCount": {
+            "type": "number"
+          },
+          "partsCost": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null when not recorded or when the caller may not read costs"
+          },
+          "laborCost": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalCost": {
+            "type": "number",
+            "nullable": true
+          },
+          "hasInactiveMechanic": {
+            "type": "boolean",
+            "description": "An open ticket with a deactivated mechanic"
+          },
+          "needsMechanic": {
+            "type": "boolean",
+            "description": "In progress or on hold with no active mechanic"
+          },
+          "can": {
+            "$ref": "#/components/schemas/TicketAbilitiesView"
+          },
+          "isLumpSum": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "isUnlocked": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "unlockReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only for a caller who may read the total cost"
+          },
+          "driverIsVerified": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "repairParts": {
+            "description": "Only for a caller who may read the total cost",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketPartView"
+            }
+          },
+          "moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketMoveView"
+            }
+          },
+          "lastRejection": {
+            "nullable": true,
+            "description": "Only while in progress or on hold after a send back",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketRejectionView"
+              }
+            ]
+          },
+          "workStartedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "The first move into In progress or Outsourced; never cleared"
+          }
+        },
+        "required": [
+          "id",
+          "repairNumber",
+          "status",
+          "vehiclePlate",
+          "vehicleModel",
+          "driverName",
+          "driverId",
+          "garageLocation",
+          "odometerReading",
+          "priority",
+          "dueAt",
+          "dueAtSource",
+          "reportedByName",
+          "accountType",
+          "corporation",
+          "verifiedByName",
+          "verifiedAt",
+          "editedAt",
+          "editedByName",
+          "issueDescription",
+          "createdAt",
+          "updatedAt",
+          "lastActivityAt",
+          "statusChangedAt",
+          "closedAt",
+          "cancellationReason",
+          "remarks",
+          "issues",
+          "mechanics",
+          "mechanicCount",
+          "partsCost",
+          "laborCost",
+          "totalCost",
+          "hasInactiveMechanic",
+          "needsMechanic",
+          "can",
+          "moves",
+          "lastRejection",
+          "workStartedAt"
+        ]
+      },
+      "TicketEditDto": {
+        "type": "object",
+        "properties": {
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lastUpdatedAt"
+        ]
+      },
+      "TicketIssueView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "categoryName": {
+            "type": "string",
+            "nullable": true
+          },
+          "knowledgeEntry": {
+            "nullable": true,
+            "description": "The linked known fix; null when none is linked",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketKnowledgeEntryView"
+              }
+            ]
+          },
+          "checklistVersion": {
+            "type": "number",
+            "description": "The checklist lock the Edit steps dialog sends back"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketStepView"
+            }
+          },
+          "resolutionNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "hoursSpent": {
+            "type": "number",
+            "nullable": true
+          },
+          "followedKnownFix": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "resolvedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "categoryId",
+          "categoryName",
+          "knowledgeEntry",
+          "checklistVersion",
+          "steps",
+          "resolutionNote",
+          "hoursSpent",
+          "followedKnownFix",
+          "resolvedAt"
+        ]
+      },
+      "TicketKnowledgeEntryView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "INACTIVE"
+            ]
+          },
+          "safetyNotes": {
+            "type": "string",
+            "nullable": true
+          },
+          "parts": {
+            "description": "Part names, in entry order",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "typicalHours": {
+            "type": "number",
+            "nullable": true,
+            "description": "Hours past repairs took; null until enough closed tickets"
+          },
+          "estimatedHours": {
+            "type": "number",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "categoryId",
+          "status",
+          "safetyNotes",
+          "parts",
+          "typicalHours",
+          "estimatedHours"
+        ]
+      },
+      "TicketListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketView"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "Every matching ticket, across all pages"
+          }
+        },
+        "required": [
+          "data",
+          "total"
+        ]
+      },
+      "TicketMechanicView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "TicketMoveView": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "FOR_VERIFICATION",
+              "OUTSOURCED",
+              "PENDING_APPROVAL",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "forward",
+              "back",
+              "cancel"
+            ]
+          },
+          "needs": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "resolutions",
+              "remarks",
+              "cancellationReason",
+              "costs"
+            ],
+            "description": "What the move dialog must ask for; null when nothing"
+          },
+          "blockedBy": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "beforePhoto",
+              "afterPhoto"
+            ],
+            "description": "A photo the ticket still needs before this move"
+          }
+        },
+        "required": [
+          "to",
+          "label",
+          "kind",
+          "needs",
+          "blockedBy"
+        ]
+      },
+      "TicketPartView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "unitCost": {
+            "type": "number"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "subtotal": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "unitCost",
+          "quantity",
+          "subtotal"
+        ]
+      },
+      "TicketRejectionView": {
+        "type": "object",
+        "properties": {
+          "remarks": {
+            "type": "string"
+          },
+          "byName": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "remarks",
+          "byName",
+          "at"
+        ]
+      },
+      "TicketStepView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "position": {
+            "type": "number"
+          },
+          "text": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "checkedByEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "KNOWN_FIX",
+              "ADDED"
+            ]
+          },
+          "editedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "text",
+          "checkedAt",
+          "checkedByEmail",
+          "origin",
+          "editedAt"
+        ]
+      },
+      "TicketView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repairNumber": {
+            "type": "string",
+            "example": "REP-20261116-A1B2"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "FOR_VERIFICATION",
+              "OUTSOURCED",
+              "PENDING_APPROVAL",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "vehiclePlate": {
+            "type": "string"
+          },
+          "vehicleModel": {
+            "type": "string"
+          },
+          "driverName": {
+            "type": "string"
+          },
+          "driverId": {
+            "type": "string"
+          },
+          "garageLocation": {
+            "type": "string",
+            "description": "The garage name"
+          },
+          "odometerReading": {
+            "type": "number"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "dueAtSource": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "PRIORITY",
+              "ISSUE_TYPE",
+              "MANUAL"
+            ]
+          },
+          "reportedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountType": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "ONLINE",
+              "CORPORATE"
+            ],
+            "description": "Null on tickets made before it was stored"
+          },
+          "corporation": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifiedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifiedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "editedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "The last edit after create; null until someone edits"
+          },
+          "editedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "issueDescription": {
+            "type": "string",
+            "description": "Every issue description, joined with commas"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "statusChangedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "cancellationReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "remarks": {
+            "type": "string",
+            "nullable": true
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketIssueView"
+            }
+          },
+          "mechanics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketMechanicView"
+            }
+          },
+          "mechanicCount": {
+            "type": "number"
+          },
+          "partsCost": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null when not recorded or when the caller may not read costs"
+          },
+          "laborCost": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalCost": {
+            "type": "number",
+            "nullable": true
+          },
+          "hasInactiveMechanic": {
+            "type": "boolean",
+            "description": "An open ticket with a deactivated mechanic"
+          },
+          "needsMechanic": {
+            "type": "boolean",
+            "description": "In progress or on hold with no active mechanic"
+          },
+          "can": {
+            "$ref": "#/components/schemas/TicketAbilitiesView"
+          },
+          "isLumpSum": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "isUnlocked": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "unlockReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only for a caller who may read the total cost"
+          },
+          "driverIsVerified": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "repairParts": {
+            "description": "Only for a caller who may read the total cost",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketPartView"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "repairNumber",
+          "status",
+          "vehiclePlate",
+          "vehicleModel",
+          "driverName",
+          "driverId",
+          "garageLocation",
+          "odometerReading",
+          "priority",
+          "dueAt",
+          "dueAtSource",
+          "reportedByName",
+          "accountType",
+          "corporation",
+          "verifiedByName",
+          "verifiedAt",
+          "editedAt",
+          "editedByName",
+          "issueDescription",
+          "createdAt",
+          "updatedAt",
+          "lastActivityAt",
+          "statusChangedAt",
+          "closedAt",
+          "cancellationReason",
+          "remarks",
+          "issues",
+          "mechanics",
+          "mechanicCount",
+          "partsCost",
+          "laborCost",
+          "totalCost",
+          "hasInactiveMechanic",
+          "needsMechanic",
+          "can"
+        ]
+      },
+      "UnlockTicketDto": {
+        "type": "object",
+        "properties": {
+          "unlockReason": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "unlockReason",
+          "lastUpdatedAt"
+        ]
+      },
+      "UpdateCategoryDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 50
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "number",
+            "minimum": 0
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "lastUpdatedAt"
+        ]
+      },
+      "UpdateCostsDto": {
+        "type": "object",
+        "properties": {
+          "isLumpSum": {
+            "type": "boolean"
+          },
+          "partsCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "laborCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepairPartDto"
+            }
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "isLumpSum",
+          "lastUpdatedAt"
+        ]
+      },
+      "UpdateEntryDto": {
+        "type": "object",
+        "properties": {
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 100
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "suggestedPriority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "estimatedHours": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0.25,
+            "maximum": 200
+          },
+          "symptoms": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 1000
+          },
+          "descriptionTemplate": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          },
+          "safetyNotes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "steps": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 3
+            }
+          },
+          "parts": {
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 2
+            }
+          }
+        },
+        "required": [
+          "lastUpdatedAt",
+          "name",
+          "categoryId",
+          "suggestedPriority",
+          "symptoms",
+          "steps"
+        ]
+      },
+      "UpdateEntryStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "INACTIVE"
+            ]
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "lastUpdatedAt"
+        ]
+      },
+      "UpdateLookupValueDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateRepairStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "FOR_VERIFICATION",
+              "OUTSOURCED",
+              "PENDING_APPROVAL",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "cancellationReason": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "partsCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "laborCost": {
+            "type": "number",
+            "minimum": 0
+          },
+          "remarks": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "resolutions": {
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueResolutionDto"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "lastUpdatedAt"
+        ]
+      },
+      "UpdateSettingsDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "minimum": 1
+          },
+          "changes": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingChangeDto"
+            }
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "version",
+          "changes"
+        ]
+      },
+      "UpdateVehicleDto": {
+        "type": "object",
+        "properties": {
+          "vehicleTypeId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "vehicleTypeId",
+          "updatedAt"
+        ]
+      },
+      "UploadAttachmentDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "PHOTO",
+              "VEHICLE_PHOTO",
+              "PROOF",
+              "RECEIPT",
+              "OTHER_DOCUMENT"
+            ]
+          },
+          "issueId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "group": {
+            "type": "string",
+            "description": "Spec 0024, AC-21: the photo group a drop names. Absent, the server picks it from\n`workStartedAt`; on a document the service answers 400.",
+            "enum": [
+              "BEFORE",
+              "AFTER"
+            ]
+          },
+          "takenAt": {
+            "type": "object",
+            "description": "Spec 0018, AC-12: when the phone took the photo. Allowed through the global pipe with no\nvalidation, so a bad value is dropped by the service (parseTakenAt) instead of failing the upload."
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      }
+    }
+  }
+}

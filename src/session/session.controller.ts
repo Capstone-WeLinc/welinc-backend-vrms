@@ -36,6 +36,14 @@ import {
 } from './cookies';
 import { SessionCsrfGuard } from './csrf.guard';
 import { SESSION_CONFIG, type SessionConfig } from './session.config';
+import { ApiTags } from '@nestjs/swagger';
+import {
+  ApiCookieRoute,
+  ApiGenericErrors,
+  ApiNoErrors,
+  ApiUserToken,
+  ApiVrmsSession,
+} from '../openapi/decorators';
 
 /** Our own `state` values: 32 random bytes, base64url (spec 0003, Value sourcing). */
 const STATE_SHAPE = /^[A-Za-z0-9_-]{43}$/;
@@ -68,6 +76,8 @@ function sameText(a: string, b: string): boolean {
  * VRMS's session routes (spec 0001 section 7, spec 0003 AC-16, AC-16a): the reference other
  * systems copy. The web app never sees a code or a refresh token.
  */
+@ApiTags('Session')
+@ApiGenericErrors()
 @Controller('vrms/session')
 export class SessionController {
   constructor(
@@ -78,6 +88,7 @@ export class SessionController {
   ) {}
 
   /** Starts a login: a state, a PKCE verifier and the return path, then `/auth/authorize`. */
+  @ApiNoErrors()
   @Public()
   @Get('start')
   start(@Query('return') returnTo: unknown, @Res() res: Response) {
@@ -106,6 +117,7 @@ export class SessionController {
    * The login comes back. The state cookie is checked and cleared before welinc-auth is
    * called, so a retried or prefetched callback fails as `LOGIN_STATE_INVALID` (AC-15).
    */
+  @ApiNoErrors()
   @Public()
   @Get('callback')
   async callback(
@@ -158,6 +170,8 @@ export class SessionController {
   }
 
   /** Swaps the refresh cookie for an access token, rotating the cookie (AC-16, AC-16a). */
+  @ApiVrmsSession()
+  @ApiCookieRoute()
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
@@ -217,6 +231,8 @@ export class SessionController {
    * A real input ping from the app (AC-22): passed to `/auth/session/activity`. The app sends
    * it at most once a minute; welinc-auth ignores more than 2 a minute per session.
    */
+  @ApiVrmsSession()
+  @ApiCookieRoute()
   @Public()
   @Post('activity')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -242,6 +258,8 @@ export class SessionController {
    * welinc-auth can't be reached it answers 503, so the app can offer a retry, which still
    * works through the access token's `sid`.
    */
+  @ApiVrmsSession()
+  @ApiCookieRoute()
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -260,6 +278,7 @@ export class SessionController {
   }
 
   /** The server's own cutoff, asked fresh, for the idle warning (AC-23, AC-26). */
+  @ApiUserToken()
   @Authenticated()
   @Get('status')
   async status(@Req() req: Request, @Res({ passthrough: true }) res: Response) {

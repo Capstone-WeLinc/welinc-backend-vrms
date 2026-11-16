@@ -1,4 +1,5 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { ApiExcludeEndpoint } from '@nestjs/swagger';
 import { AppService } from './app.service';
 import { Public } from './auth/permissions/permission.decorators';
 import {
@@ -14,6 +15,7 @@ export class AppController {
   ) {}
 
   // Health and readiness: fails until the permission matrix has loaded (spec 0011, AC-21)
+  @ApiExcludeEndpoint()
   @Public()
   @Get()
   getHello(): string {

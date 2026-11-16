@@ -3,9 +3,14 @@ import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { AnalyticsService } from './analytics.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
 
 // Spec 0013, AC-3 and AC-5: analytics.view opens every route (module analytics); peso fields
 // also need ticket.costs.view.
+@ApiTags('Analytics')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/analytics')
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}

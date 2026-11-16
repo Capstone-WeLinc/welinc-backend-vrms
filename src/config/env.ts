@@ -92,6 +92,11 @@ export const envSchema = z.object({
   AUTH_PUBLIC_URL: url,
   SESSION_COOKIE_SECURE: flag,
 
+  /** VRMS spec 0026, AC-2: the docs at /vrms/docs. Unset, on unless NODE_ENV is production (`apiDocsEnabled`). */
+  API_DOCS_ENABLED: optional(
+    z.enum(['true', 'false'], { error: 'must be true or false' }),
+  ).transform((v) => (v === undefined ? undefined : v === 'true')),
+
   // AI (spec 0013): optional in every mode
   GEMINI_API_KEY: optional(z.string().trim()),
   GEMINI_MODEL: z.preprocess(
@@ -224,6 +229,13 @@ export function envWarnings(
     );
   }
   return lines;
+}
+
+/** VRMS spec 0026, AC-2: whether /vrms/docs is served; unset, on everywhere but production. */
+export function apiDocsEnabled(
+  get: <K extends keyof Env>(key: K) => Env[K],
+): boolean {
+  return get('API_DOCS_ENABLED') ?? get('NODE_ENV') !== 'production';
 }
 
 /**

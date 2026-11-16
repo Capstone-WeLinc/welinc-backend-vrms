@@ -15,10 +15,15 @@ import { SetVehicleStatusDto } from '../dto/set-vehicle-status.dto';
 import { VehicleChangesQueryDto } from '../dto/vehicle-changes-query.dto';
 import { UpdateVehicleDto } from '../dto/update-vehicle.dto';
 import { VehiclesService } from './vehicles.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../../openapi/decorators';
 
 type AuthRequest = { user: AuthUser };
 
 // Spec 0016, AC-21: the Vehicles section in Settings
+@ApiTags('Vehicles')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/vehicles')
 export class VehiclesController {
   constructor(private readonly vehicles: VehiclesService) {}

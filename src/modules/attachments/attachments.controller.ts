@@ -26,10 +26,15 @@ import { AttachmentsService } from './attachments.service';
 import { MoveAttachmentDto } from './dto/move-attachment.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 import { SingleFileInterceptor } from './upload.interceptor';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
 
 type AuthRequest = { user: AuthUser };
 
 // Spec 0017, API surface. The add right depends on the kind, so the service checks it (AC-15).
+@ApiTags('Attachments')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/repairs/:id/attachments')
 export class AttachmentsController {
   constructor(private readonly attachments: AttachmentsService) {}

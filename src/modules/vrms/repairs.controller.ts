@@ -15,6 +15,7 @@ import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
+import { TicketDetailResponse, TicketListResponse } from './repairs.response';
 import { TicketEditsService } from './ticket-edits.service';
 import { ChecklistEditsService } from './checklist-edits.service';
 import { SaveChecklistDto } from './dto/save-checklist.dto';
@@ -37,10 +38,15 @@ import {
   CheckIssueStepDto,
   LinkIssueKnowledgeDto,
 } from './dto/link-issue-knowledge.dto';
+import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
 
 type AuthRequest = { user: AuthUser };
 
 // Spec 0011, Route to key mapping. Ownership and hidden fields come from the ability.
+@ApiTags('Repair Tickets')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/repairs')
 export class RepairsController {
   constructor(
@@ -49,6 +55,7 @@ export class RepairsController {
     private readonly checklistEdits: ChecklistEditsService,
   ) {}
 
+  @ApiCreatedResponse({ type: TicketDetailResponse })
   @RequirePermission('ticket.create')
   @Post()
   create(
@@ -60,6 +67,7 @@ export class RepairsController {
   }
 
   // Open tickets, scoped to what the caller may read
+  @ApiOkResponse({ type: TicketListResponse })
   @RequirePermission('ticket.view', 'ticket.view_all')
   @Get()
   findAll(
@@ -104,6 +112,7 @@ export class RepairsController {
   }
 
   // Single repair detail; outside the caller's scope is a 403
+  @ApiOkResponse({ type: TicketDetailResponse })
   @RequirePermission('ticket.view', 'ticket.view_all')
   @Get(':id')
   findOne(
@@ -114,6 +123,7 @@ export class RepairsController {
   }
 
   // Status moves; each move's own right is checked in the service (spec 0014, AC-5, AC-6)
+  @ApiOkResponse({ type: TicketDetailResponse })
   @RequirePermission('ticket.work', 'ticket.administer', 'ticket.verify')
   @Patch(':id/status')
   updateStatus(
