@@ -13,11 +13,14 @@ import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { SessionModule } from './session/session.module';
 import { HealthController } from './health/health.controller';
 import { validateEnv } from './config/env';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
     // Spec 0010: the whole environment is checked here, before any module reads it
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    // Spec 0025: Sentry's request scope, the catch all filter and the staging test route
+    MonitoringModule,
     ScheduleModule.forRoot(),
     SharedModule,
     AuthModule,

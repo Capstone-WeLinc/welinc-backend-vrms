@@ -59,6 +59,8 @@ function isOrigin(value: string): boolean {
   return URL.canParse(value) && new URL(value).origin === value;
 }
 
+export const SENTRY_ENVIRONMENTS = ['staging', 'production'] as const;
+
 export const envSchema = z.object({
   NODE_ENV: z.preprocess(
     blank,
@@ -117,6 +119,16 @@ export const envSchema = z.object({
   ),
   /** Exempt from the production rule while Azurite serves it locally. */
   STORAGE_PUBLIC_URL: optional(httpUrl),
+
+  // Error monitoring (VRMS spec 0025): blank DSN means off; the pairing rules are in sentryIssues
+  SENTRY_DSN: optional(httpUrl),
+  SENTRY_ENVIRONMENT: optional(
+    z.enum(SENTRY_ENVIRONMENTS, { error: 'must be staging or production' }),
+  ),
+  /** The commit SHA, baked into the hosted image from GIT_SHA (spec 0008). */
+  SENTRY_RELEASE: optional(z.string().trim()),
+  /** Staging only: POST /vrms/debug/sentry-test. Refused with SENTRY_ENVIRONMENT=production. */
+  SENTRY_TEST_ROUTES: flag,
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -191,6 +203,27 @@ function productionIssues(raw: Record<string, unknown>): string[] {
   return lines;
 }
 
+/** VRMS spec 0025, AC-15: the Sentry pairing rules, on the raw values like the production rules. */
+function sentryIssues(raw: Record<string, unknown>): string[] {
+  const environment = text(raw, 'SENTRY_ENVIRONMENT');
+  const lines: string[] = [];
+  if (
+    text(raw, 'SENTRY_DSN') &&
+    !SENTRY_ENVIRONMENTS.some((name) => name === environment)
+  ) {
+    lines.push(
+      'SENTRY_ENVIRONMENT: must be staging or production when SENTRY_DSN is set',
+    );
+  }
+  if (
+    text(raw, 'SENTRY_TEST_ROUTES') === 'true' &&
+    environment === 'production'
+  ) {
+    lines.push('SENTRY_TEST_ROUTES: must not be true in production');
+  }
+  return lines;
+}
+
 /** ConfigModule's validate hook. Throws one Error listing every problem; never includes a value. */
 export function validateEnv(raw: Record<string, unknown>): Env {
   const result = envSchema.safeParse(raw);
@@ -199,6 +232,7 @@ export function validateEnv(raw: Record<string, unknown>): Env {
       ? []
       : result.error.issues.map((i) => `${String(i.path[0])}: ${i.message}`)),
     ...productionIssues(raw),
+    ...sentryIssues(raw),
   ];
   if (lines.length) {
     const unique = [...new Set(lines)];
@@ -228,7 +262,39 @@ export function envWarnings(
       'Both STORAGE_CONNECTION_STRING and STORAGE_ACCOUNT_URL are set: using the connection string, STORAGE_ACCOUNT_URL is ignored',
     );
   }
+  if (get('SENTRY_ENVIRONMENT') === 'production' && !get('SENTRY_DSN')) {
+    lines.push(
+      'Error monitoring is off: SENTRY_DSN is not set, so production errors reach no one',
+    );
+  }
   return lines;
+}
+
+/** What `src/instrument.ts` needs, read before Nest starts; null means monitoring stays off. */
+export type SentrySettings = {
+  dsn: string;
+  environment: (typeof SENTRY_ENVIRONMENTS)[number];
+  release?: string;
+};
+
+/**
+ * VRMS spec 0025, AC-14: Sentry starts before Nest, so before `validateEnv`. Anything short of a
+ * valid DSN plus environment leaves it off here, and the boot check then names the problem.
+ */
+export function sentrySettings(
+  raw: Record<string, unknown> = process.env,
+): SentrySettings | null {
+  const parsed = envSchema
+    .pick({ SENTRY_DSN: true, SENTRY_ENVIRONMENT: true, SENTRY_RELEASE: true })
+    .safeParse(raw);
+  if (!parsed.success) return null;
+  const { SENTRY_DSN, SENTRY_ENVIRONMENT, SENTRY_RELEASE } = parsed.data;
+  if (!SENTRY_DSN || !SENTRY_ENVIRONMENT) return null;
+  return {
+    dsn: SENTRY_DSN,
+    environment: SENTRY_ENVIRONMENT,
+    release: SENTRY_RELEASE,
+  };
 }
 
 /** VRMS spec 0026, AC-2: whether /vrms/docs is served; unset, on everywhere but production. */

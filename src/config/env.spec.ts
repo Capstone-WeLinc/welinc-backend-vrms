@@ -3,6 +3,7 @@ import { join } from 'path';
 import {
   apiDocsEnabled,
   envSchema,
+  sentrySettings,
   envWarnings,
   testEnv,
   validateEnv,
@@ -300,5 +301,79 @@ describe('API_DOCS_ENABLED (spec 0026 AC-2, AC-12)', () => {
     expect(errorOf({ ...testEnv, API_DOCS_ENABLED: value })).toContain(
       'API_DOCS_ENABLED',
     );
+  });
+});
+
+describe('Sentry settings (spec 0025 AC-14, AC-15)', () => {
+  const DSN = 'https://abc@o1.ingest.us.sentry.io/2';
+
+  it('passes with every Sentry value blank, and monitoring stays off', () => {
+    const raw = {
+      ...testEnv,
+      SENTRY_DSN: '',
+      SENTRY_ENVIRONMENT: '',
+      SENTRY_RELEASE: '',
+      SENTRY_TEST_ROUTES: '',
+    };
+    expect(validateEnv(raw).SENTRY_TEST_ROUTES).toBe(false);
+    expect(sentrySettings(raw)).toBeNull();
+  });
+
+  it('refuses a DSN without a valid environment', () => {
+    expect(errorOf({ ...testEnv, SENTRY_DSN: DSN })).toContain(
+      'SENTRY_ENVIRONMENT: must be staging or production when SENTRY_DSN is set',
+    );
+    expect(
+      errorOf({ ...testEnv, SENTRY_DSN: DSN, SENTRY_ENVIRONMENT: 'dev' }),
+    ).toContain('SENTRY_ENVIRONMENT: must be staging or production');
+  });
+
+  it('refuses the test routes in production', () => {
+    expect(
+      errorOf({
+        ...PRODUCTION,
+        SENTRY_DSN: DSN,
+        SENTRY_ENVIRONMENT: 'production',
+        SENTRY_TEST_ROUTES: 'true',
+      }),
+    ).toContain('SENTRY_TEST_ROUTES: must not be true in production');
+  });
+
+  it('allows the test routes on staging', () => {
+    const env = validateEnv({
+      ...testEnv,
+      SENTRY_DSN: DSN,
+      SENTRY_ENVIRONMENT: 'staging',
+      SENTRY_TEST_ROUTES: 'true',
+    });
+    expect(env.SENTRY_TEST_ROUTES).toBe(true);
+  });
+
+  it('starts in production without a DSN and warns once', () => {
+    const env = validateEnv({
+      ...PRODUCTION,
+      SENTRY_ENVIRONMENT: 'production',
+      GEMINI_API_KEY: 'k',
+    });
+    expect(envWarnings((key) => env[key])).toEqual([
+      expect.stringMatching(/^Error monitoring is off: SENTRY_DSN/),
+    ]);
+  });
+
+  it('gives instrument.ts the DSN, environment and release only when the pair is valid', () => {
+    expect(
+      sentrySettings({
+        SENTRY_DSN: DSN,
+        SENTRY_ENVIRONMENT: 'staging',
+        SENTRY_RELEASE: ' abc123 ',
+      }),
+    ).toEqual({ dsn: DSN, environment: 'staging', release: 'abc123' });
+    expect(sentrySettings({ SENTRY_DSN: DSN })).toBeNull();
+    expect(
+      sentrySettings({
+        SENTRY_DSN: 'not a url',
+        SENTRY_ENVIRONMENT: 'staging',
+      }),
+    ).toBeNull();
   });
 });

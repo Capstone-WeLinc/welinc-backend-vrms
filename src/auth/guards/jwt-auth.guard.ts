@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
+import { setSentryUser } from '../../monitoring/user-context';
 import { AccountCheck, type AuthUser } from '../account-check';
 import { PUBLIC_KEY } from '../permissions/permission.decorators';
 import {
@@ -42,6 +43,7 @@ export class JwtAuthGuard implements CanActivate {
     const { raw, token } = await checkPerson(this.verifier, request);
     const { user } = await this.accountCheck.confirm(raw, token);
     request.user = user;
+    setSentryUser(user);
     return true;
   }
 }

@@ -1,3 +1,5 @@
+// VRMS spec 0025: Sentry must start before Nest and Express load, so this stays the first import
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -62,7 +64,13 @@ async function bootstrap() {
       callback(null, corsOrigins.includes(origin) || isLocalDevOrigin(origin));
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
+    // sentry-trace and baggage link a browser crash to the API error behind it (spec 0025, AC-9)
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'sentry-trace',
+      'baggage',
+    ],
     credentials: true,
   });
   // VRMS spec 0026: /vrms/docs, on locally and on staging, never in production
