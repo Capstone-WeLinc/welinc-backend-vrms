@@ -65,7 +65,7 @@ describe('SETTINGS_CATALOG', () => {
 
   it('ties every value to a real module for the "module is off" note (AC-23)', () => {
     for (const entry of SETTINGS_CATALOG) {
-      if (entry.kind === 'value' && entry.module) {
+      if (entry.kind === 'value' && 'module' in entry && entry.module) {
         expect(MODULES).toContain(entry.module);
       }
     }

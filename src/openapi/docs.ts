@@ -66,6 +66,8 @@ export function mountDocs(
       url: `${PREFIX}/openapi.json`,
       cdn: `${PREFIX}/scalar.js`,
       withDefaultFonts: false,
+      showDeveloperTools: 'never',
+      agent: { disabled: true },
       persistAuth: false,
       authentication: { preferredSecurityScheme: 'userToken' },
     }) as (req: Request, res: Response) => void,

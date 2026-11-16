@@ -1,6 +1,13 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { envSchema, envWarnings, testEnv, validateEnv, type Env } from './env';
+import {
+  apiDocsEnabled,
+  envSchema,
+  envWarnings,
+  testEnv,
+  validateEnv,
+  type Env,
+} from './env';
 
 // covers: spec 0010 AC-1 to AC-6, AC-10
 
@@ -257,5 +264,41 @@ describe('.env.example and the schema stay in step (AC-10)', () => {
 
   it('gives testEnv every required name', () => {
     expect(() => validateEnv(testEnv)).not.toThrow();
+  });
+});
+
+describe('API_DOCS_ENABLED (spec 0026 AC-2, AC-12)', () => {
+  const enabled = (raw: Record<string, unknown>) => {
+    const env = validateEnv({ ...testEnv, ...raw });
+    return apiDocsEnabled((key) => env[key]);
+  };
+
+  it('is on when unset outside production', () => {
+    expect(enabled({ NODE_ENV: 'development' })).toBe(true);
+  });
+
+  it('is off when unset in production', () => {
+    expect(enabled({ ...PRODUCTION })).toBe(false);
+  });
+
+  it('falls back to the NODE_ENV default when blank', () => {
+    expect(enabled({ NODE_ENV: 'development', API_DOCS_ENABLED: '' })).toBe(
+      true,
+    );
+    expect(enabled({ ...PRODUCTION, API_DOCS_ENABLED: '' })).toBe(false);
+  });
+
+  it('turns the docs off outside production when set to false', () => {
+    expect(enabled({ API_DOCS_ENABLED: 'false' })).toBe(false);
+  });
+
+  it('turns the docs on in production when set to true', () => {
+    expect(enabled({ ...PRODUCTION, API_DOCS_ENABLED: 'true' })).toBe(true);
+  });
+
+  it.each(['yes', '1', 'TRUE', 'on'])('refuses %s', (value) => {
+    expect(errorOf({ ...testEnv, API_DOCS_ENABLED: value })).toContain(
+      'API_DOCS_ENABLED',
+    );
   });
 });

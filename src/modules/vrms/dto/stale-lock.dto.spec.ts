@@ -19,7 +19,10 @@ function failing<T extends object>(
   );
 }
 
-const bodies = {
+const bodies: Record<
+  string,
+  { cls: new () => object; valid: Record<string, unknown> }
+> = {
   status: {
     cls: UpdateRepairStatusDto,
     valid: { status: 'IN_PROGRESS' },

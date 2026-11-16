@@ -76,7 +76,17 @@ export function buildDocument(app: INestApplication): OpenAPIObject {
   for (const path of Object.keys(doc.paths)) {
     doc.paths[path] = sortKeys(doc.paths[path]);
   }
-  doc.tags = [...(doc.tags ?? [])].sort((a, b) =>
+  // The plugin and @ApiTags put tags on each route only, so the top level list is built from them
+  const tags = new Map((doc.tags ?? []).map((tag) => [tag.name, tag]));
+  for (const item of Object.values(doc.paths)) {
+    for (const operation of Object.values(item) as { tags?: unknown }[]) {
+      if (!Array.isArray(operation?.tags)) continue;
+      for (const name of operation.tags as string[]) {
+        if (!tags.has(name)) tags.set(name, { name });
+      }
+    }
+  }
+  doc.tags = [...tags.values()].sort((a, b) =>
     a.name.localeCompare(b.name, 'en'),
   );
   if (doc.components?.schemas) {
