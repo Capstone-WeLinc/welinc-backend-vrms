@@ -8,6 +8,8 @@ import {
 import { PrismaService } from '../shared/prisma.service';
 import { Public } from '../auth/permissions/permission.decorators';
 import { PermissionsService } from '../auth/permissions/permissions.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors } from '../openapi/decorators';
 
 export type HealthCheck = 'ok' | 'failed';
 
@@ -42,6 +44,8 @@ export async function checkWithin(
  * the permission matrix. Public, and it shows only ok or failed, never the error behind a failure.
  * The root route in AppController stays as it is.
  */
+@ApiTags('Operations')
+@ApiGenericErrors()
 @Controller('vrms')
 export class HealthController {
   constructor(

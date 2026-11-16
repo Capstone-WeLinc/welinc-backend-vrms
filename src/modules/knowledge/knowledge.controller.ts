@@ -28,10 +28,15 @@ import { KnowledgeCategoriesService } from './knowledge-categories.service';
 import { KnowledgeEntriesService } from './knowledge-entries.service';
 import { KnowledgeEntryEditorService } from './knowledge-entry-editor.service';
 import { KnowledgeSuggestionsService } from './knowledge-suggestions.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
 
 type AuthRequest = { user: JwtUser };
 
 // Spec 0007, API surface, on the spec 0011 keys: reads need knowledge.view, writes knowledge.edit.
+@ApiTags('Knowledge Base')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/knowledge')
 export class KnowledgeController {
   constructor(

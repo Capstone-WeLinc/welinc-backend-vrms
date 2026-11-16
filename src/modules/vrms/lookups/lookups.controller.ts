@@ -15,9 +15,14 @@ import {
   UpdateLookupValueDto,
 } from '../dto/lookup-value.dto';
 import { LookupsService } from './lookups.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../../openapi/decorators';
 
 type AuthRequest = { user: AuthUser };
 
+@ApiTags('Lookups')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/lookups')
 export class LookupsController {
   constructor(private readonly lookups: LookupsService) {}

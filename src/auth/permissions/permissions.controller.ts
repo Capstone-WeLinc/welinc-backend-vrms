@@ -4,9 +4,14 @@ import { Authenticated, RequirePermission } from './permission.decorators';
 import { PermissionMatrixService } from './permission-matrix.service';
 import type { PermittedRequest } from './permissions.guard';
 import { PermissionsService } from './permissions.service';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
 
 // Suite spec 0013, AC-30: the matrix is edited in the portal (welinc-auth) and synced here, so
 // PATCH /vrms/permissions and GET /vrms/permissions/changes are gone.
+@ApiTags('Permissions')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms/permissions')
 export class PermissionsController {
   constructor(

@@ -21,7 +21,12 @@ import { MechanicWorkService } from '../mechanic-work.service';
 import { DirectorySync } from '../directory/directory-sync.service';
 import { PeopleCopy } from '../directory/people-copy';
 import { ReleaseTicketsDto } from '../dto/release-tickets.dto';
+import { ApiTags } from '@nestjs/swagger';
+import { ApiGenericErrors, ApiUserToken } from '../../../openapi/decorators';
 
+@ApiTags('Fleet and Team')
+@ApiUserToken()
+@ApiGenericErrors()
 @Controller('vrms')
 export class ConfigController {
   constructor(
