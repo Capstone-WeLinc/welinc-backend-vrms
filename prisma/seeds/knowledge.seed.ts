@@ -21,7 +21,7 @@ const EDITORS = ['vrms.admin@welinc.com', 'vrms.chief@welinc.com'];
 export const SETUP_ACTOR = {
   actorUserId: null,
   actorName: 'WeLinc setup',
-  actorEmail: 'setup@welinc.tech',
+  actorEmail: 'setup@welinc.app',
   actorRole: null,
 };
 
