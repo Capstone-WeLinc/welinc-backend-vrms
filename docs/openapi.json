@@ -5375,7 +5375,44 @@
     "version": "0.0.1",
     "contact": {}
   },
-  "tags": [],
+  "tags": [
+    {
+      "name": "AI Diagnosis"
+    },
+    {
+      "name": "Analytics"
+    },
+    {
+      "name": "Attachments"
+    },
+    {
+      "name": "Fleet and Team"
+    },
+    {
+      "name": "Knowledge Base"
+    },
+    {
+      "name": "Lookups"
+    },
+    {
+      "name": "Operations"
+    },
+    {
+      "name": "Permissions"
+    },
+    {
+      "name": "Repair Tickets"
+    },
+    {
+      "name": "Session"
+    },
+    {
+      "name": "Settings"
+    },
+    {
+      "name": "Vehicles"
+    }
+  ],
   "servers": [
     {
       "url": "/"

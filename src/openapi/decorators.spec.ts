@@ -306,6 +306,19 @@ describe('buildDocument', () => {
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'en')));
   });
 
+  it('lists every route tag once in the top level tags, sorted', () => {
+    const used = new Set<string>();
+    for (const item of Object.values(doc.paths)) {
+      for (const operation of Object.values(item)) {
+        for (const name of (operation as { tags?: string[] }).tags ?? [])
+          used.add(name);
+      }
+    }
+    const listed = (doc.tags ?? []).map((tag) => tag.name);
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed).toEqual([...used].sort((a, b) => a.localeCompare(b, 'en')));
+  });
+
   it('builds the same bytes twice from the same code', () => {
     expect(JSON.stringify(buildDocument(app))).toBe(JSON.stringify(doc));
   });
