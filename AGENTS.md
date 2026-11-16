@@ -32,6 +32,7 @@ The VRMS API: NestJS 11 with Prisma 7 on PostgreSQL. It owns repair tickets, iss
 | `src/modules/vrms/ticket-knowledge.ts` | What a ticket's issues carry from the knowledge base, and the "What fixed it" rules on the move to For verification |
 | `src/modules/vrms/checklist-edits.service.ts`, `checklist-edits.ts` | Per ticket checklist edits (spec 0023) and their pure rules |
 | `src/config/` | `env.ts` (the one env schema, suite spec 0010, see Conventions), `check-env.ts` (`npm run env:check`), the Jest setup fixture |
+| `src/openapi/` | VRMS spec 0026, the docs at `/vrms/docs`: `document.ts` (builds the OpenAPI document in a stable order), `docs.ts` (mounts Scalar, the document and the bundle behind `API_DOCS_ENABLED`), `decorators.ts` (the security scheme and error reply decorators every route uses), `expect-reply.ts` (reply tests against the committed `docs/openapi.json`) |
 | `prisma/seed.ts`, `prisma/seeds/` | Seed data: `people.json` is a byte for byte copy of welinc-auth's manifest (suite spec 0006); check it with `npm --prefix welinc-auth run seed:check -- welinc-backend-vrms/prisma/seeds/people.json` |
 
 ## Commands
@@ -41,6 +42,8 @@ npm run start:dev    # nest --watch
 npm run lint         # eslint --fix edits files; check git diff afterwards
 npm run build        # also the typecheck
 npm run env:check    # checks the environment without starting the app (after a build); exits 1 with the list
+npm run openapi      # rewrites docs/openapi.json from the built app; commit it with any route, DTO or reply class change
+npm run openapi:check  # exits 1 when docs/openapi.json differs from the code (CI runs it)
 npm run test         # Jest unit tests
 npm run test:e2e
 npm run seed         # wipes and rebuilds the data (and clears the matrix sync's ETag, so the next tick applies welinc-auth's matrix again); SEED=<n> npm run seed repeats a run
@@ -78,6 +81,7 @@ npx prisma migrate dev   # creates the migration folder; ask before running
 
 ## Gotchas
 
+- `@scalar/nestjs-api-reference` is ES module only and the Jest config doesn't transform it, so a spec that imports `src/openapi/docs.ts` mocks it (see `docs.spec.ts`).
 - In the local Docker stack, the `welinc_vrms_backend` container does not see edits made from Windows. Run `docker restart welinc_vrms_backend` and wait for "Nest application successfully started" before testing the API.
 - There is no `JWT_SECRET`: tokens are checked with welinc-auth's published keys. `AUTH_CLIENT_PRIVATE_KEY` comes from `npm run keys:dev` in welinc-auth, and `AUTH_ISSUER` must equal welinc-auth's string exactly, or every request returns 401. If welinc-auth's keys can't be reached and no copy is left, requests answer 503 `AUTH_UNAVAILABLE`, never 401.
 - `@nestjs/platform-express` pins its own `multer`, and that copy handles uploads, so bumping the top level `multer` alone changes nothing. `"multer": "$multer"` in `package.json` `overrides` makes Nest use ours; check `npm ls multer` after any upgrade. The `glob` and `minimatch` overrides there patch dev tools only.
