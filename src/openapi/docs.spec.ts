@@ -110,6 +110,8 @@ describe('mountDocs with the switch on', () => {
     expect(options.withDefaultFonts).toBe(false);
     expect(options).not.toHaveProperty('proxyUrl');
     expect(options.persistAuth).toBe(false);
+    expect(options.showDeveloperTools).toBe('never');
+    expect(options.agent).toEqual({ disabled: true });
     expect(options.authentication).toEqual({
       preferredSecurityScheme: 'userToken',
     });
