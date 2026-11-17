@@ -95,6 +95,7 @@ npx prisma migrate dev   # creates the migration folder; ask before running
 - The baseline migration needs the `pg_trgm` extension and seeds the issue categories itself (Brakes to Transmission, plus General), so `npm run seed` must not create or delete them.
 - Embeddings use pgvector. The extension is created in plain SQL by the `ai_diagnosis` migration (no preview feature), so the database image must be `pgvector/pgvector:pg16` locally and `azure.extensions` must include `VECTOR` on Azure. The vector column is `Unsupported`, so read and write it with `$queryRaw`; Prisma Studio cannot show `issue_embeddings`.
 - The free Gemini tier counts a batch of texts as one request per text and allows about 100 a minute and 1K a day. Keep embed batches at 50 (`EMBED_BATCH_SIZE`). Only `src/modules/ai/` may talk to a provider, always through `AiProvider`.
+- CI audits with `audit-ci` (`audit-ci.jsonc`), not `npm audit`: high or critical in what ships fails the build. Update the package first; only when no fix exists, add the advisory id to the allowlist with its reason and a review date. Never lower the level or run `npm audit fix --force`.
 
 ## Agent skills
 
