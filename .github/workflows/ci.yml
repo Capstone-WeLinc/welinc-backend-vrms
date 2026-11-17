@@ -24,8 +24,9 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      # Fails on a known high or critical hole in what ships; dev tools are left out
-      - run: npm audit --omit=dev --audit-level=high
+      # Fails on a known high or critical hole in what ships; dev tools are left out.
+      # Exceptions live in audit-ci.jsonc, each with its reason and review date.
+      - run: npx --yes audit-ci@7.1.0 --config audit-ci.jsonc
       # The Prisma client must exist before lint and build can see its types.
       - run: npx prisma generate
       # lint:ci checks only. npm run lint would fix files in place.
