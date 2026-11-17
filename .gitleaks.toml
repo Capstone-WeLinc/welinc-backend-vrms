@@ -1,0 +1,9 @@
+# gitleaks settings (VRMS scope feature 69). Keeps every default rule and allows only the values below.
+# Add a value here only when it is public by design. A real leaked secret gets rotated, never allowed.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "The CircleCI badge link from the NestJS starter README; its token is NestJS's own public badge token"
+regexTarget = "line"
+regexes = ['''\[circleci-image\]: https://img\.shields\.io/circleci/build/github/nestjs/nest/''']
