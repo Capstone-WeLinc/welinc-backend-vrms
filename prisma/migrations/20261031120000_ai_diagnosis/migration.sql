@@ -1,6 +1,14 @@
 -- Spec 0013: AI moves into backend-vrms. Plain SQL for the extension (no postgresqlExtensions
 -- preview feature); on Azure, azure.extensions must allow VECTOR before this runs.
-CREATE EXTENSION IF NOT EXISTS vector;
+-- Guarded instead of IF NOT EXISTS: Azure checks the right to create an untrusted extension
+-- before it checks whether it exists, so the owner role is refused even when infra/db/init.sql
+-- already made vector as the admin. Locally (superuser) this still creates it.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
+    CREATE EXTENSION vector;
+  END IF;
+END $$;
 
 -- CreateTable
 CREATE TABLE "issue_embeddings" (
