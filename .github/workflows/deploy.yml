@@ -195,8 +195,10 @@ jobs:
         run: |
           set -euo pipefail
           az containerapp job update -n "$JOB" -g "$RG" --image "$SEED_IMAGE" -o none
+          # No argument may start with a dash: the Azure CLI takes "-c" as its own option, so the
+          # check and the migration are one npm script (db:deploy:job) instead of sh -c.
           execution="$(az containerapp job start -n "$JOB" -g "$RG" \
-            --command /bin/sh --args -c "npm run env:check && npm run db:deploy" \
+            --command npm --args run db:deploy:job \
             --query name -o tsv)"
           echo "Started $execution"
           status=Running
