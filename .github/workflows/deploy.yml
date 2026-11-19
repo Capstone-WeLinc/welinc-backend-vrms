@@ -127,8 +127,12 @@ jobs:
       ENVIRONMENT: ${{ needs.target.outputs.environment }}
       SHA: ${{ needs.target.outputs.sha }}
       MIGRATE: ${{ needs.target.outputs.migrate }}
-      APP: ${{ vars.CONTAINER_APP }}
-      JOB: ${{ vars.MIGRATE_JOB }}
+      # Staging and production share one Container Apps environment, so every app and job name
+      # carries its ending (auth-service-staging, auth-service-prod); the images keep the base
+      # name, so production deploys the image staging built (VRMS spec 0008 AC-23)
+      APP: ${{ needs.target.outputs.environment == 'staging' && vars.CONTAINER_APP_STAGING || vars.CONTAINER_APP_PROD }}
+      JOB: ${{ needs.target.outputs.environment == 'staging' && vars.MIGRATE_JOB_STAGING || vars.MIGRATE_JOB_PROD }}
+      IMAGE_REPO: ${{ vars.IMAGE_REPO }}
       ACR: ${{ vars.ACR_NAME }}
       RG: ${{ needs.target.outputs.environment == 'staging' && vars.RESOURCE_GROUP_STAGING || vars.RESOURCE_GROUP_PROD }}
       API_URL: ${{ needs.target.outputs.environment == 'staging' && vars.STAGING_API_URL || vars.PROD_API_URL }}
@@ -161,10 +165,12 @@ jobs:
       - name: Image names
         run: |
           set -euo pipefail
+          [ -n "$APP" ] && [ -n "$JOB" ] && [ -n "$IMAGE_REPO" ] \
+            || { echo "::error::Set the repo variables CONTAINER_APP_<ENV>, MIGRATE_JOB_<ENV> and IMAGE_REPO (the workspace's infra/scripts/set-repo-variables.sh)."; exit 1; }
           server="$(az acr show -n "$ACR" --query loginServer -o tsv)"
           {
-            echo "IMAGE=$server/$APP:$SHA"
-            echo "SEED_IMAGE=$server/$APP-seed:$SHA"
+            echo "IMAGE=$server/$IMAGE_REPO:$SHA"
+            echo "SEED_IMAGE=$server/$IMAGE_REPO-seed:$SHA"
             echo "SUFFIX=r${SHA:0:7}-${{ github.run_attempt }}"
           } >> "$GITHUB_ENV"
 
@@ -183,7 +189,7 @@ jobs:
         if: env.ENVIRONMENT == 'production'
         run: |
           set -euo pipefail
-          for img in "$APP:$SHA" "$APP-seed:$SHA"; do
+          for img in "$IMAGE_REPO:$SHA" "$IMAGE_REPO-seed:$SHA"; do
             az acr repository show -n "$ACR" --image "$img" -o none \
               || { echo "::error::$img is not in the registry. Deploy this commit to staging first."; exit 1; }
           done
