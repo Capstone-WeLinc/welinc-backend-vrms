@@ -16,6 +16,7 @@ import {
   DirectoryUnavailableError,
   type DirectoryUser,
 } from './auth-directory.client';
+import { reportJobFailure } from '../../../monitoring/job-failure';
 import { rewriteErased } from './erasure-rewrite';
 import { applyPerson, sweepPeople } from './people-copy';
 
@@ -52,7 +53,8 @@ export type TickOutcome =
   | { kind: 'skipped' } // another copy holds the lease
   | { kind: 'full'; result: SyncResult }
   | { kind: 'changes'; applied: number }
-  | { kind: 'stopped' } // a change failed to apply, or the lease was lost
+  | { kind: 'stopped' } // the lease was lost to another copy
+  | { kind: 'error' } // a change failed to apply, or the tick threw; reported to Sentry (spec 0025, AC-10)
   | { kind: 'reset' } // INVALID_CURSOR: the next tick reads everything again
   | { kind: 'failing' }; // welinc-auth unavailable
 
@@ -77,7 +79,11 @@ export class DirectorySync {
     if (!lease) return { kind: 'skipped' };
     try {
       const outcome = await this.work(lease.owner, lease.cursor);
-      if (outcome.kind !== 'failing' && outcome.kind !== 'stopped') {
+      if (
+        outcome.kind !== 'failing' &&
+        outcome.kind !== 'stopped' &&
+        outcome.kind !== 'error'
+      ) {
         await this.recovered(lease.owner, lease.failingSince);
       }
       return outcome;
@@ -95,7 +101,8 @@ export class DirectorySync {
       this.logger.error(
         `Directory sync tick failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return { kind: 'stopped' };
+      reportJobFailure('directory-poll', error);
+      return { kind: 'error' };
     } finally {
       await this.release(lease.owner);
     }
@@ -254,7 +261,8 @@ export class DirectorySync {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          return { kind: 'stopped' };
+          reportJobFailure('directory-poll', error);
+          return { kind: 'error' };
         }
         applied++;
         at = change.cursor;

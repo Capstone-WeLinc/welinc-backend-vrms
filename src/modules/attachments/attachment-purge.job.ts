@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
+import { reportJobFailure } from '../../monitoring/job-failure';
 import { PrismaService } from '../../shared/prisma.service';
 import { attachmentIdFromKey, FILE_STORE, type FileStore } from './file-store';
 
@@ -69,6 +70,7 @@ export class AttachmentPurgeJob
       if (due > 0) await this.safeRun();
     } catch (error) {
       this.logger.warn(`Retention check after boot failed: ${String(error)}`);
+      reportJobFailure('attachment-purge', error);
     }
   }
 
@@ -83,6 +85,7 @@ export class AttachmentPurgeJob
     } catch (error) {
       // The next pass tries again; both steps are idempotent
       this.logger.warn(`Retention pass stopped: ${String(error)}`);
+      reportJobFailure('attachment-purge', error);
     }
   }
 

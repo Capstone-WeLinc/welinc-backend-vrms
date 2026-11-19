@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { reportJobFailure } from '../../monitoring/job-failure';
 import { EmbeddingService } from './embedding.service';
 
 /** Spec 0013, AC-15: every 10 minutes, embed issues that have no current embedding. */
@@ -19,6 +20,7 @@ export class EmbeddingCatchupJob {
       this.logger.warn(
         `Catch up stopped: ${err instanceof Error ? err.message : String(err)}`,
       );
+      reportJobFailure('embedding-catchup', err);
     }
   }
 }
