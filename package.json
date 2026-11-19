@@ -17,6 +17,7 @@
     "start:prod": "node dist/main",
     "openapi": "nest build && node dist/src/openapi/write.js",
     "openapi:check": "nest build && node dist/src/openapi/write.js --check",
+    "db:deploy:job": "npm run env:check && npm run db:deploy",
     "db:deploy": "prisma migrate deploy && prisma db execute --file prisma/sql/audit-logs-revoke.sql",
     "env:check": "node --env-file-if-exists=.env dist/src/config/check-env.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
