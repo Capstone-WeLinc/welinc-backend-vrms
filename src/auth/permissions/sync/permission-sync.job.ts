@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
+import { reportJobFailure } from '../../../monitoring/job-failure';
 import { PERMISSION_SYNC_MS, PermissionSync } from './permission-sync.service';
 
 /**
@@ -28,6 +29,7 @@ export class PermissionSyncJob implements OnApplicationBootstrap {
       this.logger.warn(
         `Permission matrix sync tick failed: ${error instanceof Error ? error.message : String(error)}`,
       );
+      reportJobFailure('permission-sync', error);
     } finally {
       this.running = false;
     }

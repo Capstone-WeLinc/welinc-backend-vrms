@@ -258,7 +258,7 @@ describe('DirectorySync', () => {
           : Promise.resolve('updated'),
       );
 
-      expect(await sync.tick()).toEqual({ kind: 'stopped' });
+      expect(await sync.tick()).toEqual({ kind: 'error' });
       expect(row.cursor).toBe('c1');
       expect(error).toHaveBeenCalledWith(expect.stringContaining('c2'));
 

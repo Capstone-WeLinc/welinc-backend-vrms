@@ -191,7 +191,7 @@ jobs:
         run: |
           set -euo pipefail
           az acr login -n "$ACR"
-          docker build -f Dockerfile.prod --target runner -t "$IMAGE" .
+          docker build -f Dockerfile.prod --target runner --build-arg GIT_SHA="$SHA" -t "$IMAGE" .
           docker build -f Dockerfile.prod --target seed -t "$SEED_IMAGE" .
           docker push "$IMAGE"
           docker push "$SEED_IMAGE"
