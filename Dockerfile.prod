@@ -32,6 +32,10 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
+# Spec 0025: the deploy passes the commit it built; Sentry tags every event with it. Blank
+# (a local build) means no release. Last, so a new commit reuses every layer above.
+ARG GIT_SHA=
+ENV SENTRY_RELEASE=$GIT_SHA
 USER node
 EXPOSE 3002
 CMD ["node", "dist/src/main"]
