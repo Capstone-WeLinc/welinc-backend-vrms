@@ -4,11 +4,5 @@
   "$schema": "https://github.com/IBM/audit-ci/raw/main/docs/schema.json",
   "high": true,
   "skip-dev": true,
-  "allowlist": [
-    // picomatch ReDoS on crafted glob patterns (<= 4.0.7, no patched version yet). It arrives only
-    // through @scalar/api-reference > @unhead/vue > unplugin, a build plugin under the API docs
-    // page that never sees user input; production turns the docs off (API_DOCS_ENABLED).
-    // Review on 2026-12-01.
-    "GHSA-fc5q-39xc-vjpf"
-  ]
+  "allowlist": []
 }
