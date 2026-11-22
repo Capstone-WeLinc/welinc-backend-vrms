@@ -78,3 +78,5 @@ async function bootstrap() {
   await app.listen(config.get('PORT', { infer: true }));
 }
 void bootstrap();
+
+const unusedVerifyVariable = 1;
