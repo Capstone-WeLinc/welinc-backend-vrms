@@ -168,6 +168,37 @@ const COVERAGE: Entry[] = [
     writes: ['TICKET_EDITED'],
     provedBy: 'vrms/ticket-edits.spec.ts',
   },
+  // Spec 0029 (child 0003), AC-18, AC-19 and AC-25: BMS expedite requests and the due date
+  {
+    method: 'receive',
+    file: 'integrations/bms/expedite-intake.service.ts',
+    writes: ['EXPEDITE_REQUESTED'],
+    provedBy: 'integrations/bms/expedite-intake.service.spec.ts',
+  },
+  {
+    method: 'accept',
+    file: 'vrms/expedite-decisions.service.ts',
+    writes: ['EXPEDITE_ACCEPTED', 'TICKET_EDITED'],
+    provedBy: 'vrms/expedite-decisions.service.spec.ts',
+  },
+  {
+    method: 'decline',
+    file: 'vrms/expedite-decisions.service.ts',
+    writes: ['EXPEDITE_DECLINED'],
+    provedBy: 'vrms/expedite-decisions.service.spec.ts',
+  },
+  {
+    method: 'declineWaitingExpedites',
+    file: 'integrations/bms/expedite-answers.ts',
+    writes: ['EXPEDITE_DECLINED'],
+    provedBy: 'integrations/bms/expedite-answers.spec.ts',
+  },
+  {
+    method: 'setDueAt',
+    file: 'integrations/bms/set-due-at.ts',
+    writes: ['TICKET_EDITED'],
+    provedBy: 'integrations/bms/set-due-at.spec.ts',
+  },
 ];
 
 /** Types nothing writes today: reserved for features 33 and 30, and spec 0003's backfill. */
@@ -198,7 +229,11 @@ describe('audit coverage (spec 0021, AC-6)', () => {
     (_name, entry) => {
       const { method, file, writes, provedBy } = entry;
       expect(read(file)).toMatch(
-        new RegExp(`\\n  (private )?(async )?${method}\\(`),
+        // A class method, or an exported function (spec 0029's writers that run inside a
+        // caller's transaction)
+        new RegExp(
+          `\\n(  (private )?(async )?|export (async )?function )${method}\\(`,
+        ),
       );
       const proof = read(provedBy);
       for (const action of writes) {
@@ -254,5 +289,10 @@ describe('audit coverage (spec 0021, AC-6)', () => {
     });
     // AC-8: a stored action outside the catalog reads as category null
     expect(toAuditEvent({ ...row, action: 'OLD_THING' }).category).toBeNull();
+    // Spec 0029, AC-25: a row from another system names it
+    expect(
+      toAuditEvent({ ...row, action: 'EXPEDITE_REQUESTED', actorName: 'BMS' })
+        .actor,
+    ).toEqual({ id: null, name: 'BMS', email: null, role: 'SYSTEM' });
   });
 });

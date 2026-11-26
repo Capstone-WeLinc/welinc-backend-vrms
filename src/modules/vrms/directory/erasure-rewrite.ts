@@ -60,6 +60,12 @@ export const ERASURE_COPY_COLUMNS: readonly {
     nameColumn: 'decided_by_name',
   },
   {
+    // Spec 0029 (child 0003): the VRMS Admin who answered a BMS expedite request
+    table: 'expedite_requests',
+    idColumn: 'decided_by_user_id',
+    nameColumn: 'decided_by_name',
+  },
+  {
     table: 'audit_logs',
     idColumn: 'actor_user_id',
     nameColumn: 'actor_name',

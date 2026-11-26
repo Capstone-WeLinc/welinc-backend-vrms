@@ -18,6 +18,8 @@ import { DirectorySync } from './directory/directory-sync.service';
 import { DirectoryPollJob } from './directory/directory-poll.job';
 import { PeopleCopy } from './directory/people-copy';
 import { MechanicWorkService } from './mechanic-work.service';
+import { ExpediteDecisionsController } from './expedite-decisions.controller';
+import { ExpediteDecisionsService } from './expedite-decisions.service';
 import { ReferralDecisionsController } from './referral-decisions.controller';
 import { ReferralDecisionsService } from './referral-decisions.service';
 
@@ -30,6 +32,7 @@ import { ReferralDecisionsService } from './referral-decisions.service';
     LookupsController,
     VehiclesController,
     ReferralDecisionsController,
+    ExpediteDecisionsController,
   ],
   providers: [
     RepairsService,
@@ -45,6 +48,7 @@ import { ReferralDecisionsService } from './referral-decisions.service';
     PeopleCopy,
     MechanicWorkService,
     ReferralDecisionsService,
+    ExpediteDecisionsService,
   ],
 })
 export class VrmsModule {}

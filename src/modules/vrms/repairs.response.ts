@@ -1,3 +1,4 @@
+import { ExpediteRequestView } from './dto/expedite-decisions.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -180,6 +181,9 @@ export class TicketView {
 
   @ApiProperty()
   vehicleModel!: string;
+
+  @ApiProperty({ format: 'uuid', description: "VRMS's own vehicle id" })
+  vehicleId!: string;
 
   @ApiProperty({
     type: String,
@@ -423,6 +427,13 @@ export class TicketDetailResponse extends TicketView {
     description: 'The first move into In progress or Outsourced; never cleared',
   })
   workStartedAt!: string | null;
+
+  @ApiProperty({
+    type: [ExpediteRequestView],
+    description:
+      'Waiting BMS expedite requests, oldest first (spec 0029, AC-18)',
+  })
+  expediteRequests!: ExpediteRequestView[];
 }
 
 /** `POST /vrms/repairs`: the ticket, plus whether the truck came from the copy (spec 0029, AC-5). */

@@ -13,6 +13,20 @@ import { FakeEmbeddings } from '../ai/embedding.fake';
 import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { photoRows } from './photo-rules.fake';
 
+// Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
+jest.mock('../integrations/bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../integrations/bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-1' })),
+}));
+jest.mock('../integrations/bms/expedite-answers', () => ({
+  ...jest.requireActual<object>('../integrations/bms/expedite-answers'),
+  declineWaitingExpedites: jest.fn(() => Promise.resolve(0)),
+}));
+jest.mock('./expedite-views', () => ({
+  ...jest.requireActual<object>('./expedite-views'),
+  waitingExpedites: jest.fn(() => Promise.resolve([])),
+}));
+
 // Spec 0011, AC-11, AC-12 and AC-12a under the default matrix: who may work or administer a
 // ticket, what costs they see, and the per ticket flags the web app shows buttons from.
 

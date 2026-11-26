@@ -27,7 +27,7 @@ function setup(rows: ClaimedDelivery[], answer: () => Promise<Response>) {
   const settled: { id: string; update: RowUpdate; version?: unknown }[] = [];
   const store = {
     claim: jest.fn(() => Promise.resolve(rows)),
-    vmmsEventVersion: jest.fn(() => Promise.resolve(4)),
+    eventVersion: jest.fn(() => Promise.resolve(4)),
     settle: jest.fn(
       (id: string, update: RowUpdate, _at: Date, version?: unknown) => {
         settled.push({ id, update, version });
@@ -89,9 +89,40 @@ describe('DeliveryWorker.tick', () => {
       {
         id: 'd1',
         update: { status: 'SENT', lastStatusCode: 202 },
-        version: { repairTicketId: 't1', eventVersion: 5 },
+        version: {
+          repairTicketId: 't1',
+          eventVersion: 5,
+          column: 'vmmsEventVersion',
+        },
       },
     ]);
+  });
+
+  it('numbers a BMS repair update from BMS’s own counter, apart from VMMS’s', async () => {
+    const row = claimed({
+      kind: 'REPAIR_UPDATE',
+      payload: { eventId: 'd1', repairStatus: 'OPEN' },
+    });
+    const { worker, store, tokens, fetchFn, settled } = setup(
+      [row],
+      reply(200),
+    );
+    await worker.tick(() => now);
+    expect(store.eventVersion).toHaveBeenCalledWith('t1', 'bmsEventVersion');
+    expect(tokens.for).toHaveBeenCalledWith('BMS', 'repair.update.write');
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe(
+      'http://api-gateway:3000/bms/integrations/vrms/repair-updates',
+    );
+    expect(JSON.parse(init.body as string)).toMatchObject({ eventVersion: 5 });
+    expect(settled[0].version).toEqual({
+      repairTicketId: 't1',
+      eventVersion: 5,
+      column: 'bmsEventVersion',
+    });
   });
 
   it('sends an unversioned kind as stored, with its own scope', async () => {
@@ -105,7 +136,7 @@ describe('DeliveryWorker.tick', () => {
       reply(202),
     );
     await worker.tick(() => now);
-    expect(store.vmmsEventVersion).not.toHaveBeenCalled();
+    expect(store.eventVersion).not.toHaveBeenCalled();
     expect(tokens.for).toHaveBeenCalledWith(
       'VMMS',
       'repair.referral-status.write',

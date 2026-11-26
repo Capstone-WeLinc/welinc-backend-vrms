@@ -55,6 +55,13 @@ enum DeliveryKind {
   EXPEDITE_ANSWER
 }
 
+// Spec 0029 (child 0003): a BMS expedite request leaves WAITING exactly once.
+enum ExpediteStatus {
+  WAITING
+  ACCEPTED
+  DECLINED
+}
+
 enum DeliveryStatus {
   PENDING
   SENT
@@ -250,6 +257,7 @@ model RepairTicket {
   vmmsEventVersion   Int                @default(0) @map("vmms_event_version") // the last repair event version VMMS accepted (spec 0029)
   vmmsProviderId     String?            @map("vmms_provider_id") @db.Uuid // VMMS's outside shop, set on the move to OUTSOURCED (spec 0029, AC-36)
   outsideShopName    String?            @map("outside_shop_name") @db.VarChar(150)
+  bmsEventVersion    Int                @default(0) @map("bms_event_version") // the last repair update version BMS accepted (spec 0029, child 0003)
 
   vehicle        Vehicle            @relation(fields: [vehicleId], references: [id])
   driver         Driver?            @relation(fields: [driverId], references: [id], onDelete: Restrict)
@@ -261,8 +269,9 @@ model RepairTicket {
   aiDiagnoses    AiDiagnosis[]
   attachments    Attachment[]
   vehicleChanges VehicleChange[]
-  referrals      Referral[]
-  deliveries     Delivery[]
+  referrals        Referral[]
+  deliveries       Delivery[]
+  expediteRequests ExpediteRequest[]
 
   @@index([repairStatus, createdAt])
   @@index([repairStatus, lastActivityAt])
@@ -779,6 +788,32 @@ model Referral {
   @@map("referrals")
 }
 
+// Spec 0029 (child 0003): BMS asks VRMS to hurry a repair for one Job Order. The id is BMS's
+// requestId; a repeat with the same payloadHash is a duplicate.
+model ExpediteRequest {
+  id              String          @id @db.Uuid
+  repairTicketId  String          @map("repair_ticket_id") @db.Uuid
+  jobOrderNumber  String          @map("job_order_number") @db.VarChar(40)
+  reason          String          @db.Text
+  neededBy        DateTime?       @map("needed_by") @db.Date
+  status          ExpediteStatus  @default(WAITING)
+  responseReason  String?         @map("response_reason") @db.Text
+  newPriority     RepairPriority? @map("new_priority")
+  newDueAt        DateTime?       @map("new_due_at") @db.Timestamptz(6)
+  decidedByUserId String?         @map("decided_by_user_id") @db.Uuid // welinc-auth User.id, no FK; null for an auto decline
+  decidedByName   String?         @map("decided_by_name") @db.VarChar(100)
+  decidedAt       DateTime?       @map("decided_at") @db.Timestamptz(6)
+  receivedAt      DateTime        @default(now()) @map("received_at") @db.Timestamptz(6)
+  payloadHash     String          @map("payload_hash") @db.Char(64) // SHA 256 of the canonical body as received
+
+  repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Restrict)
+  deliveries   Delivery[]
+
+  @@index([status, receivedAt])
+  @@index([repairTicketId, status])
+  @@map("expedite_requests")
+}
+
 // The outbox (child 0004). Written only by enqueueDelivery, in the transaction of the change it
 // reports; sent by DeliveryWorker. The id is the eventId sent.
 model Delivery {
@@ -799,10 +834,12 @@ model Delivery {
   dismissReason    String?        @map("dismiss_reason") @db.Text
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   repairTicketId   String?        @map("repair_ticket_id") @db.Uuid
-  referralId       String?        @map("referral_id") @db.Uuid
+  referralId        String?        @map("referral_id") @db.Uuid
+  expediteRequestId String?        @map("expedite_request_id") @db.Uuid
 
-  repairTicket RepairTicket? @relation(fields: [repairTicketId], references: [id], onDelete: SetNull)
-  referral     Referral?     @relation(fields: [referralId], references: [id], onDelete: SetNull)
+  repairTicket    RepairTicket?    @relation(fields: [repairTicketId], references: [id], onDelete: SetNull)
+  referral        Referral?        @relation(fields: [referralId], references: [id], onDelete: SetNull)
+  expediteRequest ExpediteRequest? @relation(fields: [expediteRequestId], references: [id], onDelete: SetNull)
 
   @@index([status, nextAttemptAt])
   @@index([target, repairTicketId, createdAt])

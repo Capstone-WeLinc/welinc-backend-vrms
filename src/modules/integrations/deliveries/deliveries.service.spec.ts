@@ -1,7 +1,13 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { UserRole } from '../../../auth/roles';
 import type { PrismaService } from '../../../shared/prisma.service';
+import { queueBmsRepairUpdate } from '../bms/bms-repair-updates';
 import { DeliveriesService } from './deliveries.service';
+
+jest.mock('../bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-2' })),
+}));
 
 // Spec 0029 (child 0004), AC-22: the Deliveries tab's reads, Retry and Dismiss.
 
@@ -115,6 +121,24 @@ describe('DeliveriesService.retry and dismiss (AC-22)', () => {
         note: 'VMMS removed this referral',
       }) as Record<string, unknown>,
     });
+  });
+
+  it('dismissing a BMS repair update queues a fresh one with the ticket’s state (child 0003)', async () => {
+    const queued = jest.mocked(queueBmsRepairUpdate);
+    queued.mockClear();
+    const bms = setup({
+      found: { kind: 'REPAIR_UPDATE', target: 'BMS', repairTicketId: 't1' },
+    });
+    await bms.service.dismiss('d1', 'BMS was rebuilding its receiver', admin);
+    expect(queued).toHaveBeenCalledWith(
+      bms.tx,
+      't1',
+      'Resent after a failed delivery',
+    );
+    // Any other kind is just dismissed
+    queued.mockClear();
+    await setup().service.dismiss('d1', 'Refused by VMMS', admin);
+    expect(queued).not.toHaveBeenCalled();
   });
 
   it('answers NOT_FAILED for a row that is not failed, and 404 for none', async () => {

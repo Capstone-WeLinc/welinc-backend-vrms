@@ -6,6 +6,20 @@ import {
   scrubChanges,
 } from './erasure-rewrite';
 
+// Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
+jest.mock('../../integrations/bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../../integrations/bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-1' })),
+}));
+jest.mock('../../integrations/bms/expedite-answers', () => ({
+  ...jest.requireActual<object>('../../integrations/bms/expedite-answers'),
+  declineWaitingExpedites: jest.fn(() => Promise.resolve(0)),
+}));
+jest.mock('../expedite-views', () => ({
+  ...jest.requireActual<object>('../expedite-views'),
+  waitingExpedites: jest.fn(() => Promise.resolve([])),
+}));
+
 // covers: suite spec 0012 AC-25 (every name or email copy beside a user id is in the rewrite
 // list, and audit `changes` lose only exact matches)
 

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { DeliveryKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service';
+import type { VersionColumn } from './delivery-kinds';
 import { LEASE_EXPIRED, LEASE_MS, type RowUpdate } from './retry-rule';
 
 /** A row the worker claimed. `attempts` already counts the send about to happen. */
@@ -14,6 +15,13 @@ export type ClaimedDelivery = {
 };
 
 export const CLAIM_LIMIT = 50;
+
+/** A versioned row's number, saved on its ticket once the other system took it. */
+export type SentVersion = {
+  repairTicketId: string;
+  eventVersion: number;
+  column: VersionColumn;
+};
 
 /**
  * Spec 0029 (child 0004): the outbox's SQL, kept apart from the worker so the worker's logic is
@@ -77,13 +85,16 @@ export class DeliveryStore {
     });
   }
 
-  /** The last version VMMS accepted for this ticket (0 before the first event). */
-  async vmmsEventVersion(repairTicketId: string): Promise<number> {
+  /** The last version the other system accepted for this ticket (0 before the first message). */
+  async eventVersion(
+    repairTicketId: string,
+    column: VersionColumn,
+  ): Promise<number> {
     const ticket = await this.prisma.repairTicket.findUnique({
       where: { id: repairTicketId },
-      select: { vmmsEventVersion: true },
+      select: { vmmsEventVersion: true, bmsEventVersion: true },
     });
-    return ticket?.vmmsEventVersion ?? 0;
+    return ticket?.[column] ?? 0;
   }
 
   /**
@@ -94,7 +105,7 @@ export class DeliveryStore {
     id: string,
     update: RowUpdate,
     now: Date,
-    version?: { repairTicketId: string; eventVersion: number },
+    version?: SentVersion,
   ): Promise<void> {
     const data: Prisma.DeliveryUpdateManyMutationInput =
       update.status === 'SENT'
@@ -123,11 +134,19 @@ export class DeliveryStore {
       if (count === 1 && update.status === 'SENT' && version) {
         // Raw SQL on purpose: Prisma's @updatedAt would move the ticket's updatedAt and make
         // every open edit dialog on it stale, for a change no person made
-        await tx.$executeRaw`
-          UPDATE repair_tickets
-          SET vmms_event_version = GREATEST(vmms_event_version, ${version.eventVersion})
-          WHERE id = ${version.repairTicketId}::uuid
-        `;
+        if (version.column === 'bmsEventVersion') {
+          await tx.$executeRaw`
+            UPDATE repair_tickets
+            SET bms_event_version = GREATEST(bms_event_version, ${version.eventVersion})
+            WHERE id = ${version.repairTicketId}::uuid
+          `;
+        } else {
+          await tx.$executeRaw`
+            UPDATE repair_tickets
+            SET vmms_event_version = GREATEST(vmms_event_version, ${version.eventVersion})
+            WHERE id = ${version.repairTicketId}::uuid
+          `;
+        }
       }
     });
   }

@@ -2,6 +2,9 @@ import type { DeliveryKind, DeliveryTarget } from '@prisma/client';
 
 // Spec 0029 (child 0004): where each kind of message goes, and the service token it needs.
 
+/** The ticket columns that count each system's accepted versions. */
+export type VersionColumn = 'vmmsEventVersion' | 'bmsEventVersion';
+
 export type KindRoute = {
   target: DeliveryTarget;
   path: string;
@@ -11,7 +14,7 @@ export type KindRoute = {
    * The ticket column holding the last version the other system accepted. The worker fills
    * `eventVersion` from it at send time, so versions never skip.
    */
-  versionColumn?: 'vmmsEventVersion';
+  versionColumn?: VersionColumn;
 };
 
 export const KIND_ROUTES: Record<DeliveryKind, KindRoute> = {
@@ -28,12 +31,12 @@ export const KIND_ROUTES: Record<DeliveryKind, KindRoute> = {
     audience: 'VMMS',
     scope: 'repair.referral-status.write',
   },
-  // BMS's versions come with migration 2 (bmsEventVersion, child 0003), built with flow 3
   REPAIR_UPDATE: {
     target: 'BMS',
     path: '/bms/integrations/vrms/repair-updates',
     audience: 'BMS',
     scope: 'repair.update.write',
+    versionColumn: 'bmsEventVersion',
   },
   EXPEDITE_ANSWER: {
     target: 'BMS',

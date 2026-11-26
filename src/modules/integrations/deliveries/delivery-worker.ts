@@ -6,7 +6,11 @@ import { reportJobFailure } from '../../../monitoring/job-failure';
 import { SettingsService } from '../../../settings/settings.service';
 import { ServiceTokens } from '../service-tokens';
 import { KIND_ROUTES, type KindRoute } from './delivery-kinds';
-import { DeliveryStore, type ClaimedDelivery } from './delivery-store';
+import {
+  DeliveryStore,
+  type ClaimedDelivery,
+  type SentVersion,
+} from './delivery-store';
 import {
   errorFromBody,
   errorFromThrown,
@@ -87,12 +91,13 @@ export class DeliveryWorker {
   private async deliver(row: ClaimedDelivery, now: () => Date) {
     const route = KIND_ROUTES[row.kind];
     let payload: Record<string, unknown> = row.payload;
-    let version: { repairTicketId: string; eventVersion: number } | undefined;
+    let version: SentVersion | undefined;
     if (route.versionColumn && row.repairTicketId) {
+      const column = route.versionColumn;
       const eventVersion =
-        (await this.store.vmmsEventVersion(row.repairTicketId)) + 1;
+        (await this.store.eventVersion(row.repairTicketId, column)) + 1;
       payload = { ...payload, eventVersion };
-      version = { repairTicketId: row.repairTicketId, eventVersion };
+      version = { repairTicketId: row.repairTicketId, eventVersion, column };
     }
     const outcome = await this.send(route, payload);
     const at = now();

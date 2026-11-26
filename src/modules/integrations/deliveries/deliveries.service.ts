@@ -20,6 +20,7 @@ import {
   encodeCursor,
   olderThan,
 } from '../../vrms/audit-events';
+import { CHANGE_REASON, queueBmsRepairUpdate } from '../bms/bms-repair-updates';
 
 // Spec 0029 (child 0004), AC-22: the Deliveries tab of the Audit Logs page. Reading needs
 // audit.view (the route checks it); Retry and Dismiss need integration.respond.
@@ -198,12 +199,24 @@ export class DeliveriesService {
    * version number is used up, since versions are assigned at send.
    */
   async dismiss(id: string, reason: string, user: Actor) {
-    await this.decide(id, user, 'DELIVERY_DISMISSED', reason, () => ({
-      status: 'DISMISSED',
-      dismissReason: reason,
-    }));
-    // Dismissing a BMS repair update also queues a fresh one with the ticket's current state
-    // (child 0003); that kind is written from flow 3 on, with bmsEventVersion
+    await this.decide(
+      id,
+      user,
+      'DELIVERY_DISMISSED',
+      reason,
+      () => ({ status: 'DISMISSED', dismissReason: reason }),
+      // AC-22: a dismissed BMS repair update is replaced by a fresh one with the ticket's
+      // current state, so BMS never keeps a stale return date (child 0003)
+      async (tx, row) => {
+        if (row.kind === 'REPAIR_UPDATE' && row.repairTicketId) {
+          await queueBmsRepairUpdate(
+            tx,
+            row.repairTicketId,
+            CHANGE_REASON.resent,
+          );
+        }
+      },
+    );
     return this.detail(id);
   }
 
@@ -213,6 +226,10 @@ export class DeliveriesService {
     action: 'DELIVERY_RETRIED' | 'DELIVERY_DISMISSED',
     note: string | null,
     data: (now: Date) => Prisma.DeliveryUpdateManyMutationInput,
+    after?: (
+      tx: Prisma.TransactionClient,
+      row: { kind: DeliveryKind; repairTicketId: string | null },
+    ) => Promise<void>,
   ) {
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
@@ -239,6 +256,7 @@ export class DeliveriesService {
           ...auditData(user, deliveryEvent(action, row, note), now),
         },
       });
+      await after?.(tx, row);
     });
     this.logger.log(`Delivery ${id}: ${action} by ${user.email}`);
   }

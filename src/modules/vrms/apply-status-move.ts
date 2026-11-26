@@ -16,12 +16,17 @@ import {
   PhotoSwitches,
 } from './photo-rules';
 import { STALE_TICKET } from './ticket-knowledge';
-import { isFinished } from './ticket-statuses';
+import { isFinished, STATUS_LABELS } from './ticket-statuses';
 import type { TicketMove } from './ticket-transitions';
 import {
   queueVmmsRepairEvent,
   type VmmsRepairEventType,
 } from '../integrations/vmms-repair-events';
+import {
+  CHANGE_REASON,
+  queueBmsRepairUpdate,
+} from '../integrations/bms/bms-repair-updates';
+import { declineWaitingExpedites } from '../integrations/bms/expedite-answers';
 
 // Spec 0014, AC-1, AC-7, AC-9, AC-10 and AC-12: every effect of one status move, inside the
 // caller's transaction. Later features call it with their own trigger's move.
@@ -165,6 +170,25 @@ export async function applyStatusMove(
   // 5. Spec 0029, AC-13: VMMS hears of the move in the same transaction, with the row locked by
   // the conditional update above, so two moves on one ticket queue in commit order
   await queueVmmsRepairEvent(tx, ticket.id, vmmsEventFor(move.to));
+
+  // 6. Spec 0029 (child 0003), AC-17 and AC-19: BMS hears of the move the same way. A finished
+  // ticket then declines its waiting expedite requests, their answers queued after the update
+  await queueBmsRepairUpdate(tx, ticket.id, bmsChangeReason(move.to));
+  if (move.to === RepairStatus.CLOSED || move.to === RepairStatus.CANCELLED) {
+    await declineWaitingExpedites(
+      tx,
+      ticket.id,
+      move.to,
+      options.auditAt ?? now,
+    );
+  }
+}
+
+/** The change reason a move sends BMS. */
+export function bmsChangeReason(to: RepairStatus): string {
+  if (to === RepairStatus.CLOSED) return CHANGE_REASON.finished;
+  if (to === RepairStatus.CANCELLED) return CHANGE_REASON.cancelled;
+  return CHANGE_REASON.status(STATUS_LABELS[to]);
 }
 
 /** The repair event a move sends VMMS: the end of the repair, or a status change. */

@@ -8,6 +8,7 @@ export type EnqueueInput = {
   payload: Record<string, unknown>;
   repairTicketId?: string;
   referralId?: string;
+  expediteRequestId?: string;
 };
 
 /**
@@ -28,6 +29,7 @@ export async function enqueueDelivery(
       payload: { ...input.payload, eventId: id },
       repairTicketId: input.repairTicketId,
       referralId: input.referralId,
+      expediteRequestId: input.expediteRequestId,
     },
   });
   return id;

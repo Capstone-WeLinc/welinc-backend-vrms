@@ -7,11 +7,27 @@ import type { PhotoSwitches } from './photo-rules';
 import { findMove } from './ticket-transitions';
 import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
 
+// Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
+jest.mock('../integrations/bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../integrations/bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-1' })),
+}));
+jest.mock('../integrations/bms/expedite-answers', () => ({
+  ...jest.requireActual<object>('../integrations/bms/expedite-answers'),
+  declineWaitingExpedites: jest.fn(() => Promise.resolve(0)),
+}));
+jest.mock('./expedite-views', () => ({
+  ...jest.requireActual<object>('./expedite-views'),
+  waitingExpedites: jest.fn(() => Promise.resolve([])),
+}));
+
 // Spec 0029, AC-13: the event's own reads and outbox insert are tested in vmms-repair-events.spec
 jest.mock('../integrations/vmms-repair-events', () => ({
   queueVmmsRepairEvent: jest.fn(() => Promise.resolve({ deliveryId: 'd-1' })),
 }));
 const queued = jest.mocked(queueVmmsRepairEvent);
+import { queueBmsRepairUpdate } from '../integrations/bms/bms-repair-updates';
+import { declineWaitingExpedites } from '../integrations/bms/expedite-answers';
 
 const ALL_ON: PhotoSwitches = {
   requireBeforeToStart: true,
@@ -415,6 +431,65 @@ describe('applyStatusMove', () => {
   });
 
   // Spec 0029, AC-13 and AC-36
+  describe('the BMS repair update and the auto decline (spec 0029, child 0003)', () => {
+    const bmsQueued = jest.mocked(queueBmsRepairUpdate);
+    const declined = jest.mocked(declineWaitingExpedites);
+    beforeEach(() => {
+      bmsQueued.mockClear();
+      declined.mockClear();
+    });
+
+    it.each([
+      [
+        RepairStatus.ASSIGNED,
+        RepairStatus.IN_PROGRESS,
+        'Status changed to In progress',
+        null,
+      ],
+      [
+        RepairStatus.IN_PROGRESS,
+        RepairStatus.ON_HOLD,
+        'Status changed to On hold',
+        null,
+      ],
+      [
+        RepairStatus.FOR_VERIFICATION,
+        RepairStatus.CLOSED,
+        'Repair finished',
+        'CLOSED',
+      ],
+      [
+        RepairStatus.IN_PROGRESS,
+        RepairStatus.CANCELLED,
+        'Repair cancelled',
+        'CANCELLED',
+      ],
+    ])(
+      'tells BMS of %s to %s (AC-17), and declines waiting requests only when it finishes (AC-19)',
+      async (from, to, reason, finished) => {
+        const { tx } = makeTx(1, 150000, photoRows(5, 5));
+        await applyStatusMove(
+          tx,
+          ticket(from),
+          move(from, to),
+          actor,
+          'note',
+          NOW,
+        );
+        expect(bmsQueued).toHaveBeenCalledWith(tx, 'ticket-1', reason);
+        if (finished) {
+          expect(declined).toHaveBeenCalledWith(tx, 'ticket-1', finished, NOW);
+          // The update is queued before the answers, so BMS reads them in that order
+          expect(bmsQueued.mock.invocationCallOrder[0]).toBeLessThan(
+            declined.mock.invocationCallOrder[0],
+          );
+        } else {
+          expect(declined).not.toHaveBeenCalled();
+        }
+      },
+    );
+  });
+
   describe('the VMMS repair event', () => {
     beforeEach(() => queued.mockClear());
 

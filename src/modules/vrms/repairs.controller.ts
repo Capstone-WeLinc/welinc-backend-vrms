@@ -45,6 +45,11 @@ import {
 } from './dto/link-issue-knowledge.dto';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import {
+  UpcomingTripsResponse,
+  VehicleScheduleQueryDto,
+} from '../integrations/bms/bms-integration.dto';
+import { UpcomingTripsService } from '../integrations/bms/upcoming-trips.service';
+import {
   ApiErrors,
   ApiGenericErrors,
   ApiUserToken,
@@ -62,6 +67,7 @@ export class RepairsController {
     private readonly repairsService: RepairsService,
     private readonly editsService: TicketEditsService,
     private readonly checklistEdits: ChecklistEditsService,
+    private readonly upcomingTrips: UpcomingTripsService,
   ) {}
 
   @ApiCreatedResponse({ type: TicketCreatedResponse })
@@ -119,6 +125,15 @@ export class RepairsController {
   @Get('audit-logs/actors')
   findAuditActors() {
     return this.repairsService.findAuditActors();
+  }
+
+  // Spec 0029 (child 0003), AC-16: the truck's upcoming trips, read live from BMS for the new
+  // ticket form and the ticket page; 200 { available: false } when BMS can't answer (before :id)
+  @ApiOkResponse({ type: UpcomingTripsResponse })
+  @RequirePermission('ticket.create', 'ticket.view', 'ticket.view_all')
+  @Get('vehicle-schedule')
+  vehicleSchedule(@Query() query: VehicleScheduleQueryDto) {
+    return this.upcomingTrips.forVehicle(query.vehicleId);
   }
 
   // Single repair detail; outside the caller's scope is a 403

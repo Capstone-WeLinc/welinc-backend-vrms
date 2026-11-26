@@ -44,6 +44,9 @@ export const AUDIT_ACTIONS = [
   'REFERRAL_REJECTED',
   'DELIVERY_RETRIED',
   'DELIVERY_DISMISSED',
+  'EXPEDITE_REQUESTED',
+  'EXPEDITE_ACCEPTED',
+  'EXPEDITE_DECLINED',
   // Reserved: in the catalog so filters accept them, written by features 33 and 30
   'STATUS_OVERRIDE',
   'TRANSFER_REQUESTED',
@@ -75,6 +78,10 @@ export const AUDIT_CATEGORY: Record<AuditAction, AuditCategory> = {
   REFERRAL_REJECTED: 'STATUS',
   DELIVERY_RETRIED: 'STATUS',
   DELIVERY_DISMISSED: 'STATUS',
+  // Child 0003: BMS's expedite requests and their answers, beside the referral decisions
+  EXPEDITE_REQUESTED: 'STATUS',
+  EXPEDITE_ACCEPTED: 'STATUS',
+  EXPEDITE_DECLINED: 'STATUS',
   STATUS_CHANGE: 'STATUS',
   STATUS_OVERRIDE: 'STATUS',
   UNLOCK: 'STATUS',
@@ -145,12 +152,23 @@ export type Actor = {
   system: string;
 };
 
+/** Spec 0029, AC-25: the system a row's change came from, when it was another system or VRMS itself. */
+export type SystemName = 'VMMS' | 'BMS' | 'VRMS';
+export type SystemActor = {
+  readonly kind: 'SYSTEM';
+  readonly name?: SystemName;
+};
 /**
  * Suite spec 0012, AC-24: a change nobody made by hand (the directory feed unassigning a person
- * who left). Its rows have no actor id, name or email, and the role `SYSTEM`.
+ * who left). Its rows have no actor id, name or email, and the role `SYSTEM`. A row from another
+ * system carries that system's name (spec 0029, AC-25).
  */
-export const SYSTEM_ACTOR = { kind: 'SYSTEM' } as const;
-export type SystemActor = typeof SYSTEM_ACTOR;
+export const SYSTEM_ACTOR: SystemActor = { kind: 'SYSTEM' };
+/** A system actor that names its system (AC-25): `actorName` is the system's name. */
+export const systemActor = (name: SystemName): SystemActor => ({
+  kind: 'SYSTEM',
+  name,
+});
 /** Who an audit row names: a signed in person, or the system. */
 export type RowActor = Actor | SystemActor;
 
@@ -182,7 +200,7 @@ export function actorFields(user: RowActor): ActorFields {
   if (isSystemActor(user)) {
     return {
       actorUserId: null,
-      actorName: null,
+      actorName: user.name ?? null,
       actorEmail: null,
       actorRole: 'SYSTEM',
     };
@@ -261,6 +279,56 @@ export function deliveryEvent(
       },
     ],
     note,
+  };
+}
+
+/** Spec 0029 (child 0003), AC-18: BMS asked to hurry the repair for one Job Order. */
+export function expediteRequestedEvent(
+  jobOrderNumber: string,
+  reason: string,
+): AuditEventData {
+  return {
+    action: 'EXPEDITE_REQUESTED',
+    changes: [{ field: 'expedite', before: null, after: jobOrderNumber }],
+    note: reason,
+  };
+}
+
+/**
+ * AC-19: a BMS expedite request answered: accepted (the new priority), declined by a person
+ * with a reason, or declined by VRMS when the ticket closed or was cancelled.
+ */
+export function expediteDecidedEvent(
+  decision: 'ACCEPTED' | 'DECLINED',
+  jobOrderNumber: string,
+  note: string | null,
+): AuditEventData {
+  return {
+    action: decision === 'ACCEPTED' ? 'EXPEDITE_ACCEPTED' : 'EXPEDITE_DECLINED',
+    changes: [{ field: 'expedite', before: 'WAITING', after: jobOrderNumber }],
+    note,
+  };
+}
+
+/**
+ * Child 0003: the due date changed (written only by setDueAt). A TICKET_EDITED row with one
+ * `dueAt` line, the dates as ISO strings, and the change reason as the note.
+ */
+export function dueDateEvent(
+  before: Date | null,
+  after: Date | null,
+  reason: string,
+): AuditEventData {
+  return {
+    action: 'TICKET_EDITED',
+    changes: [
+      {
+        field: 'dueAt',
+        before: before?.toISOString() ?? null,
+        after: after?.toISOString() ?? null,
+      },
+    ],
+    note: reason,
   };
 }
 
@@ -859,8 +927,12 @@ export function toAuditEvent(row: AuditRow): AuditEvent {
     type: row.action,
     category: categoryOf(row.action),
     at: row.createdAt.toISOString(),
+    // A row from another system has only a name ("BMS", spec 0029, AC-25); a plain system row has
+    // none and reads without an actor
     actor:
-      row.actorUserId || row.actorEmail
+      row.actorUserId ||
+      row.actorEmail ||
+      (row.actorRole === 'SYSTEM' && row.actorName)
         ? {
             id: row.actorUserId,
             name: row.actorName ?? row.actorEmail,

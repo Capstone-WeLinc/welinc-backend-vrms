@@ -8,6 +8,20 @@ import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
 import { RepairsService } from './repairs.service';
 import type { CreateRepairDto } from './dto/create-repair.dto';
 
+// Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
+jest.mock('../integrations/bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../integrations/bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-1' })),
+}));
+jest.mock('../integrations/bms/expedite-answers', () => ({
+  ...jest.requireActual<object>('../integrations/bms/expedite-answers'),
+  declineWaitingExpedites: jest.fn(() => Promise.resolve(0)),
+}));
+jest.mock('./expedite-views', () => ({
+  ...jest.requireActual<object>('./expedite-views'),
+  waitingExpedites: jest.fn(() => Promise.resolve([])),
+}));
+
 jest.mock('../integrations/vmms-repair-events', () => ({
   queueVmmsRepairEvent: jest.fn().mockResolvedValue({ deliveryId: 'e1' }),
 }));

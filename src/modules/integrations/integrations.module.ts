@@ -5,6 +5,11 @@ import {
   type NestModule,
 } from '@nestjs/common';
 import SharedModule from '../../shared/shared.module';
+import { BmsIntegrationsController } from './bms/bms-integrations.controller';
+import { BmsRepairReadsService } from './bms/bms-repair-reads.service';
+import { BmsScheduleClient } from './bms/bms-schedule.client';
+import { ExpediteIntakeService } from './bms/expedite-intake.service';
+import { UpcomingTripsService } from './bms/upcoming-trips.service';
 import { DeliveriesController } from './deliveries/deliveries.controller';
 import { DeliveriesService } from './deliveries/deliveries.service';
 import { DeliveryRetentionJob } from './deliveries/delivery-retention.job';
@@ -32,6 +37,7 @@ import { VmmsRepairReadsService } from './vmms-repair-reads.service';
   imports: [SharedModule],
   controllers: [
     VmmsIntegrationsController,
+    BmsIntegrationsController,
     ReferralsController,
     DeliveriesController,
   ],
@@ -49,12 +55,17 @@ import { VmmsRepairReadsService } from './vmms-repair-reads.service';
     OutsideShopsService,
     DeliveriesService,
     DeliveryRetentionJob,
+    BmsScheduleClient,
+    UpcomingTripsService,
+    ExpediteIntakeService,
+    BmsRepairReadsService,
   ],
   exports: [
     ServiceTokens,
     VmmsFleetClient,
     ReferralsService,
     OutsideShopsService,
+    UpcomingTripsService,
   ],
 })
 export class IntegrationsModule implements NestModule {

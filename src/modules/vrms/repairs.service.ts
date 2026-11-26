@@ -78,6 +78,11 @@ import {
 } from './ticket-inputs';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
+import { waitingExpedites } from './expedite-views';
+import {
+  CHANGE_REASON,
+  queueBmsRepairUpdate,
+} from '../integrations/bms/bms-repair-updates';
 import { applyFleetVehicle } from '../integrations/fleet/fleet-apply';
 import {
   FleetUnavailableError,
@@ -655,6 +660,8 @@ export class RepairsService {
     if (ticket.repairStatus !== RepairStatus.OPEN) {
       await queueVmmsRepairEvent(tx, ticket.id, 'STATUS_UPDATED');
     }
+    // Child 0003, AC-17: BMS gets one update with the ticket as created, Assigned or not
+    await queueBmsRepairUpdate(tx, ticket.id, CHANGE_REASON.opened);
 
     return ticket;
   }
@@ -1667,15 +1674,18 @@ export class RepairsService {
         issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
       ),
     ];
-    const [stats, lastRejection, photoCounts] = await Promise.all([
-      loadStats(
-        this.prisma,
-        entryIds,
-        this.settings.get('knowledge.min_samples'),
-      ),
-      this.lastRejection(ticket),
-      livePhotoCounts(this.prisma, ticket.id),
-    ]);
+    const [stats, lastRejection, photoCounts, expediteRequests] =
+      await Promise.all([
+        loadStats(
+          this.prisma,
+          entryIds,
+          this.settings.get('knowledge.min_samples'),
+        ),
+        this.lastRejection(ticket),
+        livePhotoCounts(this.prisma, ticket.id),
+        // Spec 0029 (child 0003), AC-18: the banner's waiting BMS requests
+        waitingExpedites(this.prisma, ticket.id),
+      ]);
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );
@@ -1686,6 +1696,7 @@ export class RepairsService {
       lastRejection,
       // Spec 0018: whether work has started decides the photo strip's group order (AC-16)
       workStartedAt: ticket.workStartedAt?.toISOString() ?? null,
+      expediteRequests,
     };
   }
 
@@ -1780,6 +1791,8 @@ export class RepairsService {
       id: ticket.id,
       repairNumber: ticket.repairNumber,
       status: ticket.repairStatus,
+      // Spec 0029, AC-16: the ticket page asks for the truck's upcoming trips by it
+      vehicleId: ticket.vehicleId,
       vehiclePlate: ticket.vehicle.plateNumber,
       vehicleModel: ticket.vehicle.model,
       // Spec 0029, AC-12: both null on a ticket opened from a VMMS referral

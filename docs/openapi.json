@@ -1115,6 +1115,281 @@
         ]
       }
     },
+    "/vrms/expedite-requests": {
+      "get": {
+        "operationId": "ExpediteDecisionsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpediteRequestListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Expedite requests"
+        ]
+      }
+    },
+    "/vrms/expedite-requests/{id}/accept": {
+      "post": {
+        "operationId": "ExpediteDecisionsController_accept",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptExpediteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`EXPEDITE_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "EXPEDITE_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`EXPEDITE_ALREADY_DECIDED` or `STALE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "EXPEDITE_ALREADY_DECIDED",
+                            "STALE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Expedite requests"
+        ]
+      }
+    },
+    "/vrms/expedite-requests/{id}/decline": {
+      "post": {
+        "operationId": "ExpediteDecisionsController_decline",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeclineExpediteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`EXPEDITE_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "EXPEDITE_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`EXPEDITE_ALREADY_DECIDED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "EXPEDITE_ALREADY_DECIDED"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Expedite requests"
+        ]
+      }
+    },
     "/vrms/health": {
       "get": {
         "operationId": "HealthController_health",
@@ -1156,6 +1431,222 @@
         },
         "tags": [
           "Operations"
+        ]
+      }
+    },
+    "/vrms/integrations/bms/expedite-requests": {
+      "post": {
+        "operationId": "BmsIntegrationsController_receiveExpedite",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpediteRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpediteAcceptedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`IDEMPOTENCY_KEY_MISMATCH` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "IDEMPOTENCY_KEY_MISMATCH"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "WRONG_TOKEN_USE",
+                            "FORBIDDEN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`NO_OPEN_REPAIR`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NO_OPEN_REPAIR"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`REQUEST_ID_REUSED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REQUEST_ID_REUSED"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "summary": "AC-18: BMS asks VRMS to hurry the truck's open repair for one Job Order.",
+        "tags": [
+          "Integrations: BMS"
+        ]
+      }
+    },
+    "/vrms/integrations/bms/vehicles/{vmmsVehicleId}/active-repair": {
+      "get": {
+        "operationId": "BmsIntegrationsController_activeRepair",
+        "parameters": [
+          {
+            "name": "vmmsVehicleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveRepairResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "WRONG_TOKEN_USE",
+                            "FORBIDDEN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "summary": "AC-20: the truck's open repair, or `{ repair: null }`. Never costs, notes or people.",
+        "tags": [
+          "Integrations: BMS"
         ]
       }
     },
@@ -5406,6 +5897,9 @@
                 "REFERRAL_REJECTED",
                 "DELIVERY_RETRIED",
                 "DELIVERY_DISMISSED",
+                "EXPEDITE_REQUESTED",
+                "EXPEDITE_ACCEPTED",
+                "EXPEDITE_DECLINED",
                 "STATUS_OVERRIDE",
                 "TRANSFER_REQUESTED",
                 "TRANSFER_APPROVED",
@@ -5471,6 +5965,9 @@
                   "REFERRAL_REJECTED",
                   "DELIVERY_RETRIED",
                   "DELIVERY_DISMISSED",
+                  "EXPEDITE_REQUESTED",
+                  "EXPEDITE_ACCEPTED",
+                  "EXPEDITE_DECLINED",
                   "STATUS_OVERRIDE",
                   "TRANSFER_REQUESTED",
                   "TRANSFER_APPROVED",
@@ -5762,6 +6259,73 @@
         "responses": {
           "200": {
             "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/vehicle-schedule": {
+      "get": {
+        "operationId": "RepairsController_vehicleSchedule",
+        "parameters": [
+          {
+            "name": "vehicleId",
+            "required": true,
+            "in": "query",
+            "description": "VRMS's own vehicle id",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpcomingTripsResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "The input failed validation",
@@ -6438,7 +7002,13 @@
       "name": "Deliveries"
     },
     {
+      "name": "Expedite requests"
+    },
+    {
       "name": "Fleet and Team"
+    },
+    {
+      "name": "Integrations: BMS"
     },
     {
       "name": "Integrations: VMMS"
@@ -6492,6 +7062,101 @@
       }
     },
     "schemas": {
+      "AcceptExpediteDto": {
+        "type": "object",
+        "properties": {
+          "priority": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ],
+            "type": "string"
+          },
+          "dueAt": {
+            "type": "string",
+            "description": "The new expected return date; omitted keeps the ticket's.",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "The ticket as the dialog loaded it: a change since answers 409 `STALE`.",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "priority",
+          "updatedAt"
+        ]
+      },
+      "ActiveRepairResponse": {
+        "type": "object",
+        "properties": {
+          "repair": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ActiveRepairView"
+              }
+            ]
+          }
+        },
+        "required": [
+          "repair"
+        ]
+      },
+      "ActiveRepairView": {
+        "type": "object",
+        "properties": {
+          "repairTicketId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repairTicketNumber": {
+            "type": "string"
+          },
+          "repairStatus": {
+            "type": "string",
+            "description": "VRMS's own status, all nine values"
+          },
+          "repairStatusLabel": {
+            "type": "string",
+            "example": "On hold"
+          },
+          "reason": {
+            "type": "string",
+            "description": "The issue category names, or \"Not yet diagnosed\"; never issue text, notes or people"
+          },
+          "issuesResolved": {
+            "type": "number"
+          },
+          "issuesTotal": {
+            "type": "number"
+          },
+          "expectedReturnAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "repairTicketId",
+          "repairTicketNumber",
+          "repairStatus",
+          "repairStatusLabel",
+          "reason",
+          "issuesResolved",
+          "issuesTotal",
+          "expectedReturnAt",
+          "openedAt"
+        ]
+      },
       "AddIssueDto": {
         "type": "object",
         "properties": {
@@ -6853,6 +7518,19 @@
           "body"
         ]
       },
+      "DeclineExpediteDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
       "DiagnosisFeedbackDto": {
         "type": "object",
         "properties": {
@@ -6964,6 +7642,148 @@
         },
         "required": [
           "lastUpdatedAt"
+        ]
+      },
+      "ExpediteAcceptedView": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "WAITING",
+              "ACCEPTED",
+              "DECLINED"
+            ]
+          },
+          "repairTicketNumber": {
+            "type": "string",
+            "example": "REP-20261127-0007"
+          },
+          "duplicate": {
+            "type": "boolean",
+            "description": "True when this requestId was already received"
+          }
+        },
+        "required": [
+          "requestId",
+          "status",
+          "repairTicketNumber",
+          "duplicate"
+        ]
+      },
+      "ExpediteRequestDto": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The duplicate key"
+          },
+          "vmmsVehicleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobOrderNumber": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "example": "JO-2026-0142"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 1000
+          },
+          "neededBy": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-12-02",
+            "description": "YYYY-MM-DD, Asia/Manila"
+          }
+        },
+        "required": [
+          "requestId",
+          "vmmsVehicleId",
+          "jobOrderNumber",
+          "reason"
+        ]
+      },
+      "ExpediteRequestListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpediteRequestView"
+            }
+          },
+          "waitingCount": {
+            "type": "number",
+            "description": "Every waiting request, for the dashboard tile"
+          }
+        },
+        "required": [
+          "items",
+          "waitingCount"
+        ]
+      },
+      "ExpediteRequestView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jobOrderNumber": {
+            "type": "string",
+            "example": "JO-2026-0142"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "neededBy": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-12-02"
+          },
+          "receivedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "repairTicketId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repairNumber": {
+            "type": "string"
+          },
+          "vehiclePlate": {
+            "type": "string"
+          },
+          "ticketPriority": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "jobOrderNumber",
+          "reason",
+          "neededBy",
+          "receivedAt",
+          "repairTicketId",
+          "repairNumber",
+          "vehiclePlate",
+          "ticketPriority"
         ]
       },
       "FleetChangeAcceptedView": {
@@ -7474,6 +8294,11 @@
           "vehicleModel": {
             "type": "string"
           },
+          "vehicleId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "VRMS's own vehicle id"
+          },
           "driverName": {
             "type": "string",
             "nullable": true,
@@ -7685,6 +8510,13 @@
             "format": "date-time",
             "description": "The first move into In progress or Outsourced; never cleared"
           },
+          "expediteRequests": {
+            "description": "Waiting BMS expedite requests, oldest first (spec 0029, AC-18)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpediteRequestView"
+            }
+          },
           "fleetStale": {
             "type": "boolean",
             "description": "True when VMMS couldn't be reached and the truck's facts came from VRMS's last copy"
@@ -7696,6 +8528,7 @@
           "status",
           "vehiclePlate",
           "vehicleModel",
+          "vehicleId",
           "driverName",
           "driverId",
           "fromVmmsWorkOrder",
@@ -7734,6 +8567,7 @@
           "moves",
           "lastRejection",
           "workStartedAt",
+          "expediteRequests",
           "fleetStale"
         ]
       },
@@ -7766,6 +8600,11 @@
           },
           "vehicleModel": {
             "type": "string"
+          },
+          "vehicleId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "VRMS's own vehicle id"
           },
           "driverName": {
             "type": "string",
@@ -7977,6 +8816,13 @@
             "nullable": true,
             "format": "date-time",
             "description": "The first move into In progress or Outsourced; never cleared"
+          },
+          "expediteRequests": {
+            "description": "Waiting BMS expedite requests, oldest first (spec 0029, AC-18)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExpediteRequestView"
+            }
           }
         },
         "required": [
@@ -7985,6 +8831,7 @@
           "status",
           "vehiclePlate",
           "vehicleModel",
+          "vehicleId",
           "driverName",
           "driverId",
           "fromVmmsWorkOrder",
@@ -8022,7 +8869,8 @@
           "can",
           "moves",
           "lastRejection",
-          "workStartedAt"
+          "workStartedAt",
+          "expediteRequests"
         ]
       },
       "TicketEditDto": {
@@ -8372,6 +9220,11 @@
           "vehicleModel": {
             "type": "string"
           },
+          "vehicleId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "VRMS's own vehicle id"
+          },
           "driverName": {
             "type": "string",
             "nullable": true,
@@ -8568,6 +9421,7 @@
           "status",
           "vehiclePlate",
           "vehicleModel",
+          "vehicleId",
           "driverName",
           "driverId",
           "fromVmmsWorkOrder",
@@ -8619,6 +9473,59 @@
         "required": [
           "unlockReason",
           "lastUpdatedAt"
+        ]
+      },
+      "UpcomingTripsResponse": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "False when BMS can't be reached; items is then absent"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UpcomingTripView"
+            }
+          }
+        },
+        "required": [
+          "available"
+        ]
+      },
+      "UpcomingTripView": {
+        "type": "object",
+        "properties": {
+          "bookingNumber": {
+            "type": "string",
+            "example": "BK-2026-0418"
+          },
+          "jobOrderNumber": {
+            "type": "string",
+            "nullable": true,
+            "example": "JO-2026-0142"
+          },
+          "serviceDate": {
+            "type": "string",
+            "example": "2026-11-29",
+            "description": "YYYY-MM-DD, Asia/Manila"
+          },
+          "dispatchTime": {
+            "type": "string",
+            "nullable": true,
+            "example": "06:30"
+          },
+          "status": {
+            "type": "string",
+            "example": "CONFIRMED"
+          }
+        },
+        "required": [
+          "bookingNumber",
+          "jobOrderNumber",
+          "serviceDate",
+          "dispatchTime",
+          "status"
         ]
       },
       "UpdateCategoryDto": {
