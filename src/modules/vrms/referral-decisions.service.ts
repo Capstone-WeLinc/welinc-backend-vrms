@@ -12,6 +12,10 @@ import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { PrismaService } from '../../shared/prisma.service';
 import { EmbeddingService } from '../ai/embedding.service';
 import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
+import {
+  CHANGE_REASON,
+  queueBmsRepairUpdate,
+} from '../integrations/bms/bms-repair-updates';
 import { queueReferralRejected } from '../integrations/vmms-referral-events';
 import { ReferralsService } from '../integrations/referrals/referrals.service';
 import {
@@ -170,6 +174,12 @@ export class ReferralDecisionsService {
         tx,
         ticket.id,
         newSchedule ? 'LINKS_UPDATED' : 'STATUS_UPDATED',
+      );
+      // Child 0003, AC-17: the new issues can change the reason BMS shows (their categories)
+      await queueBmsRepairUpdate(
+        tx,
+        ticket.id,
+        CHANGE_REASON.referralAdded(referral.workOrderNumber),
       );
       return { issueIds };
     });

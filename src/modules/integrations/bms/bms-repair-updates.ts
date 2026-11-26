@@ -15,6 +15,9 @@ export const CHANGE_REASON = {
   status: (label: string) => `Status changed to ${label}`,
   finished: 'Repair finished',
   cancelled: 'Repair cancelled',
+  /** A VMMS referral's findings joined the ticket, which can change the reason BMS shows. */
+  referralAdded: (workOrderNumber: string) =>
+    `Issues added from VMMS ${workOrderNumber}`,
   resent: 'Resent after a failed delivery',
 } as const;
 

@@ -10,6 +10,7 @@ import type { PrismaService } from '../../shared/prisma.service';
 import { FakeEmbeddings } from '../ai/embedding.fake';
 import type { ReferralsService } from '../integrations/referrals/referrals.service';
 import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
+import { queueBmsRepairUpdate } from '../integrations/bms/bms-repair-updates';
 import { ReferralDecisionsService } from './referral-decisions.service';
 import type { RepairsService } from './repairs.service';
 
@@ -19,6 +20,11 @@ jest.mock('../integrations/vmms-repair-events', () => ({
   queueVmmsRepairEvent: jest.fn(() => Promise.resolve({ deliveryId: 'd-1' })),
 }));
 const queued = jest.mocked(queueVmmsRepairEvent);
+jest.mock('../integrations/bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../integrations/bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-1' })),
+}));
+const bmsQueued = jest.mocked(queueBmsRepairUpdate);
 
 const admin = {
   sub: '00000000-0000-4000-8000-000000000010',
@@ -148,6 +154,18 @@ const body = {
 };
 
 describe('ReferralDecisionsService.addToTicket (AC-9)', () => {
+  it('tells BMS too, since the new issues can change the reason it shows (child 0003, AC-17)', async () => {
+    bmsQueued.mockClear();
+    const { service, tx } = setup();
+    await service.addToTicket('r1', body, admin, defaultAbility(admin));
+    expect(bmsQueued).toHaveBeenCalledTimes(1);
+    expect(bmsQueued).toHaveBeenCalledWith(
+      tx,
+      't1',
+      'Issues added from VMMS WO-2026-0042',
+    );
+  });
+
   beforeEach(() => queued.mockClear());
 
   it('stamps the ticket, writes REFERRAL_ADDED then one ISSUE_ADDED per line, links the referral and queues LINKS_UPDATED', async () => {
