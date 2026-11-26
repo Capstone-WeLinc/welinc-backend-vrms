@@ -65,6 +65,14 @@ export const missingScope = (scope: string) =>
     'FORBIDDEN',
   );
 
+/** A service token from a client the route doesn't name (VRMS spec 0029, AC-24). */
+export const wrongClient = () =>
+  error(
+    HttpStatus.FORBIDDEN,
+    'This route does not accept calls from this service',
+    'FORBIDDEN',
+  );
+
 /** welinc-auth's keys can't be reached and no usable copy is left. Never a 401. */
 export const authUnavailable = () =>
   error(

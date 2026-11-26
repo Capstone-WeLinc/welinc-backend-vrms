@@ -3,6 +3,7 @@ import { PERMISSION_KEY } from '../../../auth/permissions/permission.decorators'
 import { VehiclesController } from './vehicles.controller';
 
 // Spec 0020, AC-14: every vehicle endpoint needs vehicle.manage, and nothing else opens it.
+// Spec 0029, AC-4: the toggle and the type edit are gone; only the two reads are left.
 // The guard reads this metadata (spec 0011, AC-7); a route with none is denied.
 
 const proto = VehiclesController.prototype as unknown as Record<
@@ -16,18 +17,15 @@ function keysOf(method: string) {
 }
 
 describe('VehiclesController permissions (AC-14)', () => {
-  it.each(['list', 'changes', 'update', 'setStatus'])(
-    '%s needs exactly vehicle.manage',
-    (method) => {
-      expect(keysOf(method)).toEqual(['vehicle.manage']);
-    },
-  );
+  it.each(['list', 'changes'])('%s needs exactly vehicle.manage', (method) => {
+    expect(keysOf(method)).toEqual(['vehicle.manage']);
+  });
 
   it('leaves no route without a key', () => {
     const methods = Object.getOwnPropertyNames(proto).filter(
       (name) => name !== 'constructor' && typeof proto[name] === 'function',
     );
-    expect(methods.length).toBeGreaterThanOrEqual(4);
+    expect(methods.length).toBe(2);
     for (const method of methods) {
       expect(keysOf(method)).toBeDefined();
     }

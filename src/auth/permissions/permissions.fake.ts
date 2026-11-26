@@ -26,6 +26,7 @@ const DEFAULTS: Record<PermissionKey, [boolean, boolean, boolean]> = {
   'ticket.documents.add': [true, true, false],
   'ticket.files.remove_any': [true, true, false],
   'ai.use': [true, true, true],
+  'integration.respond': [true, false, false],
   'audit.view': [true, false, false],
   'analytics.view': [true, false, false],
   'config.read': [true, true, true],

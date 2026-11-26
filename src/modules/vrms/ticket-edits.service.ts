@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -29,15 +30,19 @@ import {
   AddIssueDto,
   EditIssueDto,
   EditTicketDetailsDto,
+  PickOutsideShopDto,
   SetMechanicsDto,
   TicketEditDto,
 } from './dto/edit-ticket.dto';
 import { findMove } from './ticket-transitions';
 import {
+  atOutsideShop,
   RepairsService,
   ticketInclude,
   type TicketRow,
 } from './repairs.service';
+import { OutsideShopsService } from '../integrations/fleet/outside-shops.service';
+import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
 import { assertFresh, editNote, stampEdit } from './ticket-edits';
 import {
   activeDriver,
@@ -45,6 +50,7 @@ import {
   driverForLicense,
   type DriverRow,
   issueDescription,
+  NO_DRIVER_LABEL,
 } from './ticket-inputs';
 import { EmbeddingService } from '../ai/embedding.service';
 import { correctedOdometerProblem, ticketOdometerBounds } from './odometer';
@@ -53,9 +59,9 @@ import { SettingsService } from '../../settings/settings.service';
 // Spec 0019: fix a ticket after create, one section at a time. Each save is one transaction whose
 // first write is the guarded stamp (AC-19), and answers with the ticket as GET /:id returns it.
 
-/** AC-8: the driver as the audit row names them. */
-function driverLabel(driver: { name: string; licenseNumber: string }) {
-  return `${driver.name} (${driver.licenseNumber})`;
+/** AC-8: the driver as the audit row names them (spec 0029: none on a referral ticket). */
+function driverLabel(driver: { name: string; licenseNumber: string } | null) {
+  return driver ? `${driver.name} (${driver.licenseNumber})` : NO_DRIVER_LABEL;
 }
 
 function detailValues(ticket: TicketRow): TicketDetailValues {
@@ -77,7 +83,78 @@ export class TicketEditsService {
     private readonly repairs: RepairsService,
     private readonly settings: SettingsService,
     private readonly embeddings: EmbeddingService,
+    private readonly outsideShops: OutsideShopsService,
   ) {}
+
+  // ── Outside shop (spec 0029, AC-36) ───────────────────────────────────────
+
+  /**
+   * The late pick: a ticket outsourced before the picker existed gets its shop from VMMS's list.
+   * One edit transaction (the guarded stamp, a TICKET_EDITED row) that also tells VMMS the shop
+   * with a STATUS_UPDATED, under the row lock the stamp takes.
+   */
+  // ticket.edit is checked by the route's guard
+  async pickOutsideShop(
+    id: string,
+    dto: PickOutsideShopDto,
+    user: Actor,
+    ability: AppAbility,
+  ) {
+    const { ticket } = await this.loadForEdit(id, dto, ability);
+    if (!atOutsideShop(ticket.repairStatus)) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'NOT_OUTSOURCED',
+        message: 'Only a ticket at an outside shop takes one.',
+      });
+    }
+    if (ticket.vmmsProviderId) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'SHOP_ALREADY_SET',
+        message: `This ticket already went to ${ticket.outsideShopName ?? 'an outside shop'}.`,
+      });
+    }
+    const shop = await this.outsideShops.find(dto.vmmsProviderId);
+    if (!shop) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'SHOP_NOT_FOUND',
+        message: "That shop is no longer on VMMS's list. Pick another one.",
+      });
+    }
+    const name = shop.name.trim().slice(0, 150);
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await stampEdit(tx, ticket, user, now, {
+        vmmsProviderId: shop.id,
+        outsideShopName: name,
+      });
+      await tx.auditLog.create({
+        data: {
+          repairTicketId: id,
+          ...auditData(
+            user,
+            {
+              action: 'TICKET_EDITED',
+              changes: [{ field: 'outsideShop', before: null, after: name }],
+              note: null,
+            },
+            now,
+          ),
+        },
+      });
+      await queueVmmsRepairEvent(tx, id, 'STATUS_UPDATED');
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+    });
+    this.logger.log(
+      `Ticket ${ticket.repairNumber}: outside shop picked by ${user.email}`,
+    );
+    return this.repairs.present(updated, ability);
+  }
 
   /**
    * The checks every edit starts with, in this order: 404, the caller may read the ticket (403),

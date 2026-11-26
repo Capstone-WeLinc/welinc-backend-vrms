@@ -24,8 +24,9 @@ export class ConfigService {
   // ─── Vehicles ───────────────────────────────────────────────────────────────
 
   async listVehicles() {
+    // Spec 0029, AC-5: only active trucks linked to VMMS can be picked
     const vehicles = await this.prisma.vehicle.findMany({
-      where: { isActive: true, deletedAt: null },
+      where: { isActive: true, deletedAt: null, vmmsVehicleId: { not: null } },
       select: { id: true, plateNumber: true, model: true, status: true },
       orderBy: { plateNumber: 'asc' },
     });

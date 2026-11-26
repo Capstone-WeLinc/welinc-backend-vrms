@@ -87,6 +87,12 @@ export const envSchema = z.object({
   /** Parsed and self tested by `assertion-signer.ts` at boot (AC-13). */
   AUTH_CLIENT_PRIVATE_KEY: required,
 
+  /**
+   * VRMS spec 0029: the suite gateway inside the network, for calls to VMMS and BMS (the same
+   * variable VMMS's senders use). Container to container, so exempt from the production https rule.
+   */
+  SUITE_GATEWAY_INTERNAL_URL: url,
+
   // Sessions (spec 0003)
   WEB_APP_URL: url,
   API_PUBLIC_URL: url,
@@ -316,6 +322,7 @@ export const testEnv: Record<string, string> = {
   AUTH_CLIENT_ID: 'vrms',
   AUTH_JWKS_URL: 'http://auth-service:3001/auth/.well-known/jwks.json',
   AUTH_INTERNAL_URL: 'http://auth-service:3001',
+  SUITE_GATEWAY_INTERNAL_URL: 'http://api-gateway:3000',
   AUTH_CLIENT_PRIVATE_KEY: JSON.stringify({
     kty: 'EC',
     crv: 'P-256',

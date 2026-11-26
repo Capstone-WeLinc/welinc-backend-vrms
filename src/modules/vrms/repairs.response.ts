@@ -1,3 +1,4 @@
+import { ExpediteRequestView } from './dto/expedite-decisions.dto';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -181,11 +182,47 @@ export class TicketView {
   @ApiProperty()
   vehicleModel!: string;
 
-  @ApiProperty()
-  driverName!: string;
+  @ApiProperty({ format: 'uuid', description: "VRMS's own vehicle id" })
+  vehicleId!: string;
 
-  @ApiProperty()
-  driverId!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Null on a ticket opened from a VMMS referral (spec 0029, AC-12)',
+  })
+  driverName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  driverId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The VMMS work order number when the ticket was opened from a VMMS referral (spec 0029, AC-12)',
+  })
+  fromVmmsWorkOrder!: string | null;
+
+  @ApiProperty({
+    description:
+      'An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)',
+  })
+  truckRemoved!: boolean;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The outside shop's name from VMMS's list, set on the move to Outsourced (spec 0029, AC-36)",
+  })
+  outsideShopName!: string | null;
+
+  @ApiProperty({
+    description:
+      'Outsourced or Pending approval with no shop picked, from before the picker (spec 0029, AC-36)',
+  })
+  needsOutsideShop!: boolean;
 
   @ApiProperty({ description: 'The garage name' })
   garageLocation!: string;
@@ -390,4 +427,20 @@ export class TicketDetailResponse extends TicketView {
     description: 'The first move into In progress or Outsourced; never cleared',
   })
   workStartedAt!: string | null;
+
+  @ApiProperty({
+    type: [ExpediteRequestView],
+    description:
+      'Waiting BMS expedite requests, oldest first (spec 0029, AC-18)',
+  })
+  expediteRequests!: ExpediteRequestView[];
+}
+
+/** `POST /vrms/repairs`: the ticket, plus whether the truck came from the copy (spec 0029, AC-5). */
+export class TicketCreatedResponse extends TicketDetailResponse {
+  @ApiProperty({
+    description:
+      "True when VMMS couldn't be reached and the truck's facts came from VRMS's last copy",
+  })
+  fleetStale!: boolean;
 }

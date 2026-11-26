@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
+import { IntegrationsModule } from './modules/integrations/integrations.module';
 import { AppService } from './app.service';
 import SharedModule from './shared/shared.module';
 import AuthModule from './auth/auth.module';
@@ -29,6 +30,8 @@ import { MonitoringModule } from './monitoring/monitoring.module';
     AiModule,
     AnalyticsModule,
     AttachmentsModule,
+    // Spec 0029: VMMS and BMS integration (service routes and the delivery outbox)
+    IntegrationsModule,
     SessionModule,
   ],
   controllers: [AppController, HealthController],

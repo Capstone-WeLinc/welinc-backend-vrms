@@ -12,7 +12,22 @@ import { FINISHED_STATUSES, OPEN_STATUSES } from './ticket-statuses';
 import { FakeSettings } from '../../settings/settings.fake';
 import type { SettingKey } from '../../settings/catalog';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { photoRows } from './photo-rules.fake';
+
+// Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
+jest.mock('../integrations/bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../integrations/bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-1' })),
+}));
+jest.mock('../integrations/bms/expedite-answers', () => ({
+  ...jest.requireActual<object>('../integrations/bms/expedite-answers'),
+  declineWaitingExpedites: jest.fn(() => Promise.resolve(0)),
+}));
+jest.mock('./expedite-views', () => ({
+  ...jest.requireActual<object>('./expedite-views'),
+  waitingExpedites: jest.fn(() => Promise.resolve([])),
+}));
 
 // Spec 0014 on the status endpoint: the table, the check order, every effect of a move inside
 // one transaction, and the required stale check. Spec 0010, AC-4a and AC-10 still hold.
@@ -148,6 +163,7 @@ function setup(
         ...opts.settings,
       }),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
     ),
   };
 }
@@ -211,7 +227,7 @@ describe('RepairsService.updateStatus moves (AC-1, AC-7, AC-10, AC-12)', () => {
     },
   );
 
-  it('verifies: records the closer, frees the truck and syncs the odometer in the same transaction', async () => {
+  it('verifies: records the closer, and leaves the truck to VMMS (spec 0029, AC-4)', async () => {
     const { tx, service } = setup(RepairStatus.FOR_VERIFICATION);
     await service.updateStatus(
       TICKET,
@@ -227,10 +243,7 @@ describe('RepairsService.updateStatus moves (AC-1, AC-7, AC-10, AC-12)', () => {
     });
     expect(data.verifiedAt).toBe(data.closedAt);
     expect(data.closedAt).toBe(firstData(tx.auditLog.create).createdAt);
-    expect(firstData(tx.vehicle.update)).toEqual({
-      status: 'AVAILABLE',
-      odometer: 1000,
-    });
+    expect(tx.vehicle.update).not.toHaveBeenCalled();
   });
 
   it('writes statusChangedAt with the move, from the same clock reading as the audit row (spec 0015, AC-7)', async () => {
@@ -297,7 +310,7 @@ describe('RepairsService.updateStatus moves (AC-1, AC-7, AC-10, AC-12)', () => {
     expect(off.tx.repairTicket.updateMany).toHaveBeenCalled();
   });
 
-  it('cancels from any open status with the reason, no verifier, and the truck freed', async () => {
+  it('cancels from any open status with the reason and no verifier, leaving the truck to VMMS', async () => {
     const { tx, service } = setup(RepairStatus.ON_HOLD);
     await service.updateStatus(
       TICKET,
@@ -314,7 +327,7 @@ describe('RepairsService.updateStatus moves (AC-1, AC-7, AC-10, AC-12)', () => {
     expect(data).not.toHaveProperty('verifiedByUserId');
     expect(data.cancellationReason).toBe('Duplicate');
     expect(firstData(tx.auditLog.create).note).toBe('Duplicate');
-    expect(firstData(tx.vehicle.update)).toEqual({ status: 'AVAILABLE' });
+    expect(tx.vehicle.update).not.toHaveBeenCalled();
   });
 
   it('answers 400 without a cancellation reason, after the right check', async () => {

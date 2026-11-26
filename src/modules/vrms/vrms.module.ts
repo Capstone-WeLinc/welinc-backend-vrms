@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import SharedModule from '../../shared/shared.module';
 import { AiModule } from '../ai/ai.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 import { RepairsController } from './repairs.controller';
 import { RepairsService } from './repairs.service';
 import { TicketEditsService } from './ticket-edits.service';
@@ -17,14 +18,21 @@ import { DirectorySync } from './directory/directory-sync.service';
 import { DirectoryPollJob } from './directory/directory-poll.job';
 import { PeopleCopy } from './directory/people-copy';
 import { MechanicWorkService } from './mechanic-work.service';
+import { ExpediteDecisionsController } from './expedite-decisions.controller';
+import { ExpediteDecisionsService } from './expedite-decisions.service';
+import { ReferralDecisionsController } from './referral-decisions.controller';
+import { ReferralDecisionsService } from './referral-decisions.service';
 
 @Module({
-  imports: [SharedModule, AiModule],
+  // IntegrationsModule: the VMMS fleet client for ticket create's fresh read (spec 0029, AC-5)
+  imports: [SharedModule, AiModule, IntegrationsModule],
   controllers: [
     RepairsController,
     ConfigController,
     LookupsController,
     VehiclesController,
+    ReferralDecisionsController,
+    ExpediteDecisionsController,
   ],
   providers: [
     RepairsService,
@@ -39,6 +47,8 @@ import { MechanicWorkService } from './mechanic-work.service';
     DirectoryPollJob,
     PeopleCopy,
     MechanicWorkService,
+    ReferralDecisionsService,
+    ExpediteDecisionsService,
   ],
 })
 export class VrmsModule {}

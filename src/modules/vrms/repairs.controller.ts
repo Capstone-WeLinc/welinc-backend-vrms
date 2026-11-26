@@ -15,7 +15,11 @@ import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
-import { TicketDetailResponse, TicketListResponse } from './repairs.response';
+import {
+  TicketDetailResponse,
+  TicketListResponse,
+  TicketCreatedResponse,
+} from './repairs.response';
 import { TicketEditsService } from './ticket-edits.service';
 import { ChecklistEditsService } from './checklist-edits.service';
 import { SaveChecklistDto } from './dto/save-checklist.dto';
@@ -23,6 +27,7 @@ import {
   AddIssueDto,
   EditIssueDto,
   EditTicketDetailsDto,
+  PickOutsideShopDto,
   SetMechanicsDto,
   TicketEditDto,
 } from './dto/edit-ticket.dto';
@@ -39,7 +44,16 @@ import {
   LinkIssueKnowledgeDto,
 } from './dto/link-issue-knowledge.dto';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
+import {
+  UpcomingTripsResponse,
+  VehicleScheduleQueryDto,
+} from '../integrations/bms/bms-integration.dto';
+import { UpcomingTripsService } from '../integrations/bms/upcoming-trips.service';
+import {
+  ApiErrors,
+  ApiGenericErrors,
+  ApiUserToken,
+} from '../../openapi/decorators';
 
 type AuthRequest = { user: AuthUser };
 
@@ -53,9 +67,11 @@ export class RepairsController {
     private readonly repairsService: RepairsService,
     private readonly editsService: TicketEditsService,
     private readonly checklistEdits: ChecklistEditsService,
+    private readonly upcomingTrips: UpcomingTripsService,
   ) {}
 
-  @ApiCreatedResponse({ type: TicketDetailResponse })
+  @ApiCreatedResponse({ type: TicketCreatedResponse })
+  @ApiErrors(422, ['VEHICLE_NOT_IN_VMMS'])
   @RequirePermission('ticket.create')
   @Post()
   create(
@@ -111,6 +127,15 @@ export class RepairsController {
     return this.repairsService.findAuditActors();
   }
 
+  // Spec 0029 (child 0003), AC-16: the truck's upcoming trips, read live from BMS for the new
+  // ticket form and the ticket page; 200 { available: false } when BMS can't answer (before :id)
+  @ApiOkResponse({ type: UpcomingTripsResponse })
+  @RequirePermission('ticket.create', 'ticket.view', 'ticket.view_all')
+  @Get('vehicle-schedule')
+  vehicleSchedule(@Query() query: VehicleScheduleQueryDto) {
+    return this.upcomingTrips.forVehicle(query.vehicleId);
+  }
+
   // Single repair detail; outside the caller's scope is a 403
   @ApiOkResponse({ type: TicketDetailResponse })
   @RequirePermission('ticket.view', 'ticket.view_all')
@@ -133,6 +158,22 @@ export class RepairsController {
     @CurrentAbility() ability: AppAbility,
   ) {
     return this.repairsService.updateStatus(id, dto, req.user, ability);
+  }
+
+  // Spec 0029, AC-36: the outside shop on a ticket outsourced before the picker existed
+  @ApiOkResponse({ type: TicketDetailResponse })
+  @ApiErrors(400, [null, 'SHOP_NOT_FOUND', 'TICKET_LOCKED'])
+  @ApiErrors(409, [null, 'NOT_OUTSOURCED', 'SHOP_ALREADY_SET'])
+  @ApiErrors(503, ['VMMS_UNAVAILABLE'])
+  @RequirePermission('ticket.edit')
+  @Put(':id/outside-shop')
+  pickOutsideShop(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PickOutsideShopDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.pickOutsideShop(id, dto, req.user, ability);
   }
 
   // Link, relink or unlink a known fix (spec 0007, AC-29)

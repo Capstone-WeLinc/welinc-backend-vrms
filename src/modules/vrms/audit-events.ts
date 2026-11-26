@@ -38,6 +38,15 @@ export const AUDIT_ACTIONS = [
   'STEP_REMOVED',
   'STEP_EDITED',
   'STEP_MOVED',
+  // Spec 0029
+  'REFERRAL_OPENED_TICKET',
+  'REFERRAL_ADDED',
+  'REFERRAL_REJECTED',
+  'DELIVERY_RETRIED',
+  'DELIVERY_DISMISSED',
+  'EXPEDITE_REQUESTED',
+  'EXPEDITE_ACCEPTED',
+  'EXPEDITE_DECLINED',
   // Reserved: in the catalog so filters accept them, written by features 33 and 30
   'STATUS_OVERRIDE',
   'TRANSFER_REQUESTED',
@@ -62,6 +71,17 @@ export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 /** A Record over the union, so a new type without a category is a compile error. */
 export const AUDIT_CATEGORY: Record<AuditAction, AuditCategory> = {
   CREATED: 'STATUS',
+  REFERRAL_OPENED_TICKET: 'STATUS',
+  // Spec 0029: decisions on VMMS's referrals, and on the messages VRMS sends, sit with the
+  // ticket's status events (spec 0021 keeps its seven categories)
+  REFERRAL_ADDED: 'STATUS',
+  REFERRAL_REJECTED: 'STATUS',
+  DELIVERY_RETRIED: 'STATUS',
+  DELIVERY_DISMISSED: 'STATUS',
+  // Child 0003: BMS's expedite requests and their answers, beside the referral decisions
+  EXPEDITE_REQUESTED: 'STATUS',
+  EXPEDITE_ACCEPTED: 'STATUS',
+  EXPEDITE_DECLINED: 'STATUS',
   STATUS_CHANGE: 'STATUS',
   STATUS_OVERRIDE: 'STATUS',
   UNLOCK: 'STATUS',
@@ -132,12 +152,23 @@ export type Actor = {
   system: string;
 };
 
+/** Spec 0029, AC-25: the system a row's change came from, when it was another system or VRMS itself. */
+export type SystemName = 'VMMS' | 'BMS' | 'VRMS';
+export type SystemActor = {
+  readonly kind: 'SYSTEM';
+  readonly name?: SystemName;
+};
 /**
  * Suite spec 0012, AC-24: a change nobody made by hand (the directory feed unassigning a person
- * who left). Its rows have no actor id, name or email, and the role `SYSTEM`.
+ * who left). Its rows have no actor id, name or email, and the role `SYSTEM`. A row from another
+ * system carries that system's name (spec 0029, AC-25).
  */
-export const SYSTEM_ACTOR = { kind: 'SYSTEM' } as const;
-export type SystemActor = typeof SYSTEM_ACTOR;
+export const SYSTEM_ACTOR: SystemActor = { kind: 'SYSTEM' };
+/** A system actor that names its system (AC-25): `actorName` is the system's name. */
+export const systemActor = (name: SystemName): SystemActor => ({
+  kind: 'SYSTEM',
+  name,
+});
 /** Who an audit row names: a signed in person, or the system. */
 export type RowActor = Actor | SystemActor;
 
@@ -169,7 +200,7 @@ export function actorFields(user: RowActor): ActorFields {
   if (isSystemActor(user)) {
     return {
       actorUserId: null,
-      actorName: null,
+      actorName: user.name ?? null,
       actorEmail: null,
       actorRole: 'SYSTEM',
     };
@@ -200,6 +231,105 @@ export function auditData(user: RowActor, event: AuditEventData, now: Date) {
 
 export function createdEvent(): AuditEventData {
   return { action: 'CREATED', changes: [], note: null };
+}
+
+/** Spec 0029, AC-8: the ticket was opened from a VMMS referral (its work order number). */
+export function referralOpenedEvent(workOrderNumber: string): AuditEventData {
+  return {
+    action: 'REFERRAL_OPENED_TICKET',
+    changes: [{ field: 'referral', before: null, after: workOrderNumber }],
+    note: null,
+  };
+}
+
+/** Spec 0029, AC-9: a VMMS referral added to the truck's open ticket. */
+export function referralAddedEvent(workOrderNumber: string): AuditEventData {
+  return {
+    action: 'REFERRAL_ADDED',
+    changes: [{ field: 'referral', before: null, after: workOrderNumber }],
+    note: null,
+  };
+}
+
+/** Spec 0029, AC-10: a VMMS referral sent back; it belongs to no ticket. */
+export function referralRejectedEvent(
+  workOrderNumber: string,
+  reason: string,
+): AuditEventData {
+  return {
+    action: 'REFERRAL_REJECTED',
+    changes: [{ field: 'referral', before: 'WAITING', after: workOrderNumber }],
+    note: reason,
+  };
+}
+
+/** Spec 0029, AC-22: a person retried or dismissed a failed message to VMMS or BMS. */
+export function deliveryEvent(
+  action: 'DELIVERY_RETRIED' | 'DELIVERY_DISMISSED',
+  delivery: { kind: string; target: string },
+  note: string | null,
+): AuditEventData {
+  return {
+    action,
+    changes: [
+      {
+        field: 'delivery',
+        before: null,
+        after: `${delivery.target} ${delivery.kind}`,
+      },
+    ],
+    note,
+  };
+}
+
+/** Spec 0029 (child 0003), AC-18: BMS asked to hurry the repair for one Job Order. */
+export function expediteRequestedEvent(
+  jobOrderNumber: string,
+  reason: string,
+): AuditEventData {
+  return {
+    action: 'EXPEDITE_REQUESTED',
+    changes: [{ field: 'expedite', before: null, after: jobOrderNumber }],
+    note: reason,
+  };
+}
+
+/**
+ * AC-19: a BMS expedite request answered: accepted (the new priority), declined by a person
+ * with a reason, or declined by VRMS when the ticket closed or was cancelled.
+ */
+export function expediteDecidedEvent(
+  decision: 'ACCEPTED' | 'DECLINED',
+  jobOrderNumber: string,
+  note: string | null,
+): AuditEventData {
+  return {
+    action: decision === 'ACCEPTED' ? 'EXPEDITE_ACCEPTED' : 'EXPEDITE_DECLINED',
+    changes: [{ field: 'expedite', before: 'WAITING', after: jobOrderNumber }],
+    note,
+  };
+}
+
+/**
+ * Child 0003: the due date changed (written only by setDueAt). A TICKET_EDITED row with one
+ * `dueAt` line, the dates as ISO strings, and the change reason as the note.
+ */
+export function dueDateEvent(
+  before: Date | null,
+  after: Date | null,
+  reason: string,
+): AuditEventData {
+  return {
+    action: 'TICKET_EDITED',
+    changes: [
+      {
+        field: 'dueAt',
+        before: before?.toISOString() ?? null,
+        after: after?.toISOString() ?? null,
+      },
+    ],
+    note: reason,
+  };
 }
 
 /** The note is the cancel reason on a move to CANCELLED, else the optional remarks. */
@@ -656,7 +786,8 @@ export type AuditEvent = {
   category: AuditCategory | null;
   at: string;
   actor: AuditActor | null;
-  ticket: { id: string; repairNumber: string };
+  /** Null only for a row about no ticket: a referral rejection or its delivery (spec 0029). */
+  ticket: { id: string; repairNumber: string } | null;
   changes: AuditChange[];
   note: string | null;
 };
@@ -671,7 +802,7 @@ export type AuditRow = {
   changes: Prisma.JsonValue;
   note: string | null;
   createdAt: Date;
-  repairTicket: { id: string; repairNumber: string };
+  repairTicket: { id: string; repairNumber: string } | null;
 };
 
 export type AuditCursor = { createdAt: Date; id: string };
@@ -796,8 +927,12 @@ export function toAuditEvent(row: AuditRow): AuditEvent {
     type: row.action,
     category: categoryOf(row.action),
     at: row.createdAt.toISOString(),
+    // A row from another system has only a name ("BMS", spec 0029, AC-25); a plain system row has
+    // none and reads without an actor
     actor:
-      row.actorUserId || row.actorEmail
+      row.actorUserId ||
+      row.actorEmail ||
+      (row.actorRole === 'SYSTEM' && row.actorName)
         ? {
             id: row.actorUserId,
             name: row.actorName ?? row.actorEmail,
@@ -805,10 +940,9 @@ export function toAuditEvent(row: AuditRow): AuditEvent {
             role: row.actorRole,
           }
         : null,
-    ticket: {
-      id: row.repairTicket.id,
-      repairNumber: row.repairTicket.repairNumber,
-    },
+    ticket: row.repairTicket
+      ? { id: row.repairTicket.id, repairNumber: row.repairTicket.repairNumber }
+      : null,
     changes: readChanges(row.changes),
     note: row.note,
   };

@@ -15,10 +15,8 @@ import {
   Prisma,
   RepairStatus,
   type RepairTicket,
-  VehicleStatus,
 } from '@prisma/client';
 import { applyStatusMove } from './apply-status-move';
-import { vehicleStatusChange } from './vehicles/vehicle-status';
 import {
   livePhotoCounts,
   PhotoCounts,
@@ -56,6 +54,7 @@ import {
   lockedEvent,
   mechanicsChangedEvent,
   olderThan,
+  referralOpenedEvent,
   REJECTION_SCAN_ROWS,
   stampedAt,
   stepTickEvent,
@@ -78,6 +77,19 @@ import {
   issueDescription,
 } from './ticket-inputs';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
+import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
+import { waitingExpedites } from './expedite-views';
+import {
+  CHANGE_REASON,
+  queueBmsRepairUpdate,
+} from '../integrations/bms/bms-repair-updates';
+import { applyFleetVehicle } from '../integrations/fleet/fleet-apply';
+import {
+  FleetUnavailableError,
+  VmmsFleetClient,
+  type FleetVehicle,
+} from '../integrations/fleet/vmms-fleet.client';
+import { DENIED } from '../../auth/permissions/permissions.guard';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
 import { HistoryQueryDto } from './dto/history-query.dto';
@@ -281,9 +293,18 @@ function generateRepairNumber(): string {
 
 /** The relations a ticket is loaded with, for formatTicket. */
 export const ticketInclude = {
-  vehicle: { select: { plateNumber: true, model: true, status: true } },
+  // isActive: spec 0029, AC-35's "Truck removed in VMMS"
+  vehicle: {
+    select: { plateNumber: true, model: true, status: true, isActive: true },
+  },
   driver: { select: { name: true, licenseNumber: true, isVerified: true } },
   garage: { select: { name: true } },
+  // Spec 0029, AC-12: the referral a ticket was opened from, for the "From VMMS WO-…" chip
+  referrals: {
+    where: { status: 'OPENED_TICKET' },
+    select: { workOrderNumber: true },
+    take: 1,
+  },
   issues: issueInclude,
   assignments: {
     orderBy: { assignedAt: 'asc' },
@@ -310,24 +331,28 @@ export class RepairsService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly embeddings: EmbeddingService,
+    private readonly fleet: VmmsFleetClient,
   ) {}
 
   // ── Create repair ticket ─────────────────────────────────────────────────
 
   async create(dto: CreateRepairDto, user: JwtUser, ability: AppAbility) {
-    // Checks that need no lock run first, outside the transaction (spec 0016, AC-2)
+    // Checks that need no lock run first, outside the transaction (spec 0016, AC-2). Only trucks
+    // linked to VMMS can be picked (spec 0029, AC-5)
     const vehicle = await this.prisma.vehicle.findFirst({
       where: {
         plateNumber: dto.vehiclePlate,
         isActive: true,
         deletedAt: null,
+        vmmsVehicleId: { not: null },
       },
     });
-    if (!vehicle) {
+    if (!vehicle?.vmmsVehicleId) {
       throw new BadRequestException(
         `Vehicle with plate number "${dto.vehiclePlate}" not found`,
       );
     }
+    const { fresh, fleetStale } = await this.freshTruck(vehicle.vmmsVehicleId);
 
     const garage = await this.prisma.garage.findFirst({
       where: {
@@ -348,8 +373,17 @@ export class RepairsService {
     // Spec 0016, AC-4: the account and the corporation snapshot
     const corporation = await this.corporationFor(dto);
 
-    // Spec 0016, AC-6: exactly one of an existing driver or a new one
-    if (!!dto.driverId === !!dto.newDriver) {
+    // Spec 0029, AC-8 and AC-11: a ticket from a VMMS referral, for its truck only
+    const referral = dto.referralId
+      ? await this.referralFor(dto.referralId, vehicle.id, ability)
+      : null;
+
+    // Spec 0016, AC-6: exactly one of an existing driver or a new one; spec 0029, AC-8: a
+    // referral ticket may have none
+    if (dto.driverId && dto.newDriver) {
+      throw new BadRequestException('Choose or add a driver.');
+    }
+    if (!referral && !dto.driverId && !dto.newDriver) {
       throw new BadRequestException('Choose or add a driver.');
     }
     if (dto.driverId) await activeDriver(this.prisma, dto.driverId);
@@ -387,6 +421,8 @@ export class RepairsService {
             corporation,
             categories,
             entries,
+            referral,
+            fresh,
           }),
         );
       } catch (error) {
@@ -408,7 +444,36 @@ export class RepairsService {
     void this.embeddings.embedIssuesInBackground(
       ticket.issues.map((i) => i.id),
     );
-    return this.present(ticket, ability);
+    // Spec 0029, AC-5: the form says "VMMS can't be reached, using the last copy"
+    return { ...(await this.present(ticket, ability)), fleetStale };
+  }
+
+  /**
+   * Spec 0029 (child 0001), AC-5: the truck read fresh from VMMS before the ticket is saved. A
+   * truck VMMS doesn't have refuses the ticket; when VMMS can't be reached, create uses the copy.
+   */
+  private async freshTruck(
+    vmmsVehicleId: string,
+  ): Promise<{ fresh: FleetVehicle | null; fleetStale: boolean }> {
+    let fresh: FleetVehicle | null;
+    try {
+      fresh = await this.fleet.vehicle(vmmsVehicleId);
+    } catch (error) {
+      if (!(error instanceof FleetUnavailableError)) throw error;
+      this.logger.warn(
+        `Ticket create uses the truck copy, VMMS unavailable: ${error.reason}`,
+      );
+      return { fresh: null, fleetStale: true };
+    }
+    if (!fresh) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        code: 'VEHICLE_NOT_IN_VMMS',
+        message:
+          'VMMS no longer has this truck. Ask VMMS Operations to add it.',
+      });
+    }
+    return { fresh, fleetStale: false };
   }
 
   /**
@@ -435,6 +500,9 @@ export class RepairsService {
           steps: { position: number; text: string }[];
         }
       >;
+      referral: { id: string; workOrderNumber: string } | null;
+      /** The truck as VMMS has it now; null when VMMS can't be reached (AC-5). */
+      fresh: FleetVehicle | null;
     },
   ) {
     const {
@@ -447,8 +515,8 @@ export class RepairsService {
       entries,
     } = input;
 
-    const locked = await tx.$queryRaw<{ id: string; status: VehicleStatus }[]>(
-      Prisma.sql`SELECT id, status::text AS status FROM vehicles
+    const locked = await tx.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT id FROM vehicles
         WHERE id = ${input.vehicleId}::uuid AND is_active AND deleted_at IS NULL
         FOR UPDATE`,
     );
@@ -457,9 +525,6 @@ export class RepairsService {
         `Vehicle with plate number "${dto.vehiclePlate}" not found`,
       );
     }
-    // Only values read under the lock are used from here on
-    const priorVehicleStatus = locked[0].status;
-
     const open = await tx.repairTicket.findFirst({
       where: {
         vehicleId: input.vehicleId,
@@ -477,6 +542,10 @@ export class RepairsService {
       });
     }
 
+    // Spec 0029, AC-5: the fresh VMMS read is applied under the truck's lock, before the
+    // odometer floor reads it. A truck under maintenance no longer blocks a ticket
+    if (input.fresh) await applyFleetVehicle(tx, input.fresh, new Date());
+
     // Spec 0016, AC-7: the reading may not drop below the truck's last one, and a big jump
     // must be confirmed
     const floor = await vehicleOdometerFloor(tx, input.vehicleId);
@@ -488,9 +557,14 @@ export class RepairsService {
     );
     if (problem) throw problem;
 
+    // Spec 0029, AC-8: decided under its lock, so two Admins can't both open a ticket from it
+    if (input.referral) await this.lockWaitingReferral(tx, input.referral.id);
+
     const driverId =
       dto.driverId ??
-      (await driverForLicense(tx, this.prisma, dto.newDriver!)).id;
+      (dto.newDriver
+        ? (await driverForLicense(tx, this.prisma, dto.newDriver)).id
+        : null);
 
     // No mechanic: Open. One or more: Assigned (spec 0016, AC-1)
     const now = new Date();
@@ -498,6 +572,9 @@ export class RepairsService {
     // Spec 0021, AC-5b and AC-3b: CREATED, then MECHANIC_ASSIGNED when it starts Assigned
     const events = [
       createdEvent(),
+      ...(input.referral
+        ? [referralOpenedEvent(input.referral.workOrderNumber)]
+        : []),
       ...(input.mechanicNames.length > 0
         ? [mechanicsChangedEvent('added', input.mechanicNames)]
         : []),
@@ -515,7 +592,6 @@ export class RepairsService {
         repairStatus:
           mechanicIds.length > 0 ? RepairStatus.ASSIGNED : RepairStatus.OPEN,
         priority: dto.priority,
-        priorVehicleStatus,
         accountType: dto.accountType,
         corporation,
         reportedByUserId: reporter.userId,
@@ -566,21 +642,78 @@ export class RepairsService {
       include: ticketInclude,
     });
 
-    // Spec 0020, AC-6: the truck goes Under repair with its history row, after the insert so the
-    // row can point at the ticket. A stuck truck (already Under repair) writes neither.
-    await vehicleStatusChange(tx, {
-      vehicleId: input.vehicleId,
-      before: priorVehicleStatus,
-      after: VehicleStatus.UNDER_REPAIR,
-      actor: user,
-      note: null,
-      repairTicketId: ticket.id,
+    if (input.referral) {
+      await tx.referral.update({
+        where: { id: input.referral.id },
+        data: {
+          status: 'OPENED_TICKET',
+          repairTicketId: ticket.id,
+          decidedByUserId: reporter.userId,
+          decidedByName: reporter.name,
+          decidedAt: now,
+        },
+      });
+    }
+    // Spec 0029, AC-13: VMMS hears of every ticket; one created Assigned sends OPENED with
+    // OPEN, then STATUS_UPDATED with ASSIGNED
+    await queueVmmsRepairEvent(tx, ticket.id, 'OPENED');
+    if (ticket.repairStatus !== RepairStatus.OPEN) {
+      await queueVmmsRepairEvent(tx, ticket.id, 'STATUS_UPDATED');
+    }
+    // Child 0003, AC-17: BMS gets one update with the ticket as created, Assigned or not
+    await queueBmsRepairUpdate(tx, ticket.id, CHANGE_REASON.opened);
+
+    return ticket;
+  }
+
+  /**
+   * Spec 0029, AC-8 and AC-11: the referral a ticket is opened from. Needs `integration.respond`
+   * on top of `ticket.create`, must be for the chosen truck, and must still be waiting (checked
+   * again under its lock).
+   */
+  private async referralFor(
+    referralId: string,
+    vehicleId: string,
+    ability: AppAbility,
+  ) {
+    if (!ability.can('integration.respond', 'Permission')) {
+      throw new ForbiddenException(DENIED);
+    }
+    const referral = await this.prisma.referral.findUnique({
+      where: { id: referralId },
+      select: {
+        id: true,
+        vehicleId: true,
+        status: true,
+        workOrderNumber: true,
+      },
     });
-    // The include above read the truck before the write
-    return {
-      ...ticket,
-      vehicle: { ...ticket.vehicle, status: VehicleStatus.UNDER_REPAIR },
-    };
+    if (!referral) {
+      throw new NotFoundException({
+        statusCode: 404,
+        code: 'REFERRAL_NOT_FOUND',
+        message: 'This referral was not found.',
+      });
+    }
+    if (referral.vehicleId !== vehicleId) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        code: 'REFERRAL_VEHICLE_MISMATCH',
+        message: 'This referral is for another truck.',
+      });
+    }
+    if (referral.status !== 'WAITING') throw referralAlreadyDecided();
+    return { id: referral.id, workOrderNumber: referral.workOrderNumber };
+  }
+
+  private async lockWaitingReferral(
+    tx: Prisma.TransactionClient,
+    referralId: string,
+  ) {
+    const rows = await tx.$queryRaw<{ status: string }[]>`
+      SELECT status::text AS status FROM referrals WHERE id = ${referralId}::uuid FOR UPDATE
+    `;
+    if (rows[0]?.status !== 'WAITING') throw referralAlreadyDecided();
   }
 
   /**
@@ -630,7 +763,8 @@ export class RepairsService {
   // ── List repair tickets ──────────────────────────────────────────────────
 
   async findAll(query: FindRepairsQueryDto, ability: AppAbility) {
-    const { search, status, garageId, overdue, mechanicId } = query;
+    const { search, status, garageId, overdue, truckRemoved, mechanicId } =
+      query;
     const scope = readableTickets(ability);
     if (!scope) return { data: [], total: 0 };
 
@@ -658,6 +792,13 @@ export class RepairsService {
         ? [
             { repairStatus: { in: OPEN_STATUSES } },
             { dueAt: { lt: new Date() } },
+          ]
+        : []),
+      // Spec 0029, AC-35: like overdue, only ever open tickets
+      ...(truckRemoved
+        ? [
+            { repairStatus: { in: OPEN_STATUSES } },
+            { vehicle: { isActive: false } },
           ]
         : []),
     ];
@@ -787,7 +928,8 @@ export class RepairsService {
         status: t.repairStatus,
         vehiclePlate: t.vehicle.plateNumber,
         vehicleModel: t.vehicle.model,
-        driverName: t.driver.name,
+        // Spec 0029, AC-12: null on a ticket opened from a VMMS referral
+        driverName: t.driver?.name ?? null,
         garageLocation: t.garage.name,
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
@@ -1532,15 +1674,18 @@ export class RepairsService {
         issues.flatMap((i) => (i.knowledgeEntryId ? [i.knowledgeEntryId] : [])),
       ),
     ];
-    const [stats, lastRejection, photoCounts] = await Promise.all([
-      loadStats(
-        this.prisma,
-        entryIds,
-        this.settings.get('knowledge.min_samples'),
-      ),
-      this.lastRejection(ticket),
-      livePhotoCounts(this.prisma, ticket.id),
-    ]);
+    const [stats, lastRejection, photoCounts, expediteRequests] =
+      await Promise.all([
+        loadStats(
+          this.prisma,
+          entryIds,
+          this.settings.get('knowledge.min_samples'),
+        ),
+        this.lastRejection(ticket),
+        livePhotoCounts(this.prisma, ticket.id),
+        // Spec 0029 (child 0003), AC-18: the banner's waiting BMS requests
+        waitingExpedites(this.prisma, ticket.id),
+      ]);
     const hours = new Map(
       entryIds.map((id) => [id, stats.get(id)?.typicalHours ?? null]),
     );
@@ -1551,6 +1696,7 @@ export class RepairsService {
       lastRejection,
       // Spec 0018: whether work has started decides the photo strip's group order (AC-16)
       workStartedAt: ticket.workStartedAt?.toISOString() ?? null,
+      expediteRequests,
     };
   }
 
@@ -1645,9 +1791,21 @@ export class RepairsService {
       id: ticket.id,
       repairNumber: ticket.repairNumber,
       status: ticket.repairStatus,
+      // Spec 0029, AC-16: the ticket page asks for the truck's upcoming trips by it
+      vehicleId: ticket.vehicleId,
       vehiclePlate: ticket.vehicle.plateNumber,
       vehicleModel: ticket.vehicle.model,
-      driverName: ticket.driver.name,
+      // Spec 0029, AC-12: both null on a ticket opened from a VMMS referral
+      driverName: ticket.driver?.name ?? null,
+      fromVmmsWorkOrder: ticket.referrals?.[0]?.workOrderNumber ?? null,
+      // Spec 0029, AC-35: worked out on read, never stored. An open ticket whose truck VMMS
+      // removed; the Admin cancels it, or VMMS reactivates the truck and the sync clears it
+      truckRemoved: open && !ticket.vehicle.isActive,
+      // Spec 0029, AC-36: the outside shop the ticket went to, picked from VMMS's list. A ticket
+      // outsourced before the picker existed has none, and the detail page asks for one
+      outsideShopName: ticket.outsideShopName,
+      needsOutsideShop:
+        atOutsideShop(ticket.repairStatus) && !ticket.vmmsProviderId,
       // Spec 0019, AC-4: so the details edit can tell a swap from the same driver
       driverId: ticket.driverId,
       garageLocation: ticket.garage.name,
@@ -1715,7 +1873,7 @@ export class RepairsService {
         isLumpSum: ticket.isLumpSum,
         isUnlocked: ticket.isUnlocked,
         unlockReason: ticket.unlockReason,
-        driverIsVerified: ticket.driver.isVerified,
+        driverIsVerified: ticket.driver?.isVerified,
         repairParts: ticket.repairParts.map((p) => ({
           id: p.id,
           description: p.description,
@@ -1729,3 +1887,19 @@ export class RepairsService {
     return base;
   }
 }
+
+/** Spec 0029, AC-36: the statuses where the truck is at an outside shop. */
+export function atOutsideShop(status: RepairStatus): boolean {
+  return (
+    status === RepairStatus.OUTSOURCED ||
+    status === RepairStatus.PENDING_APPROVAL
+  );
+}
+
+/** Spec 0029, AC-8: someone already opened, added or rejected this referral. */
+export const referralAlreadyDecided = () =>
+  new ConflictException({
+    statusCode: 409,
+    code: 'REFERRAL_ALREADY_DECIDED',
+    message: 'This referral was already handled.',
+  });

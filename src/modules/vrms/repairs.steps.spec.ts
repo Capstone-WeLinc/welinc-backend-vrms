@@ -5,6 +5,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { RepairsService } from './repairs.service';
 
 // Spec 0021, AC-4 and AC-5: a step tick writes one STEP_CHECKED or STEP_UNCHECKED row in the same
@@ -69,6 +70,7 @@ function setup(
       prisma as unknown as PrismaService,
       new FakeSettings(),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
     ),
   };
 }

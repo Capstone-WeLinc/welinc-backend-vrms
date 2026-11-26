@@ -117,7 +117,7 @@ describe('verify guards', () => {
         switchToHttp: () => ({ getRequest: () => req }),
       }) as unknown as ExecutionContext;
     const guard = () =>
-      new (requireService('roster.read'))(verifier) as {
+      new (requireService('roster.read', { clients: ['vmms'] }))(verifier) as {
         canActivate: (c: ExecutionContext) => Promise<boolean>;
       };
 
@@ -139,6 +139,28 @@ describe('verify guards', () => {
       expect(
         await answer(guard().canActivate(context(request(token)))),
       ).toMatchObject({ status: 403, body: { code: 'FORBIDDEN' } });
+    });
+
+    // covers: VRMS spec 0029 AC-24
+    it('refuses a service token from a client the route does not name with 403 FORBIDDEN', async () => {
+      const bmsOnly = new (requireService('roster.read', { clients: ['bms'] }))(
+        verifier,
+      ) as { canActivate: (c: ExecutionContext) => Promise<boolean> };
+      const req = request(await service());
+      expect(await answer(bmsOnly.canActivate(context(req)))).toMatchObject({
+        status: 403,
+        body: {
+          code: 'FORBIDDEN',
+          message: 'This route does not accept calls from this service',
+        },
+      });
+      expect(req.service).toBeUndefined();
+    });
+
+    it('refuses to build a guard that names no client', () => {
+      expect(() => requireService('roster.read', { clients: [] })).toThrow(
+        'names no client',
+      );
     });
   });
 });

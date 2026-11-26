@@ -8,6 +8,7 @@ import { ChecklistEditsService } from '../modules/vrms/checklist-edits.service';
 import { RepairsController } from '../modules/vrms/repairs.controller';
 import { RepairsService } from '../modules/vrms/repairs.service';
 import { TicketEditsService } from '../modules/vrms/ticket-edits.service';
+import { UpcomingTripsService } from '../modules/integrations/bms/upcoming-trips.service';
 import { expectReplyMatches } from './expect-reply';
 
 // covers: VRMS spec 0026 AC-6. The four ticket routes of AC-5 run through a testing module with the
@@ -57,10 +58,15 @@ const ROW = {
   id: ID,
   repairNumber: 'REP-20261116-A1B2',
   status: 'IN_PROGRESS',
+  vehicleId: ID,
   vehiclePlate: 'ABC 1234',
   vehicleModel: 'Isuzu NQR',
   driverName: 'Juan Dela Cruz',
   driverId: ID,
+  fromVmmsWorkOrder: null,
+  truckRemoved: false,
+  outsideShopName: null,
+  needsOutsideShop: false,
   garageLocation: 'Main Garage',
   odometerReading: 120500,
   priority: 'HIGH',
@@ -147,6 +153,19 @@ const DETAIL = {
     at: ISO,
   },
   workStartedAt: ISO,
+  expediteRequests: [
+    {
+      id: ID,
+      jobOrderNumber: 'JO-2026-0142',
+      reason: 'Booked for a Batangas run on Monday',
+      neededBy: '2026-12-01',
+      receivedAt: ISO,
+      repairTicketId: ID,
+      repairNumber: 'REP-20261116-A1B2',
+      vehiclePlate: 'ABC 1234',
+      ticketPriority: 'HIGH',
+    },
+  ],
 };
 
 /** The same ticket for a mechanic: no cost record, no known fix, nothing sent back yet. */
@@ -158,6 +177,7 @@ const DETAIL_PLAIN = {
   moves: [],
   lastRejection: null,
   workStartedAt: null,
+  expediteRequests: [],
 };
 
 const CREATE_BODY = {
@@ -193,6 +213,7 @@ async function start(
       { provide: RepairsService, useValue: repairs },
       { provide: TicketEditsService, useValue: {} },
       { provide: ChecklistEditsService, useValue: {} },
+      { provide: UpcomingTripsService, useValue: {} },
     ],
   }).compile();
   const nest = moduleRef.createNestApplication<NestExpressApplication>();
@@ -215,7 +236,9 @@ async function start(
 
 describe('the ticket replies match docs/openapi.json', () => {
   it('POST /vrms/repairs', async () => {
-    const http = await start({ create: jest.fn().mockResolvedValue(DETAIL) });
+    const http = await start({
+      create: jest.fn().mockResolvedValue({ ...DETAIL, fleetStale: false }),
+    });
     const res = await http.post('/vrms/repairs').send(CREATE_BODY).expect(201);
     expectReplyMatches(res.body, 'POST /vrms/repairs', 201);
   });

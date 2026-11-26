@@ -287,6 +287,48 @@ export const SETTINGS_CATALOG = [
     max: 100,
     unit: 'documents',
   },
+  {
+    // Spec 0029 (child 0004), AC-21
+    key: 'integration.retryWindowHours',
+    kind: 'value',
+    group: 'Integration',
+    label: 'Keep retrying a message for',
+    description:
+      'How long VRMS keeps resending a message VMMS or BMS did not take, before it is marked failed for someone to retry.',
+    type: 'int',
+    default: 24,
+    min: 1,
+    max: 168,
+    unit: 'hours',
+  },
+  {
+    // Spec 0029 (child 0004), AC-23
+    key: 'integration.deliveryRetentionDays',
+    kind: 'value',
+    group: 'Integration',
+    label: 'Keep sent messages for',
+    description:
+      'How long sent and dismissed messages stay on the Deliveries tab. Failed and waiting ones are always kept.',
+    type: 'int',
+    default: 90,
+    min: 7,
+    max: 365,
+    unit: 'days',
+  },
+  {
+    // Spec 0029 (child 0001), AC-3
+    key: 'fleet.reconcileMinutes',
+    kind: 'value',
+    group: 'Integration',
+    label: 'Full truck and garage check every',
+    description:
+      'How often VRMS reads the whole truck and garage list from VMMS, on top of the change messages VMMS sends.',
+    type: 'int',
+    default: 60,
+    min: 15,
+    max: 1440,
+    unit: 'minutes',
+  },
 ] as const satisfies readonly SettingEntry[];
 
 export type SettingKey = (typeof SETTINGS_CATALOG)[number]['key'];

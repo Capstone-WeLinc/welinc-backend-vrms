@@ -22,6 +22,7 @@ const KEYS = [
   'ticket.documents.add',
   'ticket.files.remove_any',
   'ai.use',
+  'integration.respond',
   'audit.view',
   'analytics.view',
   'config.read',
@@ -102,7 +103,7 @@ describe('the test matrix (a copy of welinc-auth defaults)', () => {
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(defaultKeys(['ADMIN']).size).toBe(26);
+    expect(defaultKeys(['ADMIN']).size).toBe(27);
     expect(defaultKeys(['ADMIN']).has('ticket.work')).toBe(false);
   });
 

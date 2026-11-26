@@ -257,14 +257,17 @@ export class MechanicWorkService {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: RELEASE_LIMIT,
     });
-    return rows.map((row) => {
+    // Every release row is about a ticket; only referral and delivery rows carry none (spec 0029)
+    return rows.flatMap((row) => {
+      const ticket = row.repairTicket;
+      if (!ticket) return [];
       const changes = (row.changes ?? []) as AuditChange[];
       return {
         id: row.id,
-        ticketId: row.repairTicket.id,
-        repairNumber: row.repairTicket.repairNumber,
-        repairStatus: row.repairTicket.repairStatus,
-        plateNumber: row.repairTicket.vehicle.plateNumber,
+        ticketId: ticket.id,
+        repairNumber: ticket.repairNumber,
+        repairStatus: ticket.repairStatus,
+        plateNumber: ticket.vehicle.plateNumber,
         person: changes.find((c) => c.field === 'mechanic')?.before ?? null,
         reason: leaveReasonOf(row.note),
         releasedAt: row.createdAt.toISOString(),
@@ -348,8 +351,6 @@ export async function releaseInTx(
       repairStatus: true,
       updatedAt: true,
       vehicleId: true,
-      odometer: true,
-      priorVehicleStatus: true,
       _count: { select: { assignments: true } },
     },
   });

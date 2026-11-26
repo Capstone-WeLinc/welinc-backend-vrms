@@ -6,7 +6,27 @@ import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { photoRows } from './photo-rules.fake';
+
+// Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
+jest.mock('../integrations/bms/bms-repair-updates', () => ({
+  ...jest.requireActual<object>('../integrations/bms/bms-repair-updates'),
+  queueBmsRepairUpdate: jest.fn(() => Promise.resolve({ deliveryId: 'b-1' })),
+}));
+jest.mock('../integrations/bms/expedite-answers', () => ({
+  ...jest.requireActual<object>('../integrations/bms/expedite-answers'),
+  declineWaitingExpedites: jest.fn(() => Promise.resolve(0)),
+}));
+jest.mock('./expedite-views', () => ({
+  ...jest.requireActual<object>('./expedite-views'),
+  waitingExpedites: jest.fn(() => Promise.resolve([])),
+}));
+
+// Spec 0029: the VMMS repair event has its own tests (repairs.referral.spec.ts)
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn().mockResolvedValue({ skipped: 'NOT_LINKED' }),
+}));
 
 // Spec 0007, AC-26 (create copies the entry's steps) and AC-29 (link, relink and unlink).
 
@@ -150,6 +170,7 @@ function setupLink(
       prisma as unknown as PrismaService,
       new FakeSettings(),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
     ),
   };
 }
@@ -314,7 +335,9 @@ describe('RepairsService.create with a common issue', () => {
   function setupCreate(entryRows: unknown[] = [entry]) {
     const prisma = {
       vehicle: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'v1' }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'v1', vmmsVehicleId: 'vmms-v1' }),
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 0 }),
       },
@@ -364,6 +387,7 @@ describe('RepairsService.create with a common issue', () => {
         prisma as unknown as PrismaService,
         new FakeSettings(),
         new FakeEmbeddings().asService(),
+        new FakeFleet().asClient(),
       ),
     };
   }
@@ -455,9 +479,8 @@ describe('RepairsService.create with a common issue', () => {
     expect(data.lastActivityAt).toEqual(new Date(now.getTime() + 1));
   });
 
-  it('starts the ticket Open when no mechanic is given and keeps the prior truck status (spec 0016, AC-1, AC-9)', async () => {
+  it('starts the ticket Open when no mechanic is given (spec 0016, AC-1)', async () => {
     const { prisma, service } = setupCreate();
-    prisma.$queryRaw.mockResolvedValue([{ id: 'v1', status: 'DISABLED' }]);
     await service.create(
       { ...dto, mechanics: undefined },
       admin,
@@ -468,8 +491,9 @@ describe('RepairsService.create with a common issue', () => {
     ];
     expect(args.data).toMatchObject({
       repairStatus: RepairStatus.OPEN,
-      priorVehicleStatus: 'DISABLED',
     });
+    // Spec 0029, AC-4: no longer written; VMMS owns the truck's status
+    expect(args.data).not.toHaveProperty('priorVehicleStatus');
     expect(args.data.assignments).toEqual({ create: [] });
     // Spec 0021, AC-5b: a ticket created Open writes only CREATED, and lastActivityAt is its time
     const logs = (args.data.auditLogs as { create: { action: string }[] })
@@ -478,40 +502,8 @@ describe('RepairsService.create with a common issue', () => {
     expect(args.data.lastActivityAt).toEqual(args.data.statusChangedAt);
   });
 
-  it('sets the truck Under repair after the insert with one history row linked to the ticket (spec 0020, AC-6)', async () => {
+  it('never writes the truck or its status history (spec 0029, AC-4)', async () => {
     const { prisma, service } = setupCreate();
-    prisma.$queryRaw.mockResolvedValue([{ id: 'v1', status: 'DISABLED' }]);
-    const order: string[] = [];
-    prisma.repairTicket.create.mockImplementation(() => {
-      order.push('ticket');
-      return Promise.resolve(fullTicket());
-    });
-    prisma.vehicleChange.create.mockImplementation(() => {
-      order.push('change');
-      return Promise.resolve({});
-    });
-    await service.create(dto, admin, defaultAbility(admin));
-    expect(prisma.vehicle.update).toHaveBeenCalledWith({
-      where: { id: 'v1' },
-      data: { status: 'UNDER_REPAIR' },
-    });
-    expect(prisma.vehicleChange.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        vehicleId: 'v1',
-        field: 'status',
-        before: 'DISABLED',
-        after: 'UNDER_REPAIR',
-        note: null,
-        repairTicketId: TICKET,
-        actorUserId: admin.sub,
-      }) as unknown,
-    });
-    expect(order).toEqual(['ticket', 'change']);
-  });
-
-  it('writes no status row for a truck already Under repair (spec 0020, AC-6)', async () => {
-    const { prisma, service } = setupCreate();
-    prisma.$queryRaw.mockResolvedValue([{ id: 'v1', status: 'UNDER_REPAIR' }]);
     await service.create(dto, admin, defaultAbility(admin));
     expect(prisma.vehicle.update).not.toHaveBeenCalled();
     expect(prisma.vehicleChange.create).not.toHaveBeenCalled();

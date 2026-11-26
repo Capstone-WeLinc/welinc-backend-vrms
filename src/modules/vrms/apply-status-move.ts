@@ -1,5 +1,5 @@
-import { ConflictException, Logger } from '@nestjs/common';
-import { Prisma, RepairStatus, VehicleStatus } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
+import { Prisma, RepairStatus } from '@prisma/client';
 import {
   RowActor,
   AuditEventData,
@@ -16,14 +16,20 @@ import {
   PhotoSwitches,
 } from './photo-rules';
 import { STALE_TICKET } from './ticket-knowledge';
-import { isFinished } from './ticket-statuses';
-import { vehicleStatusChange } from './vehicles/vehicle-status';
+import { isFinished, STATUS_LABELS } from './ticket-statuses';
 import type { TicketMove } from './ticket-transitions';
+import {
+  queueVmmsRepairEvent,
+  type VmmsRepairEventType,
+} from '../integrations/vmms-repair-events';
+import {
+  CHANGE_REASON,
+  queueBmsRepairUpdate,
+} from '../integrations/bms/bms-repair-updates';
+import { declineWaitingExpedites } from '../integrations/bms/expedite-answers';
 
 // Spec 0014, AC-1, AC-7, AC-9, AC-10 and AC-12: every effect of one status move, inside the
 // caller's transaction. Later features call it with their own trigger's move.
-
-const logger = new Logger('applyStatusMove');
 
 /** Spec 0018: the statuses whose first entry means work has started (M3 and M9). */
 const WORK_STARTS: RepairStatus[] = [
@@ -42,9 +48,6 @@ export type MovingTicket = {
   repairStatus: RepairStatus;
   updatedAt: Date;
   vehicleId: string;
-  odometer: number;
-  /** Spec 0016, AC-9: the truck's status before the ticket was created; null on old tickets. */
-  priorVehicleStatus: VehicleStatus | null;
 };
 
 export type MoveOptions = {
@@ -82,6 +85,11 @@ export async function applyStatusMove(
     throw new Error(
       `Move ${move.id} does not start from ${ticket.repairStatus}`,
     );
+  }
+  // Spec 0029, AC-36: sending a ticket out (M9) stores VMMS's outside shop with the move. M13
+  // (back from Pending approval) keeps the shop the ticket already has.
+  if (move.id === 'M9' && !options.data?.vmmsProviderId) {
+    throw new Error('A move to Outsourced needs the outside shop');
   }
 
   const closes = move.to === RepairStatus.CLOSED;
@@ -152,39 +160,40 @@ export async function applyStatusMove(
     },
   });
 
-  // 4. The truck goes back to the fleet on a move into a finished status
-  if (isFinished(move.to)) {
-    // Suite spec 0012: the system only ever sends a ticket back to Open
-    if (isSystemActor(actor)) {
-      throw new Error('The system never finishes a ticket');
-    }
-    // Spec 0020, AC-7: read without a lock on purpose. The toggle is refused while this ticket is
-    // open, and the move above holds the ticket row, so nothing else changes the truck meanwhile.
-    const vehicle = await tx.vehicle.findUniqueOrThrow({
-      where: { id: ticket.vehicleId },
-      select: { odometer: true, status: true },
-    });
-    // On close, the ticket's reading wins when it is higher (as before)
-    const odometer =
-      closes && ticket.odometer > vehicle.odometer ? ticket.odometer : null;
-    // A truck that was Disabled before the repair goes back to Disabled (spec 0016, AC-9), with
-    // its history row when the status changes (spec 0020, AC-7)
-    await vehicleStatusChange(tx, {
-      vehicleId: ticket.vehicleId,
-      before: vehicle.status,
-      after:
-        ticket.priorVehicleStatus === VehicleStatus.DISABLED
-          ? VehicleStatus.DISABLED
-          : VehicleStatus.AVAILABLE,
-      actor,
-      note: null,
-      repairTicketId: ticket.id,
-      also: odometer !== null ? { odometer } : undefined,
-    });
-    if (odometer !== null) {
-      logger.log(
-        `Odometer synced for vehicle ${ticket.vehicleId}: ${vehicle.odometer} → ${odometer} km`,
-      );
-    }
+  // 4. Suite spec 0012: the system only ever sends a ticket back to Open. The truck itself is no
+  // longer written here: VMMS owns its status and odometer and hears of the move through the
+  // repair event (spec 0029, AC-4 and AC-13).
+  if (isFinished(move.to) && isSystemActor(actor)) {
+    throw new Error('The system never finishes a ticket');
   }
+
+  // 5. Spec 0029, AC-13: VMMS hears of the move in the same transaction, with the row locked by
+  // the conditional update above, so two moves on one ticket queue in commit order
+  await queueVmmsRepairEvent(tx, ticket.id, vmmsEventFor(move.to));
+
+  // 6. Spec 0029 (child 0003), AC-17 and AC-19: BMS hears of the move the same way. A finished
+  // ticket then declines its waiting expedite requests, their answers queued after the update
+  await queueBmsRepairUpdate(tx, ticket.id, bmsChangeReason(move.to));
+  if (move.to === RepairStatus.CLOSED || move.to === RepairStatus.CANCELLED) {
+    await declineWaitingExpedites(
+      tx,
+      ticket.id,
+      move.to,
+      options.auditAt ?? now,
+    );
+  }
+}
+
+/** The change reason a move sends BMS. */
+export function bmsChangeReason(to: RepairStatus): string {
+  if (to === RepairStatus.CLOSED) return CHANGE_REASON.finished;
+  if (to === RepairStatus.CANCELLED) return CHANGE_REASON.cancelled;
+  return CHANGE_REASON.status(STATUS_LABELS[to]);
+}
+
+/** The repair event a move sends VMMS: the end of the repair, or a status change. */
+export function vmmsEventFor(to: RepairStatus): VmmsRepairEventType {
+  if (to === RepairStatus.CLOSED) return 'COMPLETED';
+  if (to === RepairStatus.CANCELLED) return 'CANCELLED';
+  return 'STATUS_UPDATED';
 }
