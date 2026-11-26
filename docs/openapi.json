@@ -1492,8 +1492,8 @@
               }
             }
           },
-          "403": {
-            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+          "401": {
+            "description": "`TOKEN_EXPIRED`, `WRONG_AUDIENCE` or no `code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1506,8 +1506,33 @@
                         "code": {
                           "type": "string",
                           "enum": [
-                            "WRONG_TOKEN_USE",
-                            "FORBIDDEN"
+                            "TOKEN_EXPIRED",
+                            "WRONG_AUDIENCE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`FORBIDDEN` or `WRONG_TOKEN_USE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "FORBIDDEN",
+                            "WRONG_TOKEN_USE"
                           ]
                         }
                       },
@@ -1573,6 +1598,33 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "`AUTH_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_UNAVAILABLE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1610,8 +1662,18 @@
               }
             }
           },
-          "403": {
-            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`TOKEN_EXPIRED`, `WRONG_AUDIENCE` or no `code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1624,8 +1686,60 @@
                         "code": {
                           "type": "string",
                           "enum": [
-                            "WRONG_TOKEN_USE",
-                            "FORBIDDEN"
+                            "TOKEN_EXPIRED",
+                            "WRONG_AUDIENCE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`FORBIDDEN` or `WRONG_TOKEN_USE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "FORBIDDEN",
+                            "WRONG_TOKEN_USE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`AUTH_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_UNAVAILABLE"
                           ]
                         }
                       },
@@ -1675,8 +1789,18 @@
               }
             }
           },
-          "403": {
-            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`TOKEN_EXPIRED`, `WRONG_AUDIENCE` or no `code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1689,8 +1813,60 @@
                         "code": {
                           "type": "string",
                           "enum": [
-                            "WRONG_TOKEN_USE",
-                            "FORBIDDEN"
+                            "TOKEN_EXPIRED",
+                            "WRONG_AUDIENCE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`FORBIDDEN` or `WRONG_TOKEN_USE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "FORBIDDEN",
+                            "WRONG_TOKEN_USE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`AUTH_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_UNAVAILABLE"
                           ]
                         }
                       },
@@ -1773,8 +1949,8 @@
               }
             }
           },
-          "403": {
-            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+          "401": {
+            "description": "`TOKEN_EXPIRED`, `WRONG_AUDIENCE` or no `code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1787,8 +1963,33 @@
                         "code": {
                           "type": "string",
                           "enum": [
-                            "WRONG_TOKEN_USE",
-                            "FORBIDDEN"
+                            "TOKEN_EXPIRED",
+                            "WRONG_AUDIENCE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`FORBIDDEN` or `WRONG_TOKEN_USE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "FORBIDDEN",
+                            "WRONG_TOKEN_USE"
                           ]
                         }
                       },
@@ -1856,7 +2057,7 @@
             }
           },
           "503": {
-            "description": "`VMMS_UNAVAILABLE` or `AUTH_UNAVAILABLE`",
+            "description": "`AUTH_UNAVAILABLE` or `VMMS_UNAVAILABLE`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1869,8 +2070,8 @@
                         "code": {
                           "type": "string",
                           "enum": [
-                            "VMMS_UNAVAILABLE",
-                            "AUTH_UNAVAILABLE"
+                            "AUTH_UNAVAILABLE",
+                            "VMMS_UNAVAILABLE"
                           ]
                         }
                       },
@@ -1910,10 +2111,27 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairStatusView"
+                }
+              }
+            }
           },
-          "403": {
-            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`TOKEN_EXPIRED`, `WRONG_AUDIENCE` or no `code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -1926,8 +2144,33 @@
                         "code": {
                           "type": "string",
                           "enum": [
-                            "WRONG_TOKEN_USE",
-                            "FORBIDDEN"
+                            "TOKEN_EXPIRED",
+                            "WRONG_AUDIENCE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`FORBIDDEN` or `WRONG_TOKEN_USE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "FORBIDDEN",
+                            "WRONG_TOKEN_USE"
                           ]
                         }
                       },
@@ -1966,6 +2209,33 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "`AUTH_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_UNAVAILABLE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1990,11 +2260,38 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "The `nextCursor` of the page before, passed back unchanged",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairHistoryResponse"
+                }
+              }
+            }
           },
           "400": {
             "description": "`INVALID_CURSOR` or no `code`",
@@ -2020,8 +2317,8 @@
               }
             }
           },
-          "403": {
-            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+          "401": {
+            "description": "`TOKEN_EXPIRED`, `WRONG_AUDIENCE` or no `code`",
             "content": {
               "application/json": {
                 "schema": {
@@ -2034,8 +2331,60 @@
                         "code": {
                           "type": "string",
                           "enum": [
-                            "WRONG_TOKEN_USE",
-                            "FORBIDDEN"
+                            "TOKEN_EXPIRED",
+                            "WRONG_AUDIENCE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`FORBIDDEN` or `WRONG_TOKEN_USE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "FORBIDDEN",
+                            "WRONG_TOKEN_USE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`AUTH_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_UNAVAILABLE"
                           ]
                         }
                       },
@@ -8047,6 +8396,110 @@
           "reason"
         ]
       },
+      "RepairHistoryItem": {
+        "type": "object",
+        "properties": {
+          "repairTicketId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repairTicketNumber": {
+            "type": "string",
+            "example": "REP-20261127-7J6W"
+          },
+          "openedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "OUTSOURCED",
+              "FOR_VERIFICATION",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "issues": {
+            "example": [
+              "Brakes: grinding front left"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "partsUsed": {
+            "example": [
+              "Brake pad set x2"
+            ],
+            "description": "Never a price",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "repairPersonnel": {
+            "description": "Mechanic names",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "provider": {
+            "type": "string",
+            "nullable": true,
+            "description": "The outside shop"
+          },
+          "totalRepairCost": {
+            "type": "string",
+            "nullable": true,
+            "example": "12500.00",
+            "description": "The ticket total as a decimal string"
+          }
+        },
+        "required": [
+          "repairTicketId",
+          "repairTicketNumber",
+          "openedAt",
+          "closedAt",
+          "status",
+          "issues",
+          "partsUsed",
+          "repairPersonnel",
+          "provider",
+          "totalRepairCost"
+        ]
+      },
+      "RepairHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Newest first; never cancelled tickets",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepairHistoryItem"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
       "RepairIssueDto": {
         "type": "object",
         "properties": {
@@ -8145,6 +8598,44 @@
           "odometerReading",
           "findings",
           "chiefMechanicRemarks"
+        ]
+      },
+      "RepairStatusView": {
+        "type": "object",
+        "properties": {
+          "repairTicketId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repairTicketNumber": {
+            "type": "string",
+            "example": "REP-20261127-7J6W"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "OUTSOURCED",
+              "FOR_VERIFICATION",
+              "CLOSED",
+              "CANCELLED"
+            ],
+            "description": "VRMS's Pending approval is sent as OUTSOURCED"
+          },
+          "outsideShopName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only while OUTSOURCED"
+          }
+        },
+        "required": [
+          "repairTicketId",
+          "repairTicketNumber",
+          "status",
+          "outsideShopName"
         ]
       },
       "ResolveSuggestionDto": {

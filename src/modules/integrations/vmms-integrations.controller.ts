@@ -11,41 +11,27 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
-import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
-import { ApiAcceptedResponse, ApiTags } from '@nestjs/swagger';
+import { ApiAcceptedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ServiceRoute } from '../../auth/verify';
-import {
-  ApiErrors,
-  ApiGenericErrors,
-  ApiServiceToken,
-} from '../../openapi/decorators';
+import { ApiErrorMap, ApiServiceToken } from '../../openapi/decorators';
 import {
   FleetChangeAcceptedView,
   FleetChangeDto,
 } from './fleet/fleet-change.dto';
 import { FleetSyncService } from './fleet/fleet-sync.service';
+import {
+  RepairHistoryQueryDto,
+  RepairHistoryResponse,
+  RepairStatusView,
+} from './vmms-repair-reads.dto';
 import { VmmsRepairReadsService } from './vmms-repair-reads.service';
+import { SERVICE_ROUTE_ERRORS, VALIDATION_ERROR } from './service-route-errors';
 import { ReferralIntakeService } from './referrals/referral-intake.service';
 import {
   ReferralAcceptedView,
   RepairReferralDto,
 } from './referrals/repair-referral.dto';
-
-/** AC-15: `limit` 1 to 100, default 50; the cursor is opaque. */
-export class RepairHistoryQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
-
-  @IsOptional()
-  @IsString()
-  cursor?: string;
-}
 
 /**
  * Spec 0029: the routes VMMS calls. Service tokens from client `vmms` only (AC-24); every answer
@@ -53,7 +39,6 @@ export class RepairHistoryQueryDto {
  */
 @ApiTags('Integrations: VMMS')
 @ApiServiceToken()
-@ApiGenericErrors()
 @Controller('vrms/integrations/vmms')
 export class VmmsIntegrationsController {
   constructor(
@@ -63,8 +48,10 @@ export class VmmsIntegrationsController {
   ) {}
 
   /** AC-14: one ticket's status as VMMS maps it, with the outside shop while outsourced. */
-  @ApiErrors(403, ['WRONG_TOKEN_USE', 'FORBIDDEN'])
-  @ApiErrors(404, ['REPAIR_NOT_FOUND'])
+  @ApiOkResponse({ type: RepairStatusView })
+  @ApiErrorMap(SERVICE_ROUTE_ERRORS, VALIDATION_ERROR, {
+    404: ['REPAIR_NOT_FOUND'],
+  })
   @ServiceRoute('repair.status.read', { clients: ['vmms'] })
   @Get('repairs/:repairTicketId')
   repairStatus(@Param('repairTicketId', ParseUUIDPipe) repairTicketId: string) {
@@ -72,8 +59,8 @@ export class VmmsIntegrationsController {
   }
 
   /** AC-15: a truck's repairs, newest first, never cancelled ones and never part prices. */
-  @ApiErrors(400, [null, 'INVALID_CURSOR'])
-  @ApiErrors(403, ['WRONG_TOKEN_USE', 'FORBIDDEN'])
+  @ApiOkResponse({ type: RepairHistoryResponse })
+  @ApiErrorMap(SERVICE_ROUTE_ERRORS, { 400: [null, 'INVALID_CURSOR'] })
   @ServiceRoute('repair.history.read', { clients: ['vmms'] })
   @Get('vehicles/:vmmsVehicleId/repair-history')
   repairHistory(
@@ -85,11 +72,12 @@ export class VmmsIntegrationsController {
 
   /** AC-6: a repair referral from a VMMS inspection that ended For Repair. */
   @ApiAcceptedResponse({ type: ReferralAcceptedView })
-  @ApiErrors(400, [null, 'IDEMPOTENCY_KEY_MISMATCH'])
-  @ApiErrors(403, ['WRONG_TOKEN_USE', 'FORBIDDEN'])
-  @ApiErrors(409, ['REFERRAL_ID_REUSED'])
-  @ApiErrors(422, ['VEHICLE_NOT_FOUND'])
-  @ApiErrors(503, ['VMMS_UNAVAILABLE', 'AUTH_UNAVAILABLE'])
+  @ApiErrorMap(SERVICE_ROUTE_ERRORS, {
+    400: [null, 'IDEMPOTENCY_KEY_MISMATCH'],
+    409: ['REFERRAL_ID_REUSED'],
+    422: ['VEHICLE_NOT_FOUND'],
+    503: ['VMMS_UNAVAILABLE'],
+  })
   @ServiceRoute('repair.referral.write', { clients: ['vmms'] })
   @HttpCode(202)
   @Post('repair-referrals')
@@ -114,7 +102,7 @@ export class VmmsIntegrationsController {
    * from VMMS's fleet API and applies it. The body is never trusted for field values.
    */
   @ApiAcceptedResponse({ type: FleetChangeAcceptedView })
-  @ApiErrors(403, ['WRONG_TOKEN_USE', 'FORBIDDEN'])
+  @ApiErrorMap(SERVICE_ROUTE_ERRORS, VALIDATION_ERROR)
   @ServiceRoute('fleet.change.write', { clients: ['vmms'] })
   @HttpCode(202)
   @Post('fleet-changes')

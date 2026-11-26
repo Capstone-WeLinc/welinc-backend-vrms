@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import {
+  IsISO8601,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  Matches,
+} from 'class-validator';
 
 // Spec 0029 (child 0003): what BMS sends VRMS, and what VRMS answers it.
 
@@ -29,6 +36,8 @@ export class ExpediteRequestDto {
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'neededBy must be YYYY-MM-DD' })
+  // The pattern alone lets 2026-13-45 through to new Date(), which makes an Invalid Date
+  @IsISO8601({ strict: true }, { message: 'neededBy must be a real date' })
   neededBy?: string;
 }
 
