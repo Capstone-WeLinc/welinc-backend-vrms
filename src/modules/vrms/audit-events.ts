@@ -38,6 +38,8 @@ export const AUDIT_ACTIONS = [
   'STEP_REMOVED',
   'STEP_EDITED',
   'STEP_MOVED',
+  // Spec 0029
+  'REFERRAL_OPENED_TICKET',
   // Reserved: in the catalog so filters accept them, written by features 33 and 30
   'STATUS_OVERRIDE',
   'TRANSFER_REQUESTED',
@@ -62,6 +64,7 @@ export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 /** A Record over the union, so a new type without a category is a compile error. */
 export const AUDIT_CATEGORY: Record<AuditAction, AuditCategory> = {
   CREATED: 'STATUS',
+  REFERRAL_OPENED_TICKET: 'STATUS',
   STATUS_CHANGE: 'STATUS',
   STATUS_OVERRIDE: 'STATUS',
   UNLOCK: 'STATUS',
@@ -200,6 +203,15 @@ export function auditData(user: RowActor, event: AuditEventData, now: Date) {
 
 export function createdEvent(): AuditEventData {
   return { action: 'CREATED', changes: [], note: null };
+}
+
+/** Spec 0029, AC-8: the ticket was opened from a VMMS referral (its work order number). */
+export function referralOpenedEvent(workOrderNumber: string): AuditEventData {
+  return {
+    action: 'REFERRAL_OPENED_TICKET',
+    changes: [{ field: 'referral', before: null, after: workOrderNumber }],
+    note: null,
+  };
 }
 
 /** The note is the cancel reason on a move to CANCELLED, else the optional remarks. */

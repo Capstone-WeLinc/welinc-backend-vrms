@@ -838,6 +838,186 @@
         ]
       }
     },
+    "/vrms/integrations/vmms/repair-referrals": {
+      "post": {
+        "operationId": "VmmsIntegrationsController_receiveReferral",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairReferralDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReferralAcceptedView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`IDEMPOTENCY_KEY_MISMATCH` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "IDEMPOTENCY_KEY_MISMATCH"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "WRONG_TOKEN_USE",
+                            "FORBIDDEN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`REFERRAL_ID_REUSED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REFERRAL_ID_REUSED"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`VEHICLE_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VEHICLE_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`VMMS_UNAVAILABLE` or `AUTH_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VMMS_UNAVAILABLE",
+                            "AUTH_UNAVAILABLE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "summary": "AC-6: a repair referral from a VMMS inspection that ended For Repair.",
+        "tags": [
+          "Integrations: VMMS"
+        ]
+      }
+    },
     "/vrms/knowledge/categories": {
       "get": {
         "operationId": "KnowledgeController_listCategories",
@@ -2699,6 +2879,110 @@
         ]
       }
     },
+    "/vrms/referrals": {
+      "get": {
+        "operationId": "ReferralsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/vrms/referrals/{id}": {
+      "get": {
+        "operationId": "ReferralsController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "404": {
+            "description": "`REFERRAL_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REFERRAL_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
     "/vrms/repairs": {
       "get": {
         "operationId": "RepairsController_findAll",
@@ -4226,6 +4510,7 @@
                 "STEP_REMOVED",
                 "STEP_EDITED",
                 "STEP_MOVED",
+                "REFERRAL_OPENED_TICKET",
                 "STATUS_OVERRIDE",
                 "TRANSFER_REQUESTED",
                 "TRANSFER_APPROVED",
@@ -4286,6 +4571,7 @@
                   "STEP_REMOVED",
                   "STEP_EDITED",
                   "STEP_MOVED",
+                  "REFERRAL_OPENED_TICKET",
                   "STATUS_OVERRIDE",
                   "TRANSFER_REQUESTED",
                   "TRANSFER_APPROVED",
@@ -5389,6 +5675,9 @@
       "name": "Fleet and Team"
     },
     {
+      "name": "Integrations: VMMS"
+    },
+    {
       "name": "Knowledge Base"
     },
     {
@@ -5399,6 +5688,9 @@
     },
     {
       "name": "Permissions"
+    },
+    {
+      "name": "Referrals"
     },
     {
       "name": "Repair Tickets"
@@ -5730,6 +6022,10 @@
           "repairNumber": {
             "type": "string",
             "maxLength": 50
+          },
+          "referralId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -5959,6 +6255,72 @@
           "licenseNumber"
         ]
       },
+      "OAuthError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "invalid_grant"
+          },
+          "error_description": {
+            "type": "string",
+            "example": "The code is invalid or used"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "ReferralAcceptedView": {
+        "type": "object",
+        "properties": {
+          "referralId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "WAITING",
+              "OPENED_TICKET",
+              "ADDED_TO_TICKET",
+              "REJECTED"
+            ]
+          },
+          "duplicate": {
+            "type": "boolean",
+            "description": "True when this referral id was already received with the same body"
+          }
+        },
+        "required": [
+          "referralId",
+          "status",
+          "duplicate"
+        ]
+      },
+      "ReferralFindingDto": {
+        "type": "object",
+        "properties": {
+          "checklistItemId": {
+            "type": "string",
+            "description": "VMMS checklist item id; may be empty"
+          },
+          "label": {
+            "type": "string",
+            "description": "Cut to 200 characters; empty becomes \"Finding\""
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "description": "Cut to 2000 characters; empty becomes null"
+          }
+        },
+        "required": [
+          "checklistItemId",
+          "label",
+          "note"
+        ]
+      },
       "ReleaseTicketsDto": {
         "type": "object",
         "properties": {
@@ -6019,6 +6381,59 @@
           "description",
           "unitCost",
           "quantity"
+        ]
+      },
+      "RepairReferralDto": {
+        "type": "object",
+        "properties": {
+          "referralId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vmmsVehicleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vehiclePlate": {
+            "type": "string",
+            "description": "Cut to 20 characters"
+          },
+          "maintenanceScheduleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workOrderNumber": {
+            "type": "string",
+            "description": "Cut to 40 characters"
+          },
+          "odometerReading": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "findings": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReferralFindingDto"
+            }
+          },
+          "chiefMechanicRemarks": {
+            "type": "string",
+            "nullable": true,
+            "description": "Cut to 4000 characters; empty becomes null"
+          }
+        },
+        "required": [
+          "referralId",
+          "vmmsVehicleId",
+          "vehiclePlate",
+          "maintenanceScheduleId",
+          "workOrderNumber",
+          "odometerReading",
+          "findings",
+          "chiefMechanicRemarks"
         ]
       },
       "ResolveSuggestionDto": {

@@ -48,6 +48,8 @@ export const PERMISSION_CATALOG = [
   // Spec 0017, AC-15 and AC-17: everyone may still remove the files they added themselves
   { key: 'ticket.files.remove_any' },
   { key: 'ai.use', module: 'ai' },
+  // Spec 0029, AC-11: VMMS referrals, BMS expedite requests and failed deliveries
+  { key: 'integration.respond' },
   { key: 'audit.view' },
   { key: 'analytics.view', module: 'analytics' },
   { key: 'config.read' },

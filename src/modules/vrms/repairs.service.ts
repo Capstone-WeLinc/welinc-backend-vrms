@@ -56,6 +56,7 @@ import {
   lockedEvent,
   mechanicsChangedEvent,
   olderThan,
+  referralOpenedEvent,
   REJECTION_SCAN_ROWS,
   stampedAt,
   stepTickEvent,
@@ -78,6 +79,8 @@ import {
   issueDescription,
 } from './ticket-inputs';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
+import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
+import { DENIED } from '../../auth/permissions/permissions.guard';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
 import { HistoryQueryDto } from './dto/history-query.dto';
@@ -348,8 +351,17 @@ export class RepairsService {
     // Spec 0016, AC-4: the account and the corporation snapshot
     const corporation = await this.corporationFor(dto);
 
-    // Spec 0016, AC-6: exactly one of an existing driver or a new one
-    if (!!dto.driverId === !!dto.newDriver) {
+    // Spec 0029, AC-8 and AC-11: a ticket from a VMMS referral, for its truck only
+    const referral = dto.referralId
+      ? await this.referralFor(dto.referralId, vehicle.id, ability)
+      : null;
+
+    // Spec 0016, AC-6: exactly one of an existing driver or a new one; spec 0029, AC-8: a
+    // referral ticket may have none
+    if (dto.driverId && dto.newDriver) {
+      throw new BadRequestException('Choose or add a driver.');
+    }
+    if (!referral && !dto.driverId && !dto.newDriver) {
       throw new BadRequestException('Choose or add a driver.');
     }
     if (dto.driverId) await activeDriver(this.prisma, dto.driverId);
@@ -387,6 +399,7 @@ export class RepairsService {
             corporation,
             categories,
             entries,
+            referral,
           }),
         );
       } catch (error) {
@@ -435,6 +448,7 @@ export class RepairsService {
           steps: { position: number; text: string }[];
         }
       >;
+      referral: { id: string; workOrderNumber: string } | null;
     },
   ) {
     const {
@@ -488,9 +502,14 @@ export class RepairsService {
     );
     if (problem) throw problem;
 
+    // Spec 0029, AC-8: decided under its lock, so two Admins can't both open a ticket from it
+    if (input.referral) await this.lockWaitingReferral(tx, input.referral.id);
+
     const driverId =
       dto.driverId ??
-      (await driverForLicense(tx, this.prisma, dto.newDriver!)).id;
+      (dto.newDriver
+        ? (await driverForLicense(tx, this.prisma, dto.newDriver)).id
+        : null);
 
     // No mechanic: Open. One or more: Assigned (spec 0016, AC-1)
     const now = new Date();
@@ -498,6 +517,9 @@ export class RepairsService {
     // Spec 0021, AC-5b and AC-3b: CREATED, then MECHANIC_ASSIGNED when it starts Assigned
     const events = [
       createdEvent(),
+      ...(input.referral
+        ? [referralOpenedEvent(input.referral.workOrderNumber)]
+        : []),
       ...(input.mechanicNames.length > 0
         ? [mechanicsChangedEvent('added', input.mechanicNames)]
         : []),
@@ -566,6 +588,25 @@ export class RepairsService {
       include: ticketInclude,
     });
 
+    if (input.referral) {
+      await tx.referral.update({
+        where: { id: input.referral.id },
+        data: {
+          status: 'OPENED_TICKET',
+          repairTicketId: ticket.id,
+          decidedByUserId: reporter.userId,
+          decidedByName: reporter.name,
+          decidedAt: now,
+        },
+      });
+    }
+    // Spec 0029, AC-13: VMMS hears of every ticket; one created Assigned sends OPENED with
+    // OPEN, then STATUS_UPDATED with ASSIGNED
+    await queueVmmsRepairEvent(tx, ticket.id, 'OPENED');
+    if (ticket.repairStatus !== RepairStatus.OPEN) {
+      await queueVmmsRepairEvent(tx, ticket.id, 'STATUS_UPDATED');
+    }
+
     // Spec 0020, AC-6: the truck goes Under repair with its history row, after the insert so the
     // row can point at the ticket. A stuck truck (already Under repair) writes neither.
     await vehicleStatusChange(tx, {
@@ -581,6 +622,56 @@ export class RepairsService {
       ...ticket,
       vehicle: { ...ticket.vehicle, status: VehicleStatus.UNDER_REPAIR },
     };
+  }
+
+  /**
+   * Spec 0029, AC-8 and AC-11: the referral a ticket is opened from. Needs `integration.respond`
+   * on top of `ticket.create`, must be for the chosen truck, and must still be waiting (checked
+   * again under its lock).
+   */
+  private async referralFor(
+    referralId: string,
+    vehicleId: string,
+    ability: AppAbility,
+  ) {
+    if (!ability.can('integration.respond', 'Permission')) {
+      throw new ForbiddenException(DENIED);
+    }
+    const referral = await this.prisma.referral.findUnique({
+      where: { id: referralId },
+      select: {
+        id: true,
+        vehicleId: true,
+        status: true,
+        workOrderNumber: true,
+      },
+    });
+    if (!referral) {
+      throw new NotFoundException({
+        statusCode: 404,
+        code: 'REFERRAL_NOT_FOUND',
+        message: 'This referral was not found.',
+      });
+    }
+    if (referral.vehicleId !== vehicleId) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        code: 'REFERRAL_VEHICLE_MISMATCH',
+        message: 'This referral is for another truck.',
+      });
+    }
+    if (referral.status !== 'WAITING') throw referralAlreadyDecided();
+    return { id: referral.id, workOrderNumber: referral.workOrderNumber };
+  }
+
+  private async lockWaitingReferral(
+    tx: Prisma.TransactionClient,
+    referralId: string,
+  ) {
+    const rows = await tx.$queryRaw<{ status: string }[]>`
+      SELECT status::text AS status FROM referrals WHERE id = ${referralId}::uuid FOR UPDATE
+    `;
+    if (rows[0]?.status !== 'WAITING') throw referralAlreadyDecided();
   }
 
   /**
@@ -1731,3 +1822,11 @@ export class RepairsService {
     return base;
   }
 }
+
+/** Spec 0029, AC-8: someone already opened, added or rejected this referral. */
+export const referralAlreadyDecided = () =>
+  new ConflictException({
+    statusCode: 409,
+    code: 'REFERRAL_ALREADY_DECIDED',
+    message: 'This referral was already handled.',
+  });

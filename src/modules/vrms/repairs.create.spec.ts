@@ -10,6 +10,11 @@ import type { CreateRepairDto } from './dto/create-repair.dto';
 import { RepairsService } from './repairs.service';
 import { driverForLicense } from './ticket-inputs';
 
+// Spec 0029: the VMMS repair event has its own tests (repairs.referral.spec.ts)
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn().mockResolvedValue({ skipped: 'NOT_LINKED' }),
+}));
+
 // Spec 0016, AC-2 and AC-6: the retry on a repair number clash and the driver insert race.
 
 const known = (meta: Record<string, unknown>) =>

@@ -129,4 +129,9 @@ export class CreateRepairDto {
   @IsString()
   @MaxLength(50)
   repairNumber?: string;
+
+  // Spec 0029, AC-8: open the ticket from this VMMS referral; the driver becomes optional
+  @IsOptional()
+  @IsUUID()
+  referralId?: string;
 }

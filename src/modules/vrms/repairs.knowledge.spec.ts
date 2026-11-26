@@ -8,6 +8,11 @@ import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
 import { photoRows } from './photo-rules.fake';
 
+// Spec 0029: the VMMS repair event has its own tests (repairs.referral.spec.ts)
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn().mockResolvedValue({ skipped: 'NOT_LINKED' }),
+}));
+
 // Spec 0007, AC-26 (create copies the entry's steps) and AC-29 (link, relink and unlink).
 
 type JwtUser = {

@@ -6,6 +6,11 @@ import { FakeEmbeddings } from '../ai/embedding.fake';
 import { RepairsService } from './repairs.service';
 import type { CreateRepairDto } from './dto/create-repair.dto';
 
+// Spec 0029: the VMMS repair event has its own tests (repairs.referral.spec.ts)
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn().mockResolvedValue({ skipped: 'NOT_LINKED' }),
+}));
+
 // Spec 0020, AC-6 and AC-15: ticket create writes the truck's status history row in its own
 // transaction, after the ticket insert, from the status read under the row lock.
 

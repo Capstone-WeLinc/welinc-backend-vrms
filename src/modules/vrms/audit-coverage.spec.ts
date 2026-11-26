@@ -31,6 +31,13 @@ const COVERAGE: Entry[] = [
     provedBy: 'vrms/repairs.knowledge.spec.ts',
   },
   {
+    // Spec 0029, AC-8: a ticket opened from a VMMS referral
+    method: 'create',
+    file: 'vrms/repairs.service.ts',
+    writes: ['REFERRAL_OPENED_TICKET'],
+    provedBy: 'vrms/repairs.referral.spec.ts',
+  },
+  {
     method: 'updateStatus',
     file: 'vrms/repairs.service.ts',
     writes: ['STATUS_CHANGE'],

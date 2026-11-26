@@ -28,6 +28,11 @@ import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
 
+// Spec 0029: the VMMS repair event has its own tests (repairs.referral.spec.ts)
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn().mockResolvedValue({ skipped: 'NOT_LINKED' }),
+}));
+
 type JwtUser = {
   sub: string;
   email: string;

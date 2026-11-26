@@ -7,7 +7,13 @@ import {
 import SharedModule from '../../shared/shared.module';
 import { DeliveryStore } from './deliveries/delivery-store';
 import { DeliveryWorker } from './deliveries/delivery-worker';
+import { FleetLinkService } from './fleet/fleet-link.service';
+import { VmmsFleetClient } from './fleet/vmms-fleet.client';
 import { NoStoreMiddleware } from './no-store.middleware';
+import { ReferralIntakeService } from './referrals/referral-intake.service';
+import { ReferralsController } from './referrals/referrals.controller';
+import { ReferralsService } from './referrals/referrals.service';
+import { VmmsIntegrationsController } from './vmms-integrations.controller';
 import { ServiceTokens } from './service-tokens';
 
 /**
@@ -17,8 +23,17 @@ import { ServiceTokens } from './service-tokens';
  */
 @Module({
   imports: [SharedModule],
-  providers: [ServiceTokens, DeliveryStore, DeliveryWorker],
-  exports: [ServiceTokens],
+  controllers: [VmmsIntegrationsController, ReferralsController],
+  providers: [
+    ReferralIntakeService,
+    ReferralsService,
+    ServiceTokens,
+    DeliveryStore,
+    DeliveryWorker,
+    VmmsFleetClient,
+    FleetLinkService,
+  ],
+  exports: [ServiceTokens, VmmsFleetClient],
 })
 export class IntegrationsModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
