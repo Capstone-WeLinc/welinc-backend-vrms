@@ -84,7 +84,13 @@ export class ReferralsService {
             garage: { select: { id: true, name: true } },
             repairTickets: {
               where: { repairStatus: { in: OPEN_STATUSES } },
-              select: { id: true, repairNumber: true, repairStatus: true },
+              // updatedAt: "Add to REP-…" sends it back as its stale check (AC-9)
+              select: {
+                id: true,
+                repairNumber: true,
+                repairStatus: true,
+                updatedAt: true,
+              },
               take: 1,
             },
           },
@@ -118,7 +124,12 @@ export class ReferralsService {
         model: vehicle.model,
         isActive: vehicle.isActive,
         garage: vehicle.garage,
-        openTicket: vehicle.repairTickets[0] ?? null,
+        openTicket: vehicle.repairTickets[0]
+          ? {
+              ...vehicle.repairTickets[0],
+              updatedAt: vehicle.repairTickets[0].updatedAt.toISOString(),
+            }
+          : null,
       },
     };
   }

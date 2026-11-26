@@ -136,6 +136,38 @@ const COVERAGE: Entry[] = [
     writes: ['ATTACHMENT_MOVED'],
     provedBy: 'attachments/attachments.service.spec.ts',
   },
+  // Spec 0029, AC-9, AC-10 and AC-22: decisions on VMMS referrals and on failed deliveries
+  {
+    method: 'addToTicket',
+    file: 'vrms/referral-decisions.service.ts',
+    writes: ['REFERRAL_ADDED', 'ISSUE_ADDED'],
+    provedBy: 'vrms/referral-decisions.service.spec.ts',
+  },
+  {
+    method: 'reject',
+    file: 'vrms/referral-decisions.service.ts',
+    writes: ['REFERRAL_REJECTED'],
+    provedBy: 'vrms/referral-decisions.service.spec.ts',
+  },
+  {
+    method: 'retry',
+    file: 'integrations/deliveries/deliveries.service.ts',
+    writes: ['DELIVERY_RETRIED'],
+    provedBy: 'integrations/deliveries/deliveries.service.spec.ts',
+  },
+  {
+    method: 'dismiss',
+    file: 'integrations/deliveries/deliveries.service.ts',
+    writes: ['DELIVERY_DISMISSED'],
+    provedBy: 'integrations/deliveries/deliveries.service.spec.ts',
+  },
+  {
+    // Spec 0029, AC-36: the late outside shop pick
+    method: 'pickOutsideShop',
+    file: 'vrms/ticket-edits.service.ts',
+    writes: ['TICKET_EDITED'],
+    provedBy: 'vrms/ticket-edits.spec.ts',
+  },
 ];
 
 /** Types nothing writes today: reserved for features 33 and 30, and spec 0003's backfill. */

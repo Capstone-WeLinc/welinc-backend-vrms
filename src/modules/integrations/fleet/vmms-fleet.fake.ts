@@ -2,6 +2,7 @@ import {
   FleetUnavailableError,
   type FleetGarage,
   type FleetVehicle,
+  type OutsideShop,
   type VmmsFleetClient,
 } from './vmms-fleet.client';
 
@@ -14,6 +15,8 @@ export class FakeFleet {
   truck: FleetVehicle | null | 'unavailable' = 'unavailable';
   garageList: FleetGarage[] = [];
   vehicleList: FleetVehicle[] = [];
+  /** The outside shops VMMS answers, null for its 404, or 'unavailable'. */
+  shops: OutsideShop[] | null | 'unavailable' = [];
   readonly reads: string[] = [];
 
   vehicle(id: string): Promise<FleetVehicle | null> {
@@ -30,6 +33,13 @@ export class FakeFleet {
 
   garages(): Promise<FleetGarage[]> {
     return Promise.resolve(this.garageList);
+  }
+
+  outsideShops(): Promise<OutsideShop[] | null> {
+    if (this.shops === 'unavailable') {
+      return Promise.reject(new FleetUnavailableError('HTTP 502'));
+    }
+    return Promise.resolve(this.shops);
   }
 
   asClient(): VmmsFleetClient {

@@ -361,7 +361,7 @@ model RepairPart {
 // Never updated or deleted by code, and a ticket with audit rows cannot be deleted.
 model AuditLog {
   id             String   @id @default(uuid()) @db.Uuid
-  repairTicketId String   @map("repair_ticket_id") @db.Uuid
+  repairTicketId String?  @map("repair_ticket_id") @db.Uuid // null only for a row about no ticket: a referral rejection or its delivery (spec 0029)
   actorUserId    String?  @map("actor_user_id") @db.Uuid // welinc-auth User.id; null only for system events
   actorName      String?  @map("actor_name") @db.VarChar(100)
   actorEmail     String?  @map("actor_email") @db.VarChar(255)
@@ -371,7 +371,7 @@ model AuditLog {
   note           String?  @db.Text
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3) // ms precision so keyset cursors match exactly
 
-  repairTicket RepairTicket @relation(fields: [repairTicketId], references: [id], onDelete: Restrict)
+  repairTicket RepairTicket? @relation(fields: [repairTicketId], references: [id], onDelete: Restrict)
 
   @@index([repairTicketId, createdAt])
   @@index([createdAt(sort: Desc), id(sort: Desc)])

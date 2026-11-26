@@ -102,3 +102,9 @@ export class EditIssueDto extends TicketEditDto {
   @MaxLength(600)
   text: string;
 }
+
+/** PUT /vrms/repairs/:id/outside-shop: spec 0029, AC-36's late pick on an outsourced ticket. */
+export class PickOutsideShopDto extends TicketEditDto {
+  @IsUUID('all', { message: 'Choose the outside shop.' })
+  vmmsProviderId: string;
+}

@@ -206,6 +206,20 @@ export class TicketView {
   })
   truckRemoved!: boolean;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The outside shop's name from VMMS's list, set on the move to Outsourced (spec 0029, AC-36)",
+  })
+  outsideShopName!: string | null;
+
+  @ApiProperty({
+    description:
+      'Outsourced or Pending approval with no shop picked, from before the picker (spec 0029, AC-36)',
+  })
+  needsOutsideShop!: boolean;
+
   @ApiProperty({ description: 'The garage name' })
   garageLocation!: string;
 

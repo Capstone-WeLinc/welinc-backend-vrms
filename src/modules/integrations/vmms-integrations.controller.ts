@@ -2,11 +2,17 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
+  Param,
+  ParseUUIDPipe,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
+import { Type } from 'class-transformer';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { ApiAcceptedResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ServiceRoute } from '../../auth/verify';
@@ -20,11 +26,26 @@ import {
   FleetChangeDto,
 } from './fleet/fleet-change.dto';
 import { FleetSyncService } from './fleet/fleet-sync.service';
+import { VmmsRepairReadsService } from './vmms-repair-reads.service';
 import { ReferralIntakeService } from './referrals/referral-intake.service';
 import {
   ReferralAcceptedView,
   RepairReferralDto,
 } from './referrals/repair-referral.dto';
+
+/** AC-15: `limit` 1 to 100, default 50; the cursor is opaque. */
+export class RepairHistoryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  cursor?: string;
+}
 
 /**
  * Spec 0029: the routes VMMS calls. Service tokens from client `vmms` only (AC-24); every answer
@@ -38,7 +59,29 @@ export class VmmsIntegrationsController {
   constructor(
     private readonly referrals: ReferralIntakeService,
     private readonly fleetSync: FleetSyncService,
+    private readonly reads: VmmsRepairReadsService,
   ) {}
+
+  /** AC-14: one ticket's status as VMMS maps it, with the outside shop while outsourced. */
+  @ApiErrors(403, ['WRONG_TOKEN_USE', 'FORBIDDEN'])
+  @ApiErrors(404, ['REPAIR_NOT_FOUND'])
+  @ServiceRoute('repair.status.read', { clients: ['vmms'] })
+  @Get('repairs/:repairTicketId')
+  repairStatus(@Param('repairTicketId', ParseUUIDPipe) repairTicketId: string) {
+    return this.reads.status(repairTicketId);
+  }
+
+  /** AC-15: a truck's repairs, newest first, never cancelled ones and never part prices. */
+  @ApiErrors(400, [null, 'INVALID_CURSOR'])
+  @ApiErrors(403, ['WRONG_TOKEN_USE', 'FORBIDDEN'])
+  @ServiceRoute('repair.history.read', { clients: ['vmms'] })
+  @Get('vehicles/:vmmsVehicleId/repair-history')
+  repairHistory(
+    @Param('vmmsVehicleId', ParseUUIDPipe) vmmsVehicleId: string,
+    @Query() query: RepairHistoryQueryDto,
+  ) {
+    return this.reads.history(vmmsVehicleId, query.limit, query.cursor);
+  }
 
   /** AC-6: a repair referral from a VMMS inspection that ended For Repair. */
   @ApiAcceptedResponse({ type: ReferralAcceptedView })

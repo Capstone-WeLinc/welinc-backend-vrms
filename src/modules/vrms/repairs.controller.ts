@@ -27,6 +27,7 @@ import {
   AddIssueDto,
   EditIssueDto,
   EditTicketDetailsDto,
+  PickOutsideShopDto,
   SetMechanicsDto,
   TicketEditDto,
 } from './dto/edit-ticket.dto';
@@ -142,6 +143,22 @@ export class RepairsController {
     @CurrentAbility() ability: AppAbility,
   ) {
     return this.repairsService.updateStatus(id, dto, req.user, ability);
+  }
+
+  // Spec 0029, AC-36: the outside shop on a ticket outsourced before the picker existed
+  @ApiOkResponse({ type: TicketDetailResponse })
+  @ApiErrors(400, [null, 'SHOP_NOT_FOUND', 'TICKET_LOCKED'])
+  @ApiErrors(409, [null, 'NOT_OUTSOURCED', 'SHOP_ALREADY_SET'])
+  @ApiErrors(503, ['VMMS_UNAVAILABLE'])
+  @RequirePermission('ticket.edit')
+  @Put(':id/outside-shop')
+  pickOutsideShop(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PickOutsideShopDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.pickOutsideShop(id, dto, req.user, ability);
   }
 
   // Link, relink or unlink a known fix (spec 0007, AC-29)

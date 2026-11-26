@@ -745,6 +745,59 @@
         ]
       }
     },
+    "/vrms/config/outside-shops": {
+      "get": {
+        "operationId": "ConfigController_listOutsideShops",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`VMMS_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VMMS_UNAVAILABLE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Fleet and Team"
+        ]
+      }
+    },
     "/vrms/config/vehicles": {
       "get": {
         "operationId": "ConfigController_listVehicles",
@@ -791,6 +844,274 @@
         ],
         "tags": [
           "Fleet and Team"
+        ]
+      }
+    },
+    "/vrms/deliveries": {
+      "get": {
+        "operationId": "DeliveriesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Deliveries"
+        ]
+      }
+    },
+    "/vrms/deliveries/{id}": {
+      "get": {
+        "operationId": "DeliveriesController_detail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "404": {
+            "description": "`DELIVERY_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "DELIVERY_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Deliveries"
+        ]
+      }
+    },
+    "/vrms/deliveries/{id}/dismiss": {
+      "post": {
+        "operationId": "DeliveriesController_dismiss",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissDeliveryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`DELIVERY_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "DELIVERY_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`NOT_FAILED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_FAILED"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Deliveries"
+        ]
+      }
+    },
+    "/vrms/deliveries/{id}/retry": {
+      "post": {
+        "operationId": "DeliveriesController_retry",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "404": {
+            "description": "`DELIVERY_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "DELIVERY_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`NOT_FAILED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_FAILED"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Deliveries"
         ]
       }
     },
@@ -1078,6 +1399,171 @@
           }
         ],
         "summary": "AC-6: a repair referral from a VMMS inspection that ended For Repair.",
+        "tags": [
+          "Integrations: VMMS"
+        ]
+      }
+    },
+    "/vrms/integrations/vmms/repairs/{repairTicketId}": {
+      "get": {
+        "operationId": "VmmsIntegrationsController_repairStatus",
+        "parameters": [
+          {
+            "name": "repairTicketId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "403": {
+            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "WRONG_TOKEN_USE",
+                            "FORBIDDEN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`REPAIR_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REPAIR_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "summary": "AC-14: one ticket's status as VMMS maps it, with the outside shop while outsourced.",
+        "tags": [
+          "Integrations: VMMS"
+        ]
+      }
+    },
+    "/vrms/integrations/vmms/vehicles/{vmmsVehicleId}/repair-history": {
+      "get": {
+        "operationId": "VmmsIntegrationsController_repairHistory",
+        "parameters": [
+          {
+            "name": "vmmsVehicleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          },
+          "400": {
+            "description": "`INVALID_CURSOR` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INVALID_CURSOR"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "WRONG_TOKEN_USE",
+                            "FORBIDDEN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "summary": "AC-15: a truck's repairs, newest first, never cancelled ones and never part prices.",
         "tags": [
           "Integrations: VMMS"
         ]
@@ -3048,6 +3534,219 @@
         ]
       }
     },
+    "/vrms/referrals/{id}/add-to-ticket": {
+      "post": {
+        "operationId": "ReferralDecisionsController_addToTicket",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddReferralToTicketDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`REFERRAL_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REFERRAL_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`REFERRAL_ALREADY_DECIDED`, `NO_OPEN_TICKET` or `STALE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REFERRAL_ALREADY_DECIDED",
+                            "NO_OPEN_TICKET",
+                            "STALE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
+    "/vrms/referrals/{id}/reject": {
+      "post": {
+        "operationId": "ReferralDecisionsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectReferralDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          },
+          "400": {
+            "description": "no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`REFERRAL_NOT_FOUND`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REFERRAL_NOT_FOUND"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`REFERRAL_ALREADY_DECIDED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "REFERRAL_ALREADY_DECIDED"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Referrals"
+        ]
+      }
+    },
     "/vrms/repairs": {
       "get": {
         "operationId": "RepairsController_findAll",
@@ -4378,6 +5077,128 @@
         ]
       }
     },
+    "/vrms/repairs/{id}/outside-shop": {
+      "put": {
+        "operationId": "RepairsController_pickOutsideShop",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PickOutsideShopDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`SHOP_NOT_FOUND`, `TICKET_LOCKED` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "SHOP_NOT_FOUND",
+                            "TICKET_LOCKED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`NOT_OUTSOURCED`, `SHOP_ALREADY_SET` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_OUTSOURCED",
+                            "SHOP_ALREADY_SET"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "`VMMS_UNAVAILABLE`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VMMS_UNAVAILABLE"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
     "/vrms/repairs/{id}/status": {
       "patch": {
         "operationId": "RepairsController_updateStatus",
@@ -4581,6 +5402,10 @@
                 "STEP_EDITED",
                 "STEP_MOVED",
                 "REFERRAL_OPENED_TICKET",
+                "REFERRAL_ADDED",
+                "REFERRAL_REJECTED",
+                "DELIVERY_RETRIED",
+                "DELIVERY_DISMISSED",
                 "STATUS_OVERRIDE",
                 "TRANSFER_REQUESTED",
                 "TRANSFER_APPROVED",
@@ -4642,6 +5467,10 @@
                   "STEP_EDITED",
                   "STEP_MOVED",
                   "REFERRAL_OPENED_TICKET",
+                  "REFERRAL_ADDED",
+                  "REFERRAL_REJECTED",
+                  "DELIVERY_RETRIED",
+                  "DELIVERY_DISMISSED",
                   "STATUS_OVERRIDE",
                   "TRANSFER_REQUESTED",
                   "TRANSFER_APPROVED",
@@ -5606,6 +6435,9 @@
       "name": "Attachments"
     },
     {
+      "name": "Deliveries"
+    },
+    {
       "name": "Fleet and Team"
     },
     {
@@ -5690,6 +6522,27 @@
           "categoryId",
           "rootCause",
           "lastUpdatedAt"
+        ]
+      },
+      "AddReferralToTicketDto": {
+        "type": "object",
+        "properties": {
+          "issues": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReferralIssueDto"
+            }
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "The open ticket as the dialog loaded it: a change since answers 409 `STALE`."
+          }
+        },
+        "required": [
+          "issues",
+          "updatedAt"
         ]
       },
       "AssignMechanicsDto": {
@@ -6020,6 +6873,10 @@
           "helpful"
         ]
       },
+      "DismissDeliveryDto": {
+        "type": "object",
+        "properties": {}
+      },
       "DismissGroupDto": {
         "type": "object",
         "properties": {
@@ -6256,6 +7113,25 @@
           "error"
         ]
       },
+      "PickOutsideShopDto": {
+        "type": "object",
+        "properties": {
+          "vmmsProviderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "vmmsProviderId",
+          "lastUpdatedAt"
+        ]
+      },
       "ReferralAcceptedView": {
         "type": "object",
         "properties": {
@@ -6304,6 +7180,36 @@
           "checklistItemId",
           "label",
           "note"
+        ]
+      },
+      "ReferralIssueDto": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 600
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "description",
+          "categoryId"
+        ]
+      },
+      "RejectReferralDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "ReleaseTicketsDto": {
@@ -6586,6 +7492,15 @@
             "type": "boolean",
             "description": "An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)"
           },
+          "outsideShopName": {
+            "type": "string",
+            "nullable": true,
+            "description": "The outside shop's name from VMMS's list, set on the move to Outsourced (spec 0029, AC-36)"
+          },
+          "needsOutsideShop": {
+            "type": "boolean",
+            "description": "Outsourced or Pending approval with no shop picked, from before the picker (spec 0029, AC-36)"
+          },
           "garageLocation": {
             "type": "string",
             "description": "The garage name"
@@ -6785,6 +7700,8 @@
           "driverId",
           "fromVmmsWorkOrder",
           "truckRemoved",
+          "outsideShopName",
+          "needsOutsideShop",
           "garageLocation",
           "odometerReading",
           "priority",
@@ -6867,6 +7784,15 @@
           "truckRemoved": {
             "type": "boolean",
             "description": "An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)"
+          },
+          "outsideShopName": {
+            "type": "string",
+            "nullable": true,
+            "description": "The outside shop's name from VMMS's list, set on the move to Outsourced (spec 0029, AC-36)"
+          },
+          "needsOutsideShop": {
+            "type": "boolean",
+            "description": "Outsourced or Pending approval with no shop picked, from before the picker (spec 0029, AC-36)"
           },
           "garageLocation": {
             "type": "string",
@@ -7063,6 +7989,8 @@
           "driverId",
           "fromVmmsWorkOrder",
           "truckRemoved",
+          "outsideShopName",
+          "needsOutsideShop",
           "garageLocation",
           "odometerReading",
           "priority",
@@ -7462,6 +8390,15 @@
             "type": "boolean",
             "description": "An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)"
           },
+          "outsideShopName": {
+            "type": "string",
+            "nullable": true,
+            "description": "The outside shop's name from VMMS's list, set on the move to Outsourced (spec 0029, AC-36)"
+          },
+          "needsOutsideShop": {
+            "type": "boolean",
+            "description": "Outsourced or Pending approval with no shop picked, from before the picker (spec 0029, AC-36)"
+          },
           "garageLocation": {
             "type": "string",
             "description": "The garage name"
@@ -7635,6 +8572,8 @@
           "driverId",
           "fromVmmsWorkOrder",
           "truckRemoved",
+          "outsideShopName",
+          "needsOutsideShop",
           "garageLocation",
           "odometerReading",
           "priority",

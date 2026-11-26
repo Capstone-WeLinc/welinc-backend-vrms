@@ -1788,6 +1788,11 @@ export class RepairsService {
       // Spec 0029, AC-35: worked out on read, never stored. An open ticket whose truck VMMS
       // removed; the Admin cancels it, or VMMS reactivates the truck and the sync clears it
       truckRemoved: open && !ticket.vehicle.isActive,
+      // Spec 0029, AC-36: the outside shop the ticket went to, picked from VMMS's list. A ticket
+      // outsourced before the picker existed has none, and the detail page asks for one
+      outsideShopName: ticket.outsideShopName,
+      needsOutsideShop:
+        atOutsideShop(ticket.repairStatus) && !ticket.vmmsProviderId,
       // Spec 0019, AC-4: so the details edit can tell a swap from the same driver
       driverId: ticket.driverId,
       garageLocation: ticket.garage.name,
@@ -1868,6 +1873,14 @@ export class RepairsService {
 
     return base;
   }
+}
+
+/** Spec 0029, AC-36: the statuses where the truck is at an outside shop. */
+export function atOutsideShop(status: RepairStatus): boolean {
+  return (
+    status === RepairStatus.OUTSOURCED ||
+    status === RepairStatus.PENDING_APPROVAL
+  );
 }
 
 /** Spec 0029, AC-8: someone already opened, added or rejected this referral. */

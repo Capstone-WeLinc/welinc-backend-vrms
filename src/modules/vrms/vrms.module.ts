@@ -18,6 +18,8 @@ import { DirectorySync } from './directory/directory-sync.service';
 import { DirectoryPollJob } from './directory/directory-poll.job';
 import { PeopleCopy } from './directory/people-copy';
 import { MechanicWorkService } from './mechanic-work.service';
+import { ReferralDecisionsController } from './referral-decisions.controller';
+import { ReferralDecisionsService } from './referral-decisions.service';
 
 @Module({
   // IntegrationsModule: the VMMS fleet client for ticket create's fresh read (spec 0029, AC-5)
@@ -27,6 +29,7 @@ import { MechanicWorkService } from './mechanic-work.service';
     ConfigController,
     LookupsController,
     VehiclesController,
+    ReferralDecisionsController,
   ],
   providers: [
     RepairsService,
@@ -41,6 +44,7 @@ import { MechanicWorkService } from './mechanic-work.service';
     DirectoryPollJob,
     PeopleCopy,
     MechanicWorkService,
+    ReferralDecisionsService,
   ],
 })
 export class VrmsModule {}

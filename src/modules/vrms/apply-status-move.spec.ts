@@ -5,6 +5,13 @@ import { Actor, createdEvent } from './audit-events';
 import { photoRows } from './photo-rules.fake';
 import type { PhotoSwitches } from './photo-rules';
 import { findMove } from './ticket-transitions';
+import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
+
+// Spec 0029, AC-13: the event's own reads and outbox insert are tested in vmms-repair-events.spec
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn(() => Promise.resolve({ deliveryId: 'd-1' })),
+}));
+const queued = jest.mocked(queueVmmsRepairEvent);
 
 const ALL_ON: PhotoSwitches = {
   requireBeforeToStart: true,
@@ -142,7 +149,19 @@ describe('applyStatusMove', () => {
       [RepairStatus.ASSIGNED, RepairStatus.OUTSOURCED],
     ] as const) {
       const { tx, raw } = makeTx();
-      await applyStatusMove(tx, ticket(from), move(from, to), actor, null, NOW);
+      // Spec 0029, AC-36: M9 carries the outside shop
+      const data = { vmmsProviderId: 'shop-1', outsideShopName: 'Shop' };
+      await applyStatusMove(
+        tx,
+        ticket(from),
+        move(from, to),
+        actor,
+        null,
+        NOW,
+        {
+          data,
+        },
+      );
       expect(raw.repairTicket.updateMany).toHaveBeenNthCalledWith(2, {
         where: { id: 'ticket-1', workStartedAt: null },
         data: { workStartedAt: NOW, updatedAt: NOW },
@@ -392,6 +411,80 @@ describe('applyStatusMove', () => {
         string,
         unknown
       >,
+    });
+  });
+
+  // Spec 0029, AC-13 and AC-36
+  describe('the VMMS repair event', () => {
+    beforeEach(() => queued.mockClear());
+
+    it.each([
+      [RepairStatus.ASSIGNED, RepairStatus.IN_PROGRESS, 'STATUS_UPDATED'],
+      [RepairStatus.FOR_VERIFICATION, RepairStatus.CLOSED, 'COMPLETED'],
+      [RepairStatus.IN_PROGRESS, RepairStatus.CANCELLED, 'CANCELLED'],
+      [RepairStatus.ASSIGNED, RepairStatus.OPEN, 'STATUS_UPDATED'],
+    ])(
+      'queues one event for %s to %s as %s, after the audit row',
+      async (from, to, type) => {
+        const { tx, calls } = makeTx(1, 150000, photoRows(5, 5));
+        queued.mockImplementationOnce(() => {
+          calls.push('vmms.event');
+          return Promise.resolve({ deliveryId: 'd-1' });
+        });
+        await applyStatusMove(
+          tx,
+          ticket(from),
+          move(from, to),
+          actor,
+          'note',
+          NOW,
+        );
+        expect(queued).toHaveBeenCalledTimes(1);
+        expect(queued).toHaveBeenCalledWith(tx, 'ticket-1', type);
+        expect(calls.indexOf('vmms.event')).toBeGreaterThan(
+          calls.indexOf('audit'),
+        );
+      },
+    );
+
+    it('queues nothing when the move is stale', async () => {
+      const { tx } = makeTx(0);
+      await expect(
+        applyStatusMove(
+          tx,
+          ticket(RepairStatus.ASSIGNED),
+          move(RepairStatus.ASSIGNED, RepairStatus.IN_PROGRESS),
+          actor,
+          null,
+          NOW,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(queued).not.toHaveBeenCalled();
+    });
+
+    it('refuses M9 without the outside shop, and allows it with one', async () => {
+      const m9 = move(RepairStatus.IN_PROGRESS, RepairStatus.OUTSOURCED);
+      const { tx } = makeTx();
+      await expect(
+        applyStatusMove(
+          tx,
+          ticket(RepairStatus.IN_PROGRESS),
+          m9,
+          actor,
+          null,
+          NOW,
+        ),
+      ).rejects.toThrow('outside shop');
+      await applyStatusMove(
+        tx,
+        ticket(RepairStatus.IN_PROGRESS),
+        m9,
+        actor,
+        null,
+        NOW,
+        { data: { vmmsProviderId: 'shop-1', outsideShopName: 'Shop' } },
+      );
+      expect(queued).toHaveBeenCalledWith(tx, 'ticket-1', 'STATUS_UPDATED');
     });
   });
 });

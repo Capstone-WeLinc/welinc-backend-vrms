@@ -18,6 +18,10 @@ import {
 import { STALE_TICKET } from './ticket-knowledge';
 import { isFinished } from './ticket-statuses';
 import type { TicketMove } from './ticket-transitions';
+import {
+  queueVmmsRepairEvent,
+  type VmmsRepairEventType,
+} from '../integrations/vmms-repair-events';
 
 // Spec 0014, AC-1, AC-7, AC-9, AC-10 and AC-12: every effect of one status move, inside the
 // caller's transaction. Later features call it with their own trigger's move.
@@ -76,6 +80,11 @@ export async function applyStatusMove(
     throw new Error(
       `Move ${move.id} does not start from ${ticket.repairStatus}`,
     );
+  }
+  // Spec 0029, AC-36: sending a ticket out (M9) stores VMMS's outside shop with the move. M13
+  // (back from Pending approval) keeps the shop the ticket already has.
+  if (move.id === 'M9' && !options.data?.vmmsProviderId) {
+    throw new Error('A move to Outsourced needs the outside shop');
   }
 
   const closes = move.to === RepairStatus.CLOSED;
@@ -152,4 +161,15 @@ export async function applyStatusMove(
   if (isFinished(move.to) && isSystemActor(actor)) {
     throw new Error('The system never finishes a ticket');
   }
+
+  // 5. Spec 0029, AC-13: VMMS hears of the move in the same transaction, with the row locked by
+  // the conditional update above, so two moves on one ticket queue in commit order
+  await queueVmmsRepairEvent(tx, ticket.id, vmmsEventFor(move.to));
+}
+
+/** The repair event a move sends VMMS: the end of the repair, or a status change. */
+export function vmmsEventFor(to: RepairStatus): VmmsRepairEventType {
+  if (to === RepairStatus.CLOSED) return 'COMPLETED';
+  if (to === RepairStatus.CANCELLED) return 'CANCELLED';
+  return 'STATUS_UPDATED';
 }

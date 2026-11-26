@@ -794,8 +794,8 @@ export async function seedRepairs(
   const newest = new Map<string, number>();
   for (const a of rows.audits) {
     const at = +(a.createdAt as Date);
-    if (at > (newest.get(a.repairTicketId) ?? 0))
-      newest.set(a.repairTicketId, at);
+    if (at > (newest.get(a.repairTicketId!) ?? 0))
+      newest.set(a.repairTicketId!, at);
   }
   for (const t of rows.tickets) t.lastActivityAt = new Date(newest.get(t.id!)!);
 
@@ -806,8 +806,8 @@ export async function seedRepairs(
       (c) => c.field === 'repairStatus',
     );
     const at = +(a.createdAt as Date);
-    if (changesStatus && at > (statusAt.get(a.repairTicketId) ?? 0))
-      statusAt.set(a.repairTicketId, at);
+    if (changesStatus && at > (statusAt.get(a.repairTicketId!) ?? 0))
+      statusAt.set(a.repairTicketId!, at);
   }
   for (const t of rows.tickets)
     t.statusChangedAt = statusAt.has(t.id!)
@@ -824,8 +824,8 @@ export async function seedRepairs(
         (c.after === 'IN_PROGRESS' || c.after === 'OUTSOURCED'),
     );
     const at = +(a.createdAt as Date);
-    if (starts && at < (startedAt.get(a.repairTicketId) ?? Infinity))
-      startedAt.set(a.repairTicketId, at);
+    if (starts && at < (startedAt.get(a.repairTicketId!) ?? Infinity))
+      startedAt.set(a.repairTicketId!, at);
   }
   for (const t of rows.tickets)
     t.workStartedAt = startedAt.has(t.id!)

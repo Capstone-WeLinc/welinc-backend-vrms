@@ -7,7 +7,8 @@ export type JobName =
   | 'embedding-catchup'
   | 'attachment-purge'
   | 'delivery-worker'
-  | 'fleet-reconcile';
+  | 'fleet-reconcile'
+  | 'delivery-retention';
 
 /**
  * Reports a scheduled job's failure as a Sentry issue tagged with the job name. Never throws and

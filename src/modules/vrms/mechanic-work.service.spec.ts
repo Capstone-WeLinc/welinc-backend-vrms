@@ -6,6 +6,11 @@ import { MechanicRoster } from './mechanic-roster.service';
 import { leaveReason, MechanicWorkService } from './mechanic-work.service';
 import { permanentRoles } from './directory/auth-directory.client';
 
+// Spec 0029, AC-13: the VMMS event's reads and insert are tested in apply-status-move.spec
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn(() => Promise.resolve({ deliveryId: 'd-1' })),
+}));
+
 // Spec 0011, AC-32 and AC-33: open work and release, against an in memory ticket list.
 // Spec 0014, AC-1: the release to Open goes through applyStatusMove with its one audit row.
 

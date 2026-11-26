@@ -5,11 +5,15 @@ import {
   type NestModule,
 } from '@nestjs/common';
 import SharedModule from '../../shared/shared.module';
+import { DeliveriesController } from './deliveries/deliveries.controller';
+import { DeliveriesService } from './deliveries/deliveries.service';
+import { DeliveryRetentionJob } from './deliveries/delivery-retention.job';
 import { DeliveryStore } from './deliveries/delivery-store';
 import { DeliveryWorker } from './deliveries/delivery-worker';
 import { FleetLinkService } from './fleet/fleet-link.service';
 import { FleetReconcileJob } from './fleet/fleet-reconcile.job';
 import { FleetSyncService } from './fleet/fleet-sync.service';
+import { OutsideShopsService } from './fleet/outside-shops.service';
 import { VmmsFleetClient } from './fleet/vmms-fleet.client';
 import { NoStoreMiddleware } from './no-store.middleware';
 import { ReferralIntakeService } from './referrals/referral-intake.service';
@@ -17,6 +21,7 @@ import { ReferralsController } from './referrals/referrals.controller';
 import { ReferralsService } from './referrals/referrals.service';
 import { VmmsIntegrationsController } from './vmms-integrations.controller';
 import { ServiceTokens } from './service-tokens';
+import { VmmsRepairReadsService } from './vmms-repair-reads.service';
 
 /**
  * Spec 0029: VRMS's integration with VMMS and BMS. Inbound routes live under
@@ -25,7 +30,11 @@ import { ServiceTokens } from './service-tokens';
  */
 @Module({
   imports: [SharedModule],
-  controllers: [VmmsIntegrationsController, ReferralsController],
+  controllers: [
+    VmmsIntegrationsController,
+    ReferralsController,
+    DeliveriesController,
+  ],
   providers: [
     ReferralIntakeService,
     ReferralsService,
@@ -36,8 +45,17 @@ import { ServiceTokens } from './service-tokens';
     FleetLinkService,
     FleetSyncService,
     FleetReconcileJob,
+    VmmsRepairReadsService,
+    OutsideShopsService,
+    DeliveriesService,
+    DeliveryRetentionJob,
   ],
-  exports: [ServiceTokens, VmmsFleetClient],
+  exports: [
+    ServiceTokens,
+    VmmsFleetClient,
+    ReferralsService,
+    OutsideShopsService,
+  ],
 })
 export class IntegrationsModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

@@ -20,6 +20,9 @@ export type FleetVehicle = {
 
 export type FleetGarage = { id: string; name: string };
 
+/** One of VMMS's active outside shops (spec 0029, AC-36; ask 6). */
+export type OutsideShop = { id: string; name: string };
+
 /** VMMS answered with something other than the record, or not at all (timeout, network, 5xx). */
 export class FleetUnavailableError extends Error {
   constructor(readonly reason: string) {
@@ -76,6 +79,22 @@ export class VmmsFleetClient {
       throw new FleetUnavailableError('garage list missing');
     }
     return body.garages;
+  }
+
+  /**
+   * AC-36: VMMS's active outside shops, ordered by name. Null when VMMS answers 404, which today
+   * means it doesn't serve the route yet (ask 6); the caller then uses its stub.
+   */
+  async outsideShops(): Promise<OutsideShop[] | null> {
+    const body = await this.get<{ providers?: OutsideShop[] }>(
+      '/vmms/fleet/outsourced-providers',
+      FRESH_READ_TIMEOUT_MS,
+    );
+    if (body === null) return null;
+    if (!Array.isArray(body.providers)) {
+      throw new FleetUnavailableError('provider list missing');
+    }
+    return body.providers;
   }
 
   /** One truck, read fresh; null when VMMS doesn't have it (404). */

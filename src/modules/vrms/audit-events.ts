@@ -40,6 +40,10 @@ export const AUDIT_ACTIONS = [
   'STEP_MOVED',
   // Spec 0029
   'REFERRAL_OPENED_TICKET',
+  'REFERRAL_ADDED',
+  'REFERRAL_REJECTED',
+  'DELIVERY_RETRIED',
+  'DELIVERY_DISMISSED',
   // Reserved: in the catalog so filters accept them, written by features 33 and 30
   'STATUS_OVERRIDE',
   'TRANSFER_REQUESTED',
@@ -65,6 +69,12 @@ export type AuditCategory = (typeof AUDIT_CATEGORIES)[number];
 export const AUDIT_CATEGORY: Record<AuditAction, AuditCategory> = {
   CREATED: 'STATUS',
   REFERRAL_OPENED_TICKET: 'STATUS',
+  // Spec 0029: decisions on VMMS's referrals, and on the messages VRMS sends, sit with the
+  // ticket's status events (spec 0021 keeps its seven categories)
+  REFERRAL_ADDED: 'STATUS',
+  REFERRAL_REJECTED: 'STATUS',
+  DELIVERY_RETRIED: 'STATUS',
+  DELIVERY_DISMISSED: 'STATUS',
   STATUS_CHANGE: 'STATUS',
   STATUS_OVERRIDE: 'STATUS',
   UNLOCK: 'STATUS',
@@ -211,6 +221,46 @@ export function referralOpenedEvent(workOrderNumber: string): AuditEventData {
     action: 'REFERRAL_OPENED_TICKET',
     changes: [{ field: 'referral', before: null, after: workOrderNumber }],
     note: null,
+  };
+}
+
+/** Spec 0029, AC-9: a VMMS referral added to the truck's open ticket. */
+export function referralAddedEvent(workOrderNumber: string): AuditEventData {
+  return {
+    action: 'REFERRAL_ADDED',
+    changes: [{ field: 'referral', before: null, after: workOrderNumber }],
+    note: null,
+  };
+}
+
+/** Spec 0029, AC-10: a VMMS referral sent back; it belongs to no ticket. */
+export function referralRejectedEvent(
+  workOrderNumber: string,
+  reason: string,
+): AuditEventData {
+  return {
+    action: 'REFERRAL_REJECTED',
+    changes: [{ field: 'referral', before: 'WAITING', after: workOrderNumber }],
+    note: reason,
+  };
+}
+
+/** Spec 0029, AC-22: a person retried or dismissed a failed message to VMMS or BMS. */
+export function deliveryEvent(
+  action: 'DELIVERY_RETRIED' | 'DELIVERY_DISMISSED',
+  delivery: { kind: string; target: string },
+  note: string | null,
+): AuditEventData {
+  return {
+    action,
+    changes: [
+      {
+        field: 'delivery',
+        before: null,
+        after: `${delivery.target} ${delivery.kind}`,
+      },
+    ],
+    note,
   };
 }
 
@@ -668,7 +718,8 @@ export type AuditEvent = {
   category: AuditCategory | null;
   at: string;
   actor: AuditActor | null;
-  ticket: { id: string; repairNumber: string };
+  /** Null only for a row about no ticket: a referral rejection or its delivery (spec 0029). */
+  ticket: { id: string; repairNumber: string } | null;
   changes: AuditChange[];
   note: string | null;
 };
@@ -683,7 +734,7 @@ export type AuditRow = {
   changes: Prisma.JsonValue;
   note: string | null;
   createdAt: Date;
-  repairTicket: { id: string; repairNumber: string };
+  repairTicket: { id: string; repairNumber: string } | null;
 };
 
 export type AuditCursor = { createdAt: Date; id: string };
@@ -817,10 +868,9 @@ export function toAuditEvent(row: AuditRow): AuditEvent {
             role: row.actorRole,
           }
         : null,
-    ticket: {
-      id: row.repairTicket.id,
-      repairNumber: row.repairTicket.repairNumber,
-    },
+    ticket: row.repairTicket
+      ? { id: row.repairTicket.id, repairNumber: row.repairTicket.repairNumber }
+      : null,
     changes: readChanges(row.changes),
     note: row.note,
   };

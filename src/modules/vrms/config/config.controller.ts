@@ -22,7 +22,12 @@ import { DirectorySync } from '../directory/directory-sync.service';
 import { PeopleCopy } from '../directory/people-copy';
 import { ReleaseTicketsDto } from '../dto/release-tickets.dto';
 import { ApiTags } from '@nestjs/swagger';
-import { ApiGenericErrors, ApiUserToken } from '../../../openapi/decorators';
+import {
+  ApiErrors,
+  ApiGenericErrors,
+  ApiUserToken,
+} from '../../../openapi/decorators';
+import { OutsideShopsService } from '../../integrations/fleet/outside-shops.service';
 
 @ApiTags('Fleet and Team')
 @ApiUserToken()
@@ -35,7 +40,17 @@ export class ConfigController {
     private readonly mechanicWork: MechanicWorkService,
     private readonly directorySync: DirectorySync,
     private readonly peopleCopy: PeopleCopy,
+    private readonly outsideShops: OutsideShopsService,
   ) {}
+
+  // GET /vrms/config/outside-shops (spec 0029, AC-36): VMMS's active outside shops for the
+  // picker, or the last list (stale) when VMMS can't be reached
+  @ApiErrors(503, ['VMMS_UNAVAILABLE'])
+  @RequirePermission('config.read')
+  @Get('config/outside-shops')
+  listOutsideShops() {
+    return this.outsideShops.list();
+  }
 
   // GET /vrms/config/garages
   @RequirePermission('config.read')

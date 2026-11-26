@@ -13,6 +13,13 @@ import { FakeEmbeddings } from '../ai/embedding.fake';
 import { RepairsService } from './repairs.service';
 import { editNote } from './ticket-edits';
 import { TicketEditsService } from './ticket-edits.service';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
+import { OutsideShopsService } from '../integrations/fleet/outside-shops.service';
+
+// Spec 0029, AC-13: the VMMS event's reads and insert are tested in apply-status-move.spec
+jest.mock('../integrations/vmms-repair-events', () => ({
+  queueVmmsRepairEvent: jest.fn(() => Promise.resolve({ deliveryId: 'd-1' })),
+}));
 
 // Spec 0019: the shared edit rules and the details save.
 
@@ -100,13 +107,15 @@ function setup(
   };
   const repairs = { present: jest.fn((t: unknown) => Promise.resolve(t)) };
   const embeddings = new FakeEmbeddings();
+  const fleet = new FakeFleet();
   const service = new TicketEditsService(
     prisma as unknown as PrismaService,
     repairs as unknown as RepairsService,
     new FakeSettings({ 'tickets.odometer_jump_warn_km': 5000 }),
     embeddings.asService(),
+    new OutsideShopsService(fleet.asClient()),
   );
-  return { service, tx, prisma, repairs, embeddings };
+  return { service, tx, prisma, repairs, embeddings, fleet };
 }
 
 type UpdateCall = [{ where: unknown; data: Record<string, unknown> }];
@@ -880,5 +889,87 @@ describe('TicketEditsService issues (AC-14 to AC-17)', () => {
         defaultAbility(admin),
       ),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+// Spec 0029, AC-36: the late outside shop pick on a ticket outsourced before the picker
+describe('TicketEditsService.pickOutsideShop (spec 0029, AC-36)', () => {
+  const SHOP = {
+    id: '6f1c2a8e-4b1d-4c55-9a51-0c3e7b9d1a01',
+    name: 'Bulacan Diesel Works',
+  };
+  const outsourced = (over: Record<string, unknown> = {}) =>
+    ticketRow({
+      repairStatus: RepairStatus.OUTSOURCED,
+      vmmsProviderId: null,
+      outsideShopName: null,
+      ...over,
+    });
+  const ability = defaultAbility(admin);
+  const body = { lastUpdatedAt: AT, vmmsProviderId: SHOP.id };
+
+  it('stores the shop with the stamp, writes TICKET_EDITED and queues STATUS_UPDATED', async () => {
+    const ctx = setup(outsourced());
+    ctx.fleet.shops = [SHOP];
+    const { queueVmmsRepairEvent } = jest.requireMock<{
+      queueVmmsRepairEvent: jest.Mock;
+    }>('../integrations/vmms-repair-events');
+    queueVmmsRepairEvent.mockClear();
+    await ctx.service.pickOutsideShop('t1', body, admin, ability);
+    expect(ctx.tx.repairTicket.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 't1', updatedAt: LOADED },
+        data: expect.objectContaining({
+          vmmsProviderId: SHOP.id,
+          outsideShopName: SHOP.name,
+        }) as Record<string, unknown>,
+      }),
+    );
+    expect(ctx.tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        repairTicketId: 't1',
+        action: 'TICKET_EDITED',
+        changes: [{ field: 'outsideShop', before: null, after: SHOP.name }],
+      }) as Record<string, unknown>,
+    });
+    expect(queueVmmsRepairEvent).toHaveBeenCalledWith(
+      ctx.tx,
+      't1',
+      'STATUS_UPDATED',
+    );
+  });
+
+  it('refuses a ticket not at an outside shop, or one that has its shop', async () => {
+    const notOut = setup(ticketRow());
+    await expect(
+      notOut.service.pickOutsideShop('t1', body, admin, ability),
+    ).rejects.toMatchObject({ response: { code: 'NOT_OUTSOURCED' } });
+    const done = setup(
+      outsourced({ vmmsProviderId: SHOP.id, outsideShopName: SHOP.name }),
+    );
+    await expect(
+      done.service.pickOutsideShop('t1', body, admin, ability),
+    ).rejects.toMatchObject({ response: { code: 'SHOP_ALREADY_SET' } });
+    expect(done.tx.repairTicket.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses a shop not on the list, and answers 503 when VMMS is down with no list kept', async () => {
+    const ctx = setup(
+      outsourced({ repairStatus: RepairStatus.PENDING_APPROVAL }),
+    );
+    ctx.fleet.shops = [SHOP];
+    await expect(
+      ctx.service.pickOutsideShop(
+        't1',
+        { ...body, vmmsProviderId: '00000000-0000-4000-8000-0000000000aa' },
+        admin,
+        ability,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'SHOP_NOT_FOUND' } });
+    const down = setup(outsourced());
+    down.fleet.shops = 'unavailable';
+    await expect(
+      down.service.pickOutsideShop('t1', body, admin, ability),
+    ).rejects.toMatchObject({ response: { code: 'VMMS_UNAVAILABLE' } });
   });
 });
