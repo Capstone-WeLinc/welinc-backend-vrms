@@ -115,6 +115,12 @@ describe('ListChangesQueryDto keys (AC-31)', () => {
     expect(problems(many(50))).toEqual([]);
   });
 
+  it('accepts camelCase keys such as the integration and fleet settings', () => {
+    expect(
+      problems('fleet.reconcileMinutes,integration.retryWindowHours'),
+    ).toEqual([]);
+  });
+
   it('counts distinct keys, so duplicates do not use up the cap', () => {
     expect(problems(`${many(50)},k0`)).toEqual([]);
     expect(parseKeys('a,a,b')).toEqual(['a', 'b']);
@@ -127,7 +133,7 @@ describe('ListChangesQueryDto keys (AC-31)', () => {
     ['given twice', ['a', 'b']],
     ['51 distinct keys', many(51)],
     ['61 characters', 'a'.repeat(61)],
-    ['uppercase', 'Module.AI'],
+    ['a hyphen', 'module-ai'],
     ['space', 'a, b'],
   ])('rejects %s with a 400 rule', (_name, keys) => {
     expect(problems(keys)).toHaveLength(1);
