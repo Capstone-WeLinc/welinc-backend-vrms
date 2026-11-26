@@ -787,7 +787,8 @@ export class RepairsService {
         status: t.repairStatus,
         vehiclePlate: t.vehicle.plateNumber,
         vehicleModel: t.vehicle.model,
-        driverName: t.driver.name,
+        // Spec 0029, AC-12: null on a ticket opened from a VMMS referral
+        driverName: t.driver?.name ?? null,
         garageLocation: t.garage.name,
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
@@ -1647,7 +1648,8 @@ export class RepairsService {
       status: ticket.repairStatus,
       vehiclePlate: ticket.vehicle.plateNumber,
       vehicleModel: ticket.vehicle.model,
-      driverName: ticket.driver.name,
+      // Spec 0029, AC-12: both null on a ticket opened from a VMMS referral
+      driverName: ticket.driver?.name ?? null,
       // Spec 0019, AC-4: so the details edit can tell a swap from the same driver
       driverId: ticket.driverId,
       garageLocation: ticket.garage.name,
@@ -1715,7 +1717,7 @@ export class RepairsService {
         isLumpSum: ticket.isLumpSum,
         isUnlocked: ticket.isUnlocked,
         unlockReason: ticket.unlockReason,
-        driverIsVerified: ticket.driver.isVerified,
+        driverIsVerified: ticket.driver?.isVerified,
         repairParts: ticket.repairParts.map((p) => ({
           id: p.id,
           description: p.description,

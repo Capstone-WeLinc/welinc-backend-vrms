@@ -9,6 +9,12 @@ type Db = Pick<Prisma.TransactionClient, 'driver' | 'lookupValue'>;
 
 export type DriverRow = { id: string; name: string; licenseNumber: string };
 
+/**
+ * Spec 0029, AC-12: a ticket opened from a VMMS referral has no driver. Text that names the
+ * driver (audit rows) says this instead; replies send null.
+ */
+export const NO_DRIVER_LABEL = 'None (from VMMS)';
+
 export function driverExists(driver: { id: string; name: string }) {
   return new ConflictException({
     statusCode: 409,

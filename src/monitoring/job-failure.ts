@@ -5,7 +5,8 @@ export type JobName =
   | 'directory-poll'
   | 'permission-sync'
   | 'embedding-catchup'
-  | 'attachment-purge';
+  | 'attachment-purge'
+  | 'delivery-worker';
 
 /**
  * Reports a scheduled job's failure as a Sentry issue tagged with the job name. Never throws and

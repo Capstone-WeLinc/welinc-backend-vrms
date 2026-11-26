@@ -34,6 +34,34 @@ enum VehicleStatus {
   DISABLED
 }
 
+// Spec 0029 (child 0002): what a VRMS Admin did with a VMMS referral.
+enum ReferralStatus {
+  WAITING
+  OPENED_TICKET
+  ADDED_TO_TICKET
+  REJECTED
+}
+
+// Spec 0029 (child 0004): the outbox. The system a delivery goes to, what it is, and where it is.
+enum DeliveryTarget {
+  VMMS
+  BMS
+}
+
+enum DeliveryKind {
+  REPAIR_EVENT
+  REFERRAL_REJECTED
+  REPAIR_UPDATE
+  EXPEDITE_ANSWER
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  DISMISSED
+}
+
 // Spec 0010. Open is every status except CLOSED and CANCELLED (src/modules/vrms/ticket-statuses.ts).
 enum RepairStatus {
   OPEN
@@ -85,22 +113,31 @@ enum SuggestionStatus {
 // ==========================================
 
 model Vehicle {
-  id            String          @id @default(uuid()) @db.Uuid
-  plateNumber   String          @unique @map("plate_number") @db.VarChar(20)
-  model         String          @db.VarChar(100)
-  capacity      Int             @default(0) @map("capacity")
-  status        VehicleStatus   @default(AVAILABLE)
-  odometer      Int             @default(0)
-  isActive      Boolean         @default(true) @map("is_active")
-  deletedAt     DateTime?       @map("deleted_at") @db.Timestamptz(6)
-  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
-  vehicleTypeId String?         @map("vehicle_type_id") @db.Uuid // spec 0016: a value of the vehicle_type lookup list
-  vehicleType   LookupValue?    @relation(fields: [vehicleTypeId], references: [id], onDelete: Restrict)
-  repairTickets RepairTicket[]
-  changes       VehicleChange[]
+  id                String          @id @default(uuid()) @db.Uuid
+  plateNumber       String          @unique @map("plate_number") @db.VarChar(20)
+  model             String          @db.VarChar(100)
+  capacity          Int             @default(0) @map("capacity")
+  status            VehicleStatus   @default(AVAILABLE)
+  odometer          Int             @default(0)
+  isActive          Boolean         @default(true) @map("is_active")
+  deletedAt         DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  vehicleTypeId     String?         @map("vehicle_type_id") @db.Uuid // spec 0016: a value of the vehicle_type lookup list
+  vehicleType       LookupValue?    @relation(fields: [vehicleTypeId], references: [id], onDelete: Restrict)
+  // Spec 0029 (child 0001): a copy of the VMMS truck. Null only until `fleet:link` runs.
+  vmmsVehicleId     String?         @unique @map("vmms_vehicle_id") @db.Uuid
+  make              String?         @db.VarChar(100)
+  truckSizeCategory String?         @map("truck_size_category") @db.VarChar(50)
+  garageId          String?         @map("garage_id") @db.Uuid
+  syncedAt          DateTime?       @map("synced_at") @db.Timestamptz(6)
+  garage            Garage?         @relation(fields: [garageId], references: [id], onDelete: SetNull)
+  repairTickets     RepairTicket[]
+  changes           VehicleChange[]
+  referrals         Referral[]
 
   @@index([deletedAt])
+  @@index([garageId])
   @@map("vehicles")
 }
 
@@ -111,7 +148,11 @@ model Garage {
   deletedAt     DateTime?      @map("deleted_at") @db.Timestamptz(6)
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  // Spec 0029 (child 0001): a copy of the VMMS garage. Null only until `fleet:link` runs.
+  vmmsGarageId  String?        @unique @map("vmms_garage_id") @db.Uuid
+  syncedAt      DateTime?      @map("synced_at") @db.Timestamptz(6)
   repairTickets RepairTicket[]
+  vehicles      Vehicle[]
 
   @@index([deletedAt])
   @@map("garages")
@@ -176,7 +217,7 @@ model RepairTicket {
   repairStatus       RepairStatus       @default(OPEN) @map("repair_status")
   priority           RepairPriority     @default(MEDIUM)
   vehicleId          String             @map("vehicle_id") @db.Uuid
-  driverId           String             @map("driver_id") @db.Uuid
+  driverId           String?            @map("driver_id") @db.Uuid // null only on a ticket opened from a VMMS referral (spec 0029)
   garageId           String             @map("garage_id") @db.Uuid
   odometer           Int
   reportedByUserId   String?            @map("reported_by_user_id") @db.Uuid
@@ -206,9 +247,12 @@ model RepairTicket {
   editedAt           DateTime?          @map("edited_at") @db.Timestamptz(6) // last details, mechanics or issue edit (spec 0019); the audit rows are the record
   editedByUserId     String?            @map("edited_by_user_id") @db.Uuid // welinc-auth User.id, no FK
   editedByName       String?            @map("edited_by_name") @db.VarChar(100)
+  vmmsEventVersion   Int                @default(0) @map("vmms_event_version") // the last repair event version VMMS accepted (spec 0029)
+  vmmsProviderId     String?            @map("vmms_provider_id") @db.Uuid // VMMS's outside shop, set on the move to OUTSOURCED (spec 0029, AC-36)
+  outsideShopName    String?            @map("outside_shop_name") @db.VarChar(150)
 
   vehicle        Vehicle            @relation(fields: [vehicleId], references: [id])
-  driver         Driver             @relation(fields: [driverId], references: [id])
+  driver         Driver?            @relation(fields: [driverId], references: [id], onDelete: Restrict)
   garage         Garage             @relation(fields: [garageId], references: [id])
   issues         RepairIssue[]
   assignments    TicketAssignment[]
@@ -217,6 +261,8 @@ model RepairTicket {
   aiDiagnoses    AiDiagnosis[]
   attachments    Attachment[]
   vehicleChanges VehicleChange[]
+  referrals      Referral[]
+  deliveries     Delivery[]
 
   @@index([repairStatus, createdAt])
   @@index([repairStatus, lastActivityAt])
@@ -697,4 +743,68 @@ model VehicleChange {
   @@index([vehicleId, createdAt])
   @@index([repairTicketId])
   @@map("vehicle_changes")
+}
+
+// ==========================================
+// INTEGRATION (spec 0029)
+// ==========================================
+
+// A VMMS repair referral (child 0002). The id is VMMS's referralId, so a resend is a duplicate.
+model Referral {
+  id                    String         @id @db.Uuid
+  vehicleId             String         @map("vehicle_id") @db.Uuid
+  vmmsVehicleId         String         @map("vmms_vehicle_id") @db.Uuid
+  vehiclePlate          String         @map("vehicle_plate") @db.VarChar(20)
+  maintenanceScheduleId String         @map("maintenance_schedule_id") @db.Uuid
+  workOrderNumber       String         @map("work_order_number") @db.VarChar(40)
+  odometerReading       Int            @map("odometer_reading")
+  findings              Json // { checklistItemId, label, note }[]
+  chiefMechanicRemarks  String?        @map("chief_mechanic_remarks") @db.Text
+  status                ReferralStatus @default(WAITING)
+  rejectionReason       String?        @map("rejection_reason") @db.Text
+  decidedByUserId       String?        @map("decided_by_user_id") @db.Uuid // welinc-auth User.id, no FK
+  decidedByName         String?        @map("decided_by_name") @db.VarChar(100)
+  decidedAt             DateTime?      @map("decided_at") @db.Timestamptz(6)
+  repairTicketId        String?        @map("repair_ticket_id") @db.Uuid
+  receivedAt            DateTime       @default(now()) @map("received_at") @db.Timestamptz(6)
+  payloadHash           String         @map("payload_hash") @db.Char(64) // SHA 256 of the canonical body as received
+
+  vehicle      Vehicle       @relation(fields: [vehicleId], references: [id])
+  repairTicket RepairTicket? @relation(fields: [repairTicketId], references: [id], onDelete: SetNull)
+  deliveries   Delivery[]
+
+  @@index([status, receivedAt])
+  @@index([vehicleId])
+  @@index([repairTicketId])
+  @@map("referrals")
+}
+
+// The outbox (child 0004). Written only by enqueueDelivery, in the transaction of the change it
+// reports; sent by DeliveryWorker. The id is the eventId sent.
+model Delivery {
+  id               String         @id @db.Uuid
+  seq              BigInt         @unique @default(autoincrement()) // stable send order, even for two rows from one save
+  target           DeliveryTarget
+  kind             DeliveryKind
+  payload          Json
+  status           DeliveryStatus @default(PENDING)
+  attempts         Int            @default(0)
+  firstAttemptAt   DateTime?      @map("first_attempt_at") @db.Timestamptz(6)
+  nextAttemptAt    DateTime       @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lastAttemptAt    DateTime?      @map("last_attempt_at") @db.Timestamptz(6)
+  lastStatusCode   Int?           @map("last_status_code")
+  lastError        String?        @map("last_error") @db.VarChar(500)
+  sentAt           DateTime?      @map("sent_at") @db.Timestamptz(6)
+  manualRetryCount Int            @default(0) @map("manual_retry_count")
+  dismissReason    String?        @map("dismiss_reason") @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  repairTicketId   String?        @map("repair_ticket_id") @db.Uuid
+  referralId       String?        @map("referral_id") @db.Uuid
+
+  repairTicket RepairTicket? @relation(fields: [repairTicketId], references: [id], onDelete: SetNull)
+  referral     Referral?     @relation(fields: [referralId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextAttemptAt])
+  @@index([target, repairTicketId, createdAt])
+  @@map("deliveries")
 }

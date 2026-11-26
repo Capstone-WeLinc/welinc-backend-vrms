@@ -15,6 +15,7 @@ import {
   missingScope,
   tokenExpired,
   wrongAudience,
+  wrongClient,
   wrongTokenUse,
 } from './errors';
 import {
@@ -72,11 +73,22 @@ export async function checkPerson(
   return { raw, token };
 }
 
+/** Which services may call a service route (VRMS spec 0029, AC-24): their `client_id`s. */
+export type ServiceRouteOptions = { clients: readonly string[] };
+
 /**
  * A guard for routes meant for services: a person's token answers 403 `WRONG_TOKEN_USE`, a
- * service token without `scope` 403 `FORBIDDEN` (contract 0001 section 4, version 8). The checked token is put on `request.service`.
+ * service token without `scope` 403 `FORBIDDEN` (contract 0001 section 4, version 8), and one
+ * from a client not on the list 403 `FORBIDDEN` (VRMS spec 0029, AC-24). The checked token is
+ * put on `request.service`.
  */
-export function requireService(scope: string): Type<CanActivate> {
+export function requireService(
+  scope: string,
+  { clients }: ServiceRouteOptions,
+): Type<CanActivate> {
+  if (clients.length === 0) {
+    throw new Error(`Service route for ${scope} names no client`);
+  }
   @Injectable()
   class RequireServiceGuard implements CanActivate {
     constructor(
@@ -94,6 +106,9 @@ export function requireService(scope: string): Type<CanActivate> {
       if (!token.scopes.includes(scope)) {
         throw missingScope(scope);
       }
+      if (!clients.includes(token.clientId)) {
+        throw wrongClient();
+      }
       request.service = token;
       return true;
     }
@@ -101,9 +116,13 @@ export function requireService(scope: string): Type<CanActivate> {
   return RequireServiceGuard;
 }
 
-/** `@ServiceRoute('scope')`: marks the route for services and guards it with `requireService`. */
-export const ServiceRoute = (scope: string) =>
+/**
+ * `@ServiceRoute('scope', { clients: ['vmms'] })`: marks the route for services and guards it
+ * with `requireService`. The global guards for people skip it (`JwtAuthGuard`,
+ * `PermissionsGuard`).
+ */
+export const ServiceRoute = (scope: string, options: ServiceRouteOptions) =>
   applyDecorators(
     SetMetadata(SERVICE_ROUTE_KEY, scope),
-    UseGuards(requireService(scope)),
+    UseGuards(requireService(scope, options)),
   );

@@ -45,6 +45,7 @@ import {
   driverForLicense,
   type DriverRow,
   issueDescription,
+  NO_DRIVER_LABEL,
 } from './ticket-inputs';
 import { EmbeddingService } from '../ai/embedding.service';
 import { correctedOdometerProblem, ticketOdometerBounds } from './odometer';
@@ -53,9 +54,9 @@ import { SettingsService } from '../../settings/settings.service';
 // Spec 0019: fix a ticket after create, one section at a time. Each save is one transaction whose
 // first write is the guarded stamp (AC-19), and answers with the ticket as GET /:id returns it.
 
-/** AC-8: the driver as the audit row names them. */
-function driverLabel(driver: { name: string; licenseNumber: string }) {
-  return `${driver.name} (${driver.licenseNumber})`;
+/** AC-8: the driver as the audit row names them (spec 0029: none on a referral ticket). */
+function driverLabel(driver: { name: string; licenseNumber: string } | null) {
+  return driver ? `${driver.name} (${driver.licenseNumber})` : NO_DRIVER_LABEL;
 }
 
 function detailValues(ticket: TicketRow): TicketDetailValues {

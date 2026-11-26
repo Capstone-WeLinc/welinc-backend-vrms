@@ -10,6 +10,7 @@ import type { Request } from 'express';
 import { ModuleDisabledException } from '../../settings/module-disabled';
 import { SettingsService } from '../../settings/settings.service';
 import type { AuthUser } from '../account-check';
+import { SERVICE_ROUTE_KEY } from '../verify/guards';
 import type { AppAbility } from './ability.factory';
 import { catalogEntry, type PermissionKey } from './catalog';
 import {
@@ -43,6 +44,10 @@ export class PermissionsGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const targets = [context.getHandler(), context.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets)) {
+      return true;
+    }
+    // A service route has no person: its own guard checks the token, scope and client
+    if (this.reflector.getAllAndOverride<string>(SERVICE_ROUTE_KEY, targets)) {
       return true;
     }
 

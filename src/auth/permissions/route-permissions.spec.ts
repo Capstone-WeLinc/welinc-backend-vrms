@@ -21,7 +21,7 @@ import {
   SESSION_CONFIG,
   type SessionConfig,
 } from '../../session/session.config';
-import { TOKEN_VERIFIER } from '../verify';
+import { SERVICE_ROUTE_KEY, TOKEN_VERIFIER } from '../verify';
 import type { AuthUser } from '../account-check';
 import { SystemType, UserRole } from '../roles';
 import { MATRIX_ROLES, PermissionKey } from './catalog';
@@ -45,6 +45,8 @@ type Route = {
   keys?: PermissionKey[];
   authenticated: boolean;
   isPublic: boolean;
+  /** The scope of a `@ServiceRoute()` (VRMS spec 0029). */
+  serviceScope?: string;
 };
 
 const HTTP_METHODS: Partial<Record<RequestMethod, string>> = {
@@ -98,6 +100,7 @@ function routesOf(controller: Type): Route[] {
         keys: meta<PermissionKey[]>(PERMISSION_KEY),
         authenticated: meta<boolean>(AUTHENTICATED_KEY) === true,
         isPublic: meta<boolean>(PUBLIC_KEY) === true,
+        serviceScope: meta<string>(SERVICE_ROUTE_KEY),
       },
     ];
   });
@@ -131,13 +134,25 @@ describe('Route decorators (AC-7)', () => {
     ]);
   });
 
-  it('gives every route exactly one of RequirePermission, Authenticated or Public', () => {
+  it('gives every route exactly one of RequirePermission, Authenticated, Public or ServiceRoute', () => {
     const wrong = routes.filter(
       (r) =>
-        [!!r.keys?.length, r.authenticated, r.isPublic].filter(Boolean)
-          .length !== 1,
+        [
+          !!r.keys?.length,
+          r.authenticated,
+          r.isPublic,
+          !!r.serviceScope,
+        ].filter(Boolean).length !== 1,
     );
     expect(wrong.map(label)).toEqual([]);
+  });
+
+  // VRMS spec 0029, AC-24: services call only /vrms/integrations/*, and nothing else there
+  it('keeps every service route under /vrms/integrations and every integration route a service route', () => {
+    const misplaced = routes.filter(
+      (r) => !!r.serviceScope !== r.path.startsWith('/vrms/integrations/'),
+    );
+    expect(misplaced.map(label)).toEqual([]);
   });
 
   it('opens only the health check and the cookie session routes (spec 0003, AC-16) to everyone, and only /permissions/me, the attachment routes (spec 0017, AC-12; spec 0018, AC-9) and the session status to any signed in user', () => {

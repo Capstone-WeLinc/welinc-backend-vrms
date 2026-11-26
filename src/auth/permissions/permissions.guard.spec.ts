@@ -1,6 +1,11 @@
-import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  SetMetadata,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { AuthUser } from '../account-check';
+import { SERVICE_ROUTE_KEY } from '../verify/guards';
 import { SystemType, UserRole } from '../roles';
 import {
   Authenticated,
@@ -36,6 +41,10 @@ class Routes {
   @RequirePermission('knowledge.edit')
   knowledgeEdit() {}
 
+  // What @ServiceRoute() sets; its own guard is tested in guards.spec.ts
+  @SetMetadata(SERVICE_ROUTE_KEY, 'repair.referral.write')
+  serviceRoute() {}
+
   undecorated() {}
 }
 
@@ -65,6 +74,13 @@ function run(
 describe('PermissionsGuard', () => {
   it('lets a public route through with no user', async () => {
     await expect(run('health', undefined).result).resolves.toBe(true);
+  });
+
+  // covers: VRMS spec 0029 AC-24 (the service guard decides, not the matrix)
+  it('lets a service route through with no user and builds no ability', async () => {
+    const { result, request } = run('serviceRoute', undefined);
+    await expect(result).resolves.toBe(true);
+    expect(request.ability).toBeUndefined();
   });
 
   it('lets any signed in user through an @Authenticated route and leaves the ability', async () => {

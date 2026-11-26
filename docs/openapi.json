@@ -6194,10 +6194,13 @@
             "type": "string"
           },
           "driverName": {
-            "type": "string"
+            "type": "string",
+            "nullable": true,
+            "description": "Null on a ticket opened from a VMMS referral (spec 0029, AC-12)"
           },
           "driverId": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "garageLocation": {
             "type": "string",
@@ -6774,10 +6777,13 @@
             "type": "string"
           },
           "driverName": {
-            "type": "string"
+            "type": "string",
+            "nullable": true,
+            "description": "Null on a ticket opened from a VMMS referral (spec 0029, AC-12)"
           },
           "driverId": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "garageLocation": {
             "type": "string",

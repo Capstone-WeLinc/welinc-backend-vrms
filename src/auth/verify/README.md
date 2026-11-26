@@ -10,7 +10,7 @@ Baseline: Node 24, NestJS 11, `jose` 6 (ES modules only; see the Jest setting be
 |---|---|
 | `key-set.ts` | `ResilientKeySet`: fetches welinc-auth's public keys (`AUTH_JWKS_URL`), keeps them 5 minutes, fetches again for an unknown `kid` at most once a minute, and keeps using the last good set for up to an hour while welinc-auth is down |
 | `token-verifier.ts` | `TokenVerifier`: accepts only ES256, `typ: at+jwt`, your `AUTH_ISSUER`, an unexpired `exp` (5 s leeway) and a single `aud` equal to your system. Answers a user token or a service token |
-| `guards.ts` | `checkPerson` (for routes meant for people: refuses a service token), `requireService(scope)` and `@ServiceRoute(scope)` (for routes meant for services: refuses a person's token) |
+| `guards.ts` | `checkPerson` (for routes meant for people: refuses a service token), `requireService(scope, { clients })` and `@ServiceRoute(scope, { clients })` (for routes meant for services: refuses a person's token, a missing scope and a caller not in `clients`) |
 | `errors.ts` | The answers: 401 `Invalid session`, 401 `WRONG_AUDIENCE`, 403 `WRONG_TOKEN_USE` (the wrong kind of token), 403 `FORBIDDEN` (a service token without the route's scope), 503 `AUTH_UNAVAILABLE` |
 | `assertion-signer.ts` | Signs the `private_key_jwt` client assertion your service proves itself with (a new one for every token request, 60 s life) |
 | `service-token-client.ts` | `ServiceTokenClient`: gets your service token from `POST /auth/token`, keeps it until 60 s before it expires, shares one request between callers, and retries a call once if it answers 401 |
@@ -24,7 +24,7 @@ Baseline: Node 24, NestJS 11, `jose` 6 (ES modules only; see the Jest setting be
 3. Run `npm install jose@^6`.
 4. Import `AuthVerifyModule` once (it is global). It needs `ConfigModule.forRoot({ isGlobal: true })`.
 5. In your auth guard, call `checkPerson(verifier, request)` with the `TOKEN_VERIFIER` you inject. It answers `{ raw, token }`, or throws the right HTTP error. If you also confirm the account with welinc-auth (VRMS does, through `GET /auth/session`, cached by `sid` for at most 30 s), do it after `checkPerson`, so a service token never reaches that check. Let your guard skip routes marked `@ServiceRoute()`, which bring their own guard. VRMS's `src/auth/guards/jwt-auth.guard.ts` shows the whole guard.
-6. For a route other services call, put `@ServiceRoute('<scope>')` on it. The checked token is on `request.service`.
+6. For a route other services call, put `@ServiceRoute('<scope>', { clients: ['<client id>'] })` on it. Only those `client_id`s get in. The checked token is on `request.service`. A global permissions guard must skip these routes too, as VRMS's `PermissionsGuard` does.
 7. To call welinc-auth's directory as yourself, inject `DIRECTORY_TOKENS` and wrap the call. The call must throw an error with `getStatus() === 401` (a Nest `HttpException`) for the retry to happen:
 
    ```ts
