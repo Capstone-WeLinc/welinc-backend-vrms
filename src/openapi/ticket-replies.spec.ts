@@ -61,6 +61,7 @@ const ROW = {
   vehicleModel: 'Isuzu NQR',
   driverName: 'Juan Dela Cruz',
   driverId: ID,
+  fromVmmsWorkOrder: null,
   garageLocation: 'Main Garage',
   odometerReading: 120500,
   priority: 'HIGH',

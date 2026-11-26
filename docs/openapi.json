@@ -6617,6 +6617,11 @@
             "type": "string",
             "nullable": true
           },
+          "fromVmmsWorkOrder": {
+            "type": "string",
+            "nullable": true,
+            "description": "The VMMS work order number when the ticket was opened from a VMMS referral (spec 0029, AC-12)"
+          },
           "garageLocation": {
             "type": "string",
             "description": "The garage name"
@@ -6810,6 +6815,7 @@
           "vehicleModel",
           "driverName",
           "driverId",
+          "fromVmmsWorkOrder",
           "garageLocation",
           "odometerReading",
           "priority",
@@ -7200,6 +7206,11 @@
             "type": "string",
             "nullable": true
           },
+          "fromVmmsWorkOrder": {
+            "type": "string",
+            "nullable": true,
+            "description": "The VMMS work order number when the ticket was opened from a VMMS referral (spec 0029, AC-12)"
+          },
           "garageLocation": {
             "type": "string",
             "description": "The garage name"
@@ -7371,6 +7382,7 @@
           "vehicleModel",
           "driverName",
           "driverId",
+          "fromVmmsWorkOrder",
           "garageLocation",
           "odometerReading",
           "priority",

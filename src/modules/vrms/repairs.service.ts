@@ -287,6 +287,12 @@ export const ticketInclude = {
   vehicle: { select: { plateNumber: true, model: true, status: true } },
   driver: { select: { name: true, licenseNumber: true, isVerified: true } },
   garage: { select: { name: true } },
+  // Spec 0029, AC-12: the referral a ticket was opened from, for the "From VMMS WO-…" chip
+  referrals: {
+    where: { status: 'OPENED_TICKET' },
+    select: { workOrderNumber: true },
+    take: 1,
+  },
   issues: issueInclude,
   assignments: {
     orderBy: { assignedAt: 'asc' },
@@ -1741,6 +1747,7 @@ export class RepairsService {
       vehicleModel: ticket.vehicle.model,
       // Spec 0029, AC-12: both null on a ticket opened from a VMMS referral
       driverName: ticket.driver?.name ?? null,
+      fromVmmsWorkOrder: ticket.referrals?.[0]?.workOrderNumber ?? null,
       // Spec 0019, AC-4: so the details edit can tell a swap from the same driver
       driverId: ticket.driverId,
       garageLocation: ticket.garage.name,

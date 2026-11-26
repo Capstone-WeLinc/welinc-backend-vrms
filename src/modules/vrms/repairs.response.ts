@@ -192,6 +192,14 @@ export class TicketView {
   @ApiProperty({ type: String, nullable: true })
   driverId!: string | null;
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The VMMS work order number when the ticket was opened from a VMMS referral (spec 0029, AC-12)',
+  })
+  fromVmmsWorkOrder!: string | null;
+
   @ApiProperty({ description: 'The garage name' })
   garageLocation!: string;
 
