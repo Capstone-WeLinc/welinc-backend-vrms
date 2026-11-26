@@ -1,5 +1,5 @@
-import { ConflictException, Logger } from '@nestjs/common';
-import { Prisma, RepairStatus, VehicleStatus } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
+import { Prisma, RepairStatus } from '@prisma/client';
 import {
   RowActor,
   AuditEventData,
@@ -17,13 +17,10 @@ import {
 } from './photo-rules';
 import { STALE_TICKET } from './ticket-knowledge';
 import { isFinished } from './ticket-statuses';
-import { vehicleStatusChange } from './vehicles/vehicle-status';
 import type { TicketMove } from './ticket-transitions';
 
 // Spec 0014, AC-1, AC-7, AC-9, AC-10 and AC-12: every effect of one status move, inside the
 // caller's transaction. Later features call it with their own trigger's move.
-
-const logger = new Logger('applyStatusMove');
 
 /** Spec 0018: the statuses whose first entry means work has started (M3 and M9). */
 const WORK_STARTS: RepairStatus[] = [
@@ -42,9 +39,6 @@ export type MovingTicket = {
   repairStatus: RepairStatus;
   updatedAt: Date;
   vehicleId: string;
-  odometer: number;
-  /** Spec 0016, AC-9: the truck's status before the ticket was created; null on old tickets. */
-  priorVehicleStatus: VehicleStatus | null;
 };
 
 export type MoveOptions = {
@@ -152,39 +146,10 @@ export async function applyStatusMove(
     },
   });
 
-  // 4. The truck goes back to the fleet on a move into a finished status
-  if (isFinished(move.to)) {
-    // Suite spec 0012: the system only ever sends a ticket back to Open
-    if (isSystemActor(actor)) {
-      throw new Error('The system never finishes a ticket');
-    }
-    // Spec 0020, AC-7: read without a lock on purpose. The toggle is refused while this ticket is
-    // open, and the move above holds the ticket row, so nothing else changes the truck meanwhile.
-    const vehicle = await tx.vehicle.findUniqueOrThrow({
-      where: { id: ticket.vehicleId },
-      select: { odometer: true, status: true },
-    });
-    // On close, the ticket's reading wins when it is higher (as before)
-    const odometer =
-      closes && ticket.odometer > vehicle.odometer ? ticket.odometer : null;
-    // A truck that was Disabled before the repair goes back to Disabled (spec 0016, AC-9), with
-    // its history row when the status changes (spec 0020, AC-7)
-    await vehicleStatusChange(tx, {
-      vehicleId: ticket.vehicleId,
-      before: vehicle.status,
-      after:
-        ticket.priorVehicleStatus === VehicleStatus.DISABLED
-          ? VehicleStatus.DISABLED
-          : VehicleStatus.AVAILABLE,
-      actor,
-      note: null,
-      repairTicketId: ticket.id,
-      also: odometer !== null ? { odometer } : undefined,
-    });
-    if (odometer !== null) {
-      logger.log(
-        `Odometer synced for vehicle ${ticket.vehicleId}: ${vehicle.odometer} → ${odometer} km`,
-      );
-    }
+  // 4. Suite spec 0012: the system only ever sends a ticket back to Open. The truck itself is no
+  // longer written here: VMMS owns its status and odometer and hears of the move through the
+  // repair event (spec 0029, AC-4 and AC-13).
+  if (isFinished(move.to) && isSystemActor(actor)) {
+    throw new Error('The system never finishes a ticket');
   }
 }

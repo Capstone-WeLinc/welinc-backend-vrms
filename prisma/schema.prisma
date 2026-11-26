@@ -27,11 +27,11 @@ enum TicketAccountType {
   CORPORATE
 }
 
+// Spec 0029 (child 0001): VMMS's values, copied by the fleet sync only. DISABLED is gone.
 enum VehicleStatus {
   AVAILABLE
   UNDER_REPAIR
   UNDER_MAINTENANCE
-  DISABLED
 }
 
 // Spec 0029 (child 0002): what a VRMS Admin did with a VMMS referral.

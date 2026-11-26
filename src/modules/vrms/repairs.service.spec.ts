@@ -27,6 +27,7 @@ import {
 import { UpdateRepairStatusDto } from './dto/update-repair-status.dto';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 
 // Spec 0029: the VMMS repair event has its own tests (repairs.referral.spec.ts)
 jest.mock('../integrations/vmms-repair-events', () => ({
@@ -110,6 +111,8 @@ function setup() {
       prisma as unknown as PrismaService,
       new FakeSettings(),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
+      new FakeFleet().asClient(),
     ),
   };
 }
@@ -434,6 +437,8 @@ function listSetup() {
       prisma as unknown as PrismaService,
       new FakeSettings(),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
+      new FakeFleet().asClient(),
     ),
   };
 }
@@ -611,6 +616,8 @@ describe('RepairsService.findAuditEvents', () => {
       prisma as unknown as PrismaService,
       new FakeSettings(),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
+      new FakeFleet().asClient(),
     );
     await service.findAuditEvents({ ticketId: GARAGE }, asAdmin);
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
@@ -633,6 +640,8 @@ describe('RepairsService.findAuditEvents', () => {
         prisma as unknown as PrismaService,
         new FakeSettings(),
         new FakeEmbeddings().asService(),
+        new FakeFleet().asClient(),
+        new FakeFleet().asClient(),
       );
 
       await service.findAuditEvents(query, asMechanic);
@@ -685,6 +694,8 @@ describe('RepairsService.findAuditEvents', () => {
         prisma as unknown as PrismaService,
         new FakeSettings(),
         new FakeEmbeddings().asService(),
+        new FakeFleet().asClient(),
+        new FakeFleet().asClient(),
       );
       await service.findAuditEvents(query, ability);
       const [args] = prisma.auditLog.findMany.mock.calls[0] as [
@@ -742,6 +753,8 @@ describe('RepairsService.findAuditEvents', () => {
         {} as PrismaService,
         new FakeSettings(),
         new FakeEmbeddings().asService(),
+        new FakeFleet().asClient(),
+        new FakeFleet().asClient(),
       );
       const full = service.findAuditCatalog(asAdmin);
       expect(full.map((c) => c.category)).toEqual([
@@ -773,6 +786,8 @@ describe('RepairsService.findAuditEvents', () => {
       prisma as unknown as PrismaService,
       new FakeSettings(),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
+      new FakeFleet().asClient(),
     );
     await service.findAuditEvents({ actorId: GARAGE }, asAdmin);
     const [args] = prisma.auditLog.findMany.mock.calls[0] as [
@@ -798,7 +813,9 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
   function createSetup(activeCount: number) {
     const prisma = {
       vehicle: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'v1' }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'v1', vmmsVehicleId: 'vmms-v1' }),
         update: jest.fn(),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 0 }),
       },
@@ -837,6 +854,8 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
         prisma as unknown as PrismaService,
         new FakeSettings(),
         new FakeEmbeddings().asService(),
+        new FakeFleet().asClient(),
+        new FakeFleet().asClient(),
       ),
     };
   }
@@ -929,6 +948,8 @@ describe('RepairsService.findAuditActors (AC-10)', () => {
         prisma as unknown as PrismaService,
         new FakeSettings(),
         new FakeEmbeddings().asService(),
+        new FakeFleet().asClient(),
+        new FakeFleet().asClient(),
       ),
     };
   }

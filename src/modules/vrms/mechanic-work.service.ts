@@ -348,8 +348,6 @@ export async function releaseInTx(
       repairStatus: true,
       updatedAt: true,
       vehicleId: true,
-      odometer: true,
-      priorVehicleStatus: true,
       _count: { select: { assignments: true } },
     },
   });

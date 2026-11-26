@@ -838,6 +838,71 @@
         ]
       }
     },
+    "/vrms/integrations/vmms/fleet-changes": {
+      "post": {
+        "operationId": "VmmsIntegrationsController_receiveFleetChange",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FleetChangeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FleetChangeAcceptedView"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`WRONG_TOKEN_USE` or `FORBIDDEN`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "WRONG_TOKEN_USE",
+                            "FORBIDDEN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "summary": "AC-2: VMMS says a truck or garage changed. Answered at once; VRMS then reads the record fresh\nfrom VMMS's fleet API and applies it. The body is never trusted for field values.",
+        "tags": [
+          "Integrations: VMMS"
+        ]
+      }
+    },
     "/vrms/integrations/vmms/repair-referrals": {
       "post": {
         "operationId": "VmmsIntegrationsController_receiveReferral",
@@ -3042,6 +3107,14 @@
             }
           },
           {
+            "name": "truckRemoved",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "page",
             "required": false,
             "in": "query",
@@ -3130,37 +3203,34 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TicketDetailResponse"
+                  "$ref": "#/components/schemas/TicketCreatedResponse"
                 }
               }
             }
           },
-          "400": {
-            "description": "The input failed validation",
+          "422": {
+            "description": "`VEHICLE_NOT_IN_VMMS`",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid credentials",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed for this caller",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VEHICLE_NOT_IN_VMMS"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
                 }
               }
             }
@@ -5383,74 +5453,6 @@
         ]
       }
     },
-    "/vrms/vehicles/{id}": {
-      "patch": {
-        "operationId": "VehiclesController_update",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateVehicleDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          },
-          "400": {
-            "description": "The input failed validation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid credentials",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed for this caller",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "userToken": []
-          }
-        ],
-        "tags": [
-          "Vehicles"
-        ]
-      }
-    },
     "/vrms/vehicles/{id}/changes": {
       "get": {
         "operationId": "VehiclesController_changes",
@@ -5485,74 +5487,6 @@
         ],
         "responses": {
           "200": {
-            "description": ""
-          },
-          "400": {
-            "description": "The input failed validation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid credentials",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed for this caller",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "userToken": []
-          }
-        ],
-        "tags": [
-          "Vehicles"
-        ]
-      }
-    },
-    "/vrms/vehicles/{id}/status": {
-      "post": {
-        "operationId": "VehiclesController_setStatus",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetVehicleStatusDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
             "description": ""
           },
           "400": {
@@ -6175,6 +6109,57 @@
           "lastUpdatedAt"
         ]
       },
+      "FleetChangeAcceptedView": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "accepted"
+        ]
+      },
+      "FleetChangeDto": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entityType": {
+            "enum": [
+              "VEHICLE",
+              "GARAGE"
+            ],
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The VMMS id of the truck or garage"
+          },
+          "changeType": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Any of VMMS's values (VEHICLE_CREATED, VEHICLE_UPDATED, VEHICLE_DELETED, GARAGE_UPDATED, …); only logged"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "eventId",
+          "entityType",
+          "entityId",
+          "changeType",
+          "occurredAt"
+        ]
+      },
       "IssueResolutionDto": {
         "type": "object",
         "properties": {
@@ -6513,31 +6498,6 @@
           "key"
         ]
       },
-      "SetVehicleStatusDto": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "AVAILABLE",
-              "DISABLED"
-            ]
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 500
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "reason",
-          "updatedAt"
-        ]
-      },
       "TicketAbilitiesView": {
         "type": "object",
         "properties": {
@@ -6576,6 +6536,288 @@
           "assign",
           "edit",
           "editChecklist"
+        ]
+      },
+      "TicketCreatedResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repairNumber": {
+            "type": "string",
+            "example": "REP-20261116-A1B2"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ASSIGNED",
+              "IN_PROGRESS",
+              "ON_HOLD",
+              "FOR_VERIFICATION",
+              "OUTSOURCED",
+              "PENDING_APPROVAL",
+              "CLOSED",
+              "CANCELLED"
+            ]
+          },
+          "vehiclePlate": {
+            "type": "string"
+          },
+          "vehicleModel": {
+            "type": "string"
+          },
+          "driverName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null on a ticket opened from a VMMS referral (spec 0029, AC-12)"
+          },
+          "driverId": {
+            "type": "string",
+            "nullable": true
+          },
+          "fromVmmsWorkOrder": {
+            "type": "string",
+            "nullable": true,
+            "description": "The VMMS work order number when the ticket was opened from a VMMS referral (spec 0029, AC-12)"
+          },
+          "truckRemoved": {
+            "type": "boolean",
+            "description": "An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)"
+          },
+          "garageLocation": {
+            "type": "string",
+            "description": "The garage name"
+          },
+          "odometerReading": {
+            "type": "number"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "CRITICAL"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "dueAtSource": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "PRIORITY",
+              "ISSUE_TYPE",
+              "MANUAL"
+            ]
+          },
+          "reportedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "accountType": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "ONLINE",
+              "CORPORATE"
+            ],
+            "description": "Null on tickets made before it was stored"
+          },
+          "corporation": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifiedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "verifiedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "editedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "The last edit after create; null until someone edits"
+          },
+          "editedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "issueDescription": {
+            "type": "string",
+            "description": "Every issue description, joined with commas"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastActivityAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "statusChangedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "cancellationReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "remarks": {
+            "type": "string",
+            "nullable": true
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketIssueView"
+            }
+          },
+          "mechanics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketMechanicView"
+            }
+          },
+          "mechanicCount": {
+            "type": "number"
+          },
+          "partsCost": {
+            "type": "number",
+            "nullable": true,
+            "description": "Null when not recorded or when the caller may not read costs"
+          },
+          "laborCost": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalCost": {
+            "type": "number",
+            "nullable": true
+          },
+          "hasInactiveMechanic": {
+            "type": "boolean",
+            "description": "An open ticket with a deactivated mechanic"
+          },
+          "needsMechanic": {
+            "type": "boolean",
+            "description": "In progress or on hold with no active mechanic"
+          },
+          "can": {
+            "$ref": "#/components/schemas/TicketAbilitiesView"
+          },
+          "isLumpSum": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "isUnlocked": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "unlockReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Only for a caller who may read the total cost"
+          },
+          "driverIsVerified": {
+            "type": "boolean",
+            "description": "Only for a caller who may read the total cost"
+          },
+          "repairParts": {
+            "description": "Only for a caller who may read the total cost",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketPartView"
+            }
+          },
+          "moves": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketMoveView"
+            }
+          },
+          "lastRejection": {
+            "nullable": true,
+            "description": "Only while in progress or on hold after a send back",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketRejectionView"
+              }
+            ]
+          },
+          "workStartedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "The first move into In progress or Outsourced; never cleared"
+          },
+          "fleetStale": {
+            "type": "boolean",
+            "description": "True when VMMS couldn't be reached and the truck's facts came from VRMS's last copy"
+          }
+        },
+        "required": [
+          "id",
+          "repairNumber",
+          "status",
+          "vehiclePlate",
+          "vehicleModel",
+          "driverName",
+          "driverId",
+          "fromVmmsWorkOrder",
+          "truckRemoved",
+          "garageLocation",
+          "odometerReading",
+          "priority",
+          "dueAt",
+          "dueAtSource",
+          "reportedByName",
+          "accountType",
+          "corporation",
+          "verifiedByName",
+          "verifiedAt",
+          "editedAt",
+          "editedByName",
+          "issueDescription",
+          "createdAt",
+          "updatedAt",
+          "lastActivityAt",
+          "statusChangedAt",
+          "closedAt",
+          "cancellationReason",
+          "remarks",
+          "issues",
+          "mechanics",
+          "mechanicCount",
+          "partsCost",
+          "laborCost",
+          "totalCost",
+          "hasInactiveMechanic",
+          "needsMechanic",
+          "can",
+          "moves",
+          "lastRejection",
+          "workStartedAt",
+          "fleetStale"
         ]
       },
       "TicketDetailResponse": {
@@ -6621,6 +6863,10 @@
             "type": "string",
             "nullable": true,
             "description": "The VMMS work order number when the ticket was opened from a VMMS referral (spec 0029, AC-12)"
+          },
+          "truckRemoved": {
+            "type": "boolean",
+            "description": "An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)"
           },
           "garageLocation": {
             "type": "string",
@@ -6816,6 +7062,7 @@
           "driverName",
           "driverId",
           "fromVmmsWorkOrder",
+          "truckRemoved",
           "garageLocation",
           "odometerReading",
           "priority",
@@ -7211,6 +7458,10 @@
             "nullable": true,
             "description": "The VMMS work order number when the ticket was opened from a VMMS referral (spec 0029, AC-12)"
           },
+          "truckRemoved": {
+            "type": "boolean",
+            "description": "An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)"
+          },
           "garageLocation": {
             "type": "string",
             "description": "The garage name"
@@ -7383,6 +7634,7 @@
           "driverName",
           "driverId",
           "fromVmmsWorkOrder",
+          "truckRemoved",
           "garageLocation",
           "odometerReading",
           "priority",
@@ -7664,23 +7916,6 @@
         "required": [
           "version",
           "changes"
-        ]
-      },
-      "UpdateVehicleDto": {
-        "type": "object",
-        "properties": {
-          "vehicleTypeId": {
-            "type": "string",
-            "nullable": true,
-            "format": "uuid"
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "vehicleTypeId",
-          "updatedAt"
         ]
       },
       "UploadAttachmentDto": {

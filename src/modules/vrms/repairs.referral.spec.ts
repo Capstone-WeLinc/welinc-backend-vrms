@@ -3,6 +3,7 @@ import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { PrismaService } from '../../shared/prisma.service';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
 import { RepairsService } from './repairs.service';
 import type { CreateRepairDto } from './dto/create-repair.dto';
@@ -43,7 +44,9 @@ function setup(
 ) {
   const prisma = {
     vehicle: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'v1' }),
+      findFirst: jest
+        .fn()
+        .mockResolvedValue({ id: 'v1', vmmsVehicleId: 'vmms-v1' }),
       update: jest.fn().mockResolvedValue({}),
       findUniqueOrThrow: jest.fn().mockResolvedValue({ odometer: 0 }),
     },
@@ -100,6 +103,7 @@ function setup(
     prisma as unknown as PrismaService,
     new FakeSettings(),
     new FakeEmbeddings().asService(),
+    new FakeFleet().asClient(),
   );
   jest
     .spyOn(

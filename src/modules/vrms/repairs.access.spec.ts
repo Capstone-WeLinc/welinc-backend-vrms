@@ -10,6 +10,7 @@ import { PrismaService } from '../../shared/prisma.service';
 import { RepairsService } from './repairs.service';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { photoRows } from './photo-rules.fake';
 
 // Spec 0011, AC-11, AC-12 and AC-12a under the default matrix: who may work or administer a
@@ -123,6 +124,7 @@ function setup(owner: string, status: RepairStatus = RepairStatus.ASSIGNED) {
       prisma as unknown as PrismaService,
       new FakeSettings(),
       new FakeEmbeddings().asService(),
+      new FakeFleet().asClient(),
     ),
   };
 }

@@ -15,6 +15,11 @@ import {
   ApiGenericErrors,
   ApiServiceToken,
 } from '../../openapi/decorators';
+import {
+  FleetChangeAcceptedView,
+  FleetChangeDto,
+} from './fleet/fleet-change.dto';
+import { FleetSyncService } from './fleet/fleet-sync.service';
 import { ReferralIntakeService } from './referrals/referral-intake.service';
 import {
   ReferralAcceptedView,
@@ -30,7 +35,10 @@ import {
 @ApiGenericErrors()
 @Controller('vrms/integrations/vmms')
 export class VmmsIntegrationsController {
-  constructor(private readonly referrals: ReferralIntakeService) {}
+  constructor(
+    private readonly referrals: ReferralIntakeService,
+    private readonly fleetSync: FleetSyncService,
+  ) {}
 
   /** AC-6: a repair referral from a VMMS inspection that ended For Repair. */
   @ApiAcceptedResponse({ type: ReferralAcceptedView })
@@ -56,5 +64,19 @@ export class VmmsIntegrationsController {
     }
     // The hash is over the body as received, before validation trimmed or cut anything
     return this.referrals.receive(dto, request.body);
+  }
+
+  /**
+   * AC-2: VMMS says a truck or garage changed. Answered at once; VRMS then reads the record fresh
+   * from VMMS's fleet API and applies it. The body is never trusted for field values.
+   */
+  @ApiAcceptedResponse({ type: FleetChangeAcceptedView })
+  @ApiErrors(403, ['WRONG_TOKEN_USE', 'FORBIDDEN'])
+  @ServiceRoute('fleet.change.write', { clients: ['vmms'] })
+  @HttpCode(202)
+  @Post('fleet-changes')
+  receiveFleetChange(@Body() dto: FleetChangeDto): FleetChangeAcceptedView {
+    this.fleetSync.receive(dto);
+    return { accepted: true };
   }
 }

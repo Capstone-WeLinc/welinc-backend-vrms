@@ -62,6 +62,7 @@ const ROW = {
   driverName: 'Juan Dela Cruz',
   driverId: ID,
   fromVmmsWorkOrder: null,
+  truckRemoved: false,
   garageLocation: 'Main Garage',
   odometerReading: 120500,
   priority: 'HIGH',
@@ -216,7 +217,9 @@ async function start(
 
 describe('the ticket replies match docs/openapi.json', () => {
   it('POST /vrms/repairs', async () => {
-    const http = await start({ create: jest.fn().mockResolvedValue(DETAIL) });
+    const http = await start({
+      create: jest.fn().mockResolvedValue({ ...DETAIL, fleetStale: false }),
+    });
     const res = await http.post('/vrms/repairs').send(CREATE_BODY).expect(201);
     expectReplyMatches(res.body, 'POST /vrms/repairs', 201);
   });

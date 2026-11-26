@@ -8,6 +8,8 @@ import SharedModule from '../../shared/shared.module';
 import { DeliveryStore } from './deliveries/delivery-store';
 import { DeliveryWorker } from './deliveries/delivery-worker';
 import { FleetLinkService } from './fleet/fleet-link.service';
+import { FleetReconcileJob } from './fleet/fleet-reconcile.job';
+import { FleetSyncService } from './fleet/fleet-sync.service';
 import { VmmsFleetClient } from './fleet/vmms-fleet.client';
 import { NoStoreMiddleware } from './no-store.middleware';
 import { ReferralIntakeService } from './referrals/referral-intake.service';
@@ -32,6 +34,8 @@ import { ServiceTokens } from './service-tokens';
     DeliveryWorker,
     VmmsFleetClient,
     FleetLinkService,
+    FleetSyncService,
+    FleetReconcileJob,
   ],
   exports: [ServiceTokens, VmmsFleetClient],
 })

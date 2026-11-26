@@ -39,6 +39,14 @@ export class FindRepairsQueryDto {
   @IsBoolean()
   overdue?: boolean;
 
+  // Spec 0029, AC-35: open tickets whose truck VMMS removed (the dashboard card's list)
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === 'true' ? true : value === 'false' ? false : value,
+  )
+  @IsBoolean()
+  truckRemoved?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

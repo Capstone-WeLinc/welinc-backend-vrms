@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import type { PrismaService } from '../../shared/prisma.service';
 import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
+import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import type { CreateRepairDto } from './dto/create-repair.dto';
 import { RepairsService } from './repairs.service';
 import { driverForLicense } from './ticket-inputs';
@@ -41,7 +42,11 @@ const ability = {} as never;
 
 function setup() {
   const prisma = {
-    vehicle: { findFirst: jest.fn().mockResolvedValue({ id: 'v1' }) },
+    vehicle: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue({ id: 'v1', vmmsVehicleId: 'vmms-v1' }),
+    },
     garage: { findFirst: jest.fn().mockResolvedValue({ id: 'g1' }) },
     issueCategory: {
       findMany: jest.fn().mockResolvedValue([{ id: 'cat1', name: 'Brakes' }]),
@@ -58,6 +63,7 @@ function setup() {
     prisma as unknown as PrismaService,
     new FakeSettings(),
     new FakeEmbeddings().asService(),
+    new FakeFleet().asClient(),
   );
   const internals = service as unknown as {
     createLocked: jest.Mock;
@@ -85,6 +91,7 @@ describe('RepairsService.create repair number clash (AC-2)', () => {
 
     await expect(service.create(dto, user, ability)).resolves.toEqual({
       ok: true,
+      fleetStale: true,
     });
 
     expect(internals.createLocked).toHaveBeenCalledTimes(2);

@@ -200,6 +200,12 @@ export class TicketView {
   })
   fromVmmsWorkOrder!: string | null;
 
+  @ApiProperty({
+    description:
+      'An open ticket whose truck VMMS removed (inactive in the fleet copy); worked out on read (spec 0029, AC-35)',
+  })
+  truckRemoved!: boolean;
+
   @ApiProperty({ description: 'The garage name' })
   garageLocation!: string;
 
@@ -403,4 +409,13 @@ export class TicketDetailResponse extends TicketView {
     description: 'The first move into In progress or Outsourced; never cleared',
   })
   workStartedAt!: string | null;
+}
+
+/** `POST /vrms/repairs`: the ticket, plus whether the truck came from the copy (spec 0029, AC-5). */
+export class TicketCreatedResponse extends TicketDetailResponse {
+  @ApiProperty({
+    description:
+      "True when VMMS couldn't be reached and the truck's facts came from VRMS's last copy",
+  })
+  fleetStale!: boolean;
 }

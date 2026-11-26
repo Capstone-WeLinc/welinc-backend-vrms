@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import SharedModule from '../../shared/shared.module';
 import { AiModule } from '../ai/ai.module';
+import { IntegrationsModule } from '../integrations/integrations.module';
 import { RepairsController } from './repairs.controller';
 import { RepairsService } from './repairs.service';
 import { TicketEditsService } from './ticket-edits.service';
@@ -19,7 +20,8 @@ import { PeopleCopy } from './directory/people-copy';
 import { MechanicWorkService } from './mechanic-work.service';
 
 @Module({
-  imports: [SharedModule, AiModule],
+  // IntegrationsModule: the VMMS fleet client for ticket create's fresh read (spec 0029, AC-5)
+  imports: [SharedModule, AiModule, IntegrationsModule],
   controllers: [
     RepairsController,
     ConfigController,

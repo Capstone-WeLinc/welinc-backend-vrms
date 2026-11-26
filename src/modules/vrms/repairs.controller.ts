@@ -15,7 +15,11 @@ import type { AppAbility } from '../../auth/permissions/ability.factory';
 import { CurrentAbility } from '../../auth/permissions/current-ability.decorator';
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
-import { TicketDetailResponse, TicketListResponse } from './repairs.response';
+import {
+  TicketDetailResponse,
+  TicketListResponse,
+  TicketCreatedResponse,
+} from './repairs.response';
 import { TicketEditsService } from './ticket-edits.service';
 import { ChecklistEditsService } from './checklist-edits.service';
 import { SaveChecklistDto } from './dto/save-checklist.dto';
@@ -39,7 +43,11 @@ import {
   LinkIssueKnowledgeDto,
 } from './dto/link-issue-knowledge.dto';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import { ApiGenericErrors, ApiUserToken } from '../../openapi/decorators';
+import {
+  ApiErrors,
+  ApiGenericErrors,
+  ApiUserToken,
+} from '../../openapi/decorators';
 
 type AuthRequest = { user: AuthUser };
 
@@ -55,7 +63,8 @@ export class RepairsController {
     private readonly checklistEdits: ChecklistEditsService,
   ) {}
 
-  @ApiCreatedResponse({ type: TicketDetailResponse })
+  @ApiCreatedResponse({ type: TicketCreatedResponse })
+  @ApiErrors(422, ['VEHICLE_NOT_IN_VMMS'])
   @RequirePermission('ticket.create')
   @Post()
   create(

@@ -15,10 +15,8 @@ import {
   Prisma,
   RepairStatus,
   type RepairTicket,
-  VehicleStatus,
 } from '@prisma/client';
 import { applyStatusMove } from './apply-status-move';
-import { vehicleStatusChange } from './vehicles/vehicle-status';
 import {
   livePhotoCounts,
   PhotoCounts,
@@ -80,6 +78,12 @@ import {
 } from './ticket-inputs';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
 import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
+import { applyFleetVehicle } from '../integrations/fleet/fleet-apply';
+import {
+  FleetUnavailableError,
+  VmmsFleetClient,
+  type FleetVehicle,
+} from '../integrations/fleet/vmms-fleet.client';
 import { DENIED } from '../../auth/permissions/permissions.guard';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
@@ -284,7 +288,10 @@ function generateRepairNumber(): string {
 
 /** The relations a ticket is loaded with, for formatTicket. */
 export const ticketInclude = {
-  vehicle: { select: { plateNumber: true, model: true, status: true } },
+  // isActive: spec 0029, AC-35's "Truck removed in VMMS"
+  vehicle: {
+    select: { plateNumber: true, model: true, status: true, isActive: true },
+  },
   driver: { select: { name: true, licenseNumber: true, isVerified: true } },
   garage: { select: { name: true } },
   // Spec 0029, AC-12: the referral a ticket was opened from, for the "From VMMS WO-…" chip
@@ -319,24 +326,28 @@ export class RepairsService {
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
     private readonly embeddings: EmbeddingService,
+    private readonly fleet: VmmsFleetClient,
   ) {}
 
   // ── Create repair ticket ─────────────────────────────────────────────────
 
   async create(dto: CreateRepairDto, user: JwtUser, ability: AppAbility) {
-    // Checks that need no lock run first, outside the transaction (spec 0016, AC-2)
+    // Checks that need no lock run first, outside the transaction (spec 0016, AC-2). Only trucks
+    // linked to VMMS can be picked (spec 0029, AC-5)
     const vehicle = await this.prisma.vehicle.findFirst({
       where: {
         plateNumber: dto.vehiclePlate,
         isActive: true,
         deletedAt: null,
+        vmmsVehicleId: { not: null },
       },
     });
-    if (!vehicle) {
+    if (!vehicle?.vmmsVehicleId) {
       throw new BadRequestException(
         `Vehicle with plate number "${dto.vehiclePlate}" not found`,
       );
     }
+    const { fresh, fleetStale } = await this.freshTruck(vehicle.vmmsVehicleId);
 
     const garage = await this.prisma.garage.findFirst({
       where: {
@@ -406,6 +417,7 @@ export class RepairsService {
             categories,
             entries,
             referral,
+            fresh,
           }),
         );
       } catch (error) {
@@ -427,7 +439,36 @@ export class RepairsService {
     void this.embeddings.embedIssuesInBackground(
       ticket.issues.map((i) => i.id),
     );
-    return this.present(ticket, ability);
+    // Spec 0029, AC-5: the form says "VMMS can't be reached, using the last copy"
+    return { ...(await this.present(ticket, ability)), fleetStale };
+  }
+
+  /**
+   * Spec 0029 (child 0001), AC-5: the truck read fresh from VMMS before the ticket is saved. A
+   * truck VMMS doesn't have refuses the ticket; when VMMS can't be reached, create uses the copy.
+   */
+  private async freshTruck(
+    vmmsVehicleId: string,
+  ): Promise<{ fresh: FleetVehicle | null; fleetStale: boolean }> {
+    let fresh: FleetVehicle | null;
+    try {
+      fresh = await this.fleet.vehicle(vmmsVehicleId);
+    } catch (error) {
+      if (!(error instanceof FleetUnavailableError)) throw error;
+      this.logger.warn(
+        `Ticket create uses the truck copy, VMMS unavailable: ${error.reason}`,
+      );
+      return { fresh: null, fleetStale: true };
+    }
+    if (!fresh) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        code: 'VEHICLE_NOT_IN_VMMS',
+        message:
+          'VMMS no longer has this truck. Ask VMMS Operations to add it.',
+      });
+    }
+    return { fresh, fleetStale: false };
   }
 
   /**
@@ -455,6 +496,8 @@ export class RepairsService {
         }
       >;
       referral: { id: string; workOrderNumber: string } | null;
+      /** The truck as VMMS has it now; null when VMMS can't be reached (AC-5). */
+      fresh: FleetVehicle | null;
     },
   ) {
     const {
@@ -467,8 +510,8 @@ export class RepairsService {
       entries,
     } = input;
 
-    const locked = await tx.$queryRaw<{ id: string; status: VehicleStatus }[]>(
-      Prisma.sql`SELECT id, status::text AS status FROM vehicles
+    const locked = await tx.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT id FROM vehicles
         WHERE id = ${input.vehicleId}::uuid AND is_active AND deleted_at IS NULL
         FOR UPDATE`,
     );
@@ -477,9 +520,6 @@ export class RepairsService {
         `Vehicle with plate number "${dto.vehiclePlate}" not found`,
       );
     }
-    // Only values read under the lock are used from here on
-    const priorVehicleStatus = locked[0].status;
-
     const open = await tx.repairTicket.findFirst({
       where: {
         vehicleId: input.vehicleId,
@@ -496,6 +536,10 @@ export class RepairsService {
         ticket: open,
       });
     }
+
+    // Spec 0029, AC-5: the fresh VMMS read is applied under the truck's lock, before the
+    // odometer floor reads it. A truck under maintenance no longer blocks a ticket
+    if (input.fresh) await applyFleetVehicle(tx, input.fresh, new Date());
 
     // Spec 0016, AC-7: the reading may not drop below the truck's last one, and a big jump
     // must be confirmed
@@ -543,7 +587,6 @@ export class RepairsService {
         repairStatus:
           mechanicIds.length > 0 ? RepairStatus.ASSIGNED : RepairStatus.OPEN,
         priority: dto.priority,
-        priorVehicleStatus,
         accountType: dto.accountType,
         corporation,
         reportedByUserId: reporter.userId,
@@ -613,21 +656,7 @@ export class RepairsService {
       await queueVmmsRepairEvent(tx, ticket.id, 'STATUS_UPDATED');
     }
 
-    // Spec 0020, AC-6: the truck goes Under repair with its history row, after the insert so the
-    // row can point at the ticket. A stuck truck (already Under repair) writes neither.
-    await vehicleStatusChange(tx, {
-      vehicleId: input.vehicleId,
-      before: priorVehicleStatus,
-      after: VehicleStatus.UNDER_REPAIR,
-      actor: user,
-      note: null,
-      repairTicketId: ticket.id,
-    });
-    // The include above read the truck before the write
-    return {
-      ...ticket,
-      vehicle: { ...ticket.vehicle, status: VehicleStatus.UNDER_REPAIR },
-    };
+    return ticket;
   }
 
   /**
@@ -727,7 +756,8 @@ export class RepairsService {
   // ── List repair tickets ──────────────────────────────────────────────────
 
   async findAll(query: FindRepairsQueryDto, ability: AppAbility) {
-    const { search, status, garageId, overdue, mechanicId } = query;
+    const { search, status, garageId, overdue, truckRemoved, mechanicId } =
+      query;
     const scope = readableTickets(ability);
     if (!scope) return { data: [], total: 0 };
 
@@ -755,6 +785,13 @@ export class RepairsService {
         ? [
             { repairStatus: { in: OPEN_STATUSES } },
             { dueAt: { lt: new Date() } },
+          ]
+        : []),
+      // Spec 0029, AC-35: like overdue, only ever open tickets
+      ...(truckRemoved
+        ? [
+            { repairStatus: { in: OPEN_STATUSES } },
+            { vehicle: { isActive: false } },
           ]
         : []),
     ];
@@ -1748,6 +1785,9 @@ export class RepairsService {
       // Spec 0029, AC-12: both null on a ticket opened from a VMMS referral
       driverName: ticket.driver?.name ?? null,
       fromVmmsWorkOrder: ticket.referrals?.[0]?.workOrderNumber ?? null,
+      // Spec 0029, AC-35: worked out on read, never stored. An open ticket whose truck VMMS
+      // removed; the Admin cancels it, or VMMS reactivates the truck and the sync clears it
+      truckRemoved: open && !ticket.vehicle.isActive,
       // Spec 0019, AC-4: so the details edit can tell a swap from the same driver
       driverId: ticket.driverId,
       garageLocation: ticket.garage.name,
