@@ -127,7 +127,11 @@ export async function applyFleetGarage(
     select: { name: true, isActive: true },
   });
   const changed: string[] = [];
-  const data: Prisma.GarageUpdateInput = { syncedAt: now, isActive: true };
+  const data: Prisma.GarageUpdateInput = {
+    syncedAt: now,
+    isActive: true,
+    deletedAt: null,
+  };
   if (!current.isActive) changed.push('isActive');
   if (current.name !== name) {
     if (clashing) {
@@ -219,6 +223,9 @@ export async function applyFleetVehicle(
     truckSizeCategory: next.truckSizeCategory,
     status: next.status,
     isActive: true,
+    // VMMS owns whether a truck exists; a row soft deleted before the sync must come back, since
+    // the pickers hide `deletedAt` rows
+    deletedAt: null,
     odometer: Math.max(0, Math.round(record.odometer)),
     garageId: garage?.id ?? null,
     vehicleTypeId: vehicleType?.id ?? null,
