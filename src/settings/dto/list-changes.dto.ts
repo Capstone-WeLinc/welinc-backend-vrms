@@ -17,7 +17,7 @@ export type ChangeKind = (typeof CHANGE_KINDS)[number];
 
 // Spec 0012, API surface: GET /vrms/settings/changes
 
-const KEY_PATTERN = /^[a-z0-9_.]{1,60}$/;
+const KEY_PATTERN = /^[A-Za-z0-9_.]{1,60}$/;
 const MAX_KEYS = 50;
 
 /** The distinct keys of a `keys` string, in order (AC-31). Throws nothing; see keysProblem. */
@@ -32,7 +32,7 @@ export function keysProblem(keys: string): string | null {
     return 'keys must not hold an empty key (no empty value, double comma or trailing comma)';
   }
   if (pieces.some((k) => !KEY_PATTERN.test(k))) {
-    return 'each key must be 1 to 60 characters of a to z, 0 to 9, _ and .';
+    return 'each key must be 1 to 60 characters of a to z, A to Z, 0 to 9, _ and .';
   }
   if (parseKeys(keys).length > MAX_KEYS) {
     return `keys takes at most ${MAX_KEYS} distinct keys`;
