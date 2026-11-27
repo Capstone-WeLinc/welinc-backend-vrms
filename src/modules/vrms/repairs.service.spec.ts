@@ -554,6 +554,83 @@ describe('RepairsService.findAll', () => {
     jest.useRealTimers();
   });
 
+  // covers: AC-35 (spec 0029), the "Truck removed in VMMS" flag and its list filter
+  it('keeps only open tickets on a truck VMMS removed for truckRemoved, whatever the status', async () => {
+    const { prisma, service } = listSetup();
+    await service.findAll(
+      { truckRemoved: true, status: RepairStatus.CLOSED },
+      asAdmin,
+    );
+    const where = whereOf(prisma.repairTicket.findMany);
+    expect(where.repairStatus).toBe(RepairStatus.CLOSED);
+    expect(where.AND).toEqual([
+      {},
+      {
+        repairStatus: {
+          in: [
+            RepairStatus.OPEN,
+            RepairStatus.ASSIGNED,
+            RepairStatus.IN_PROGRESS,
+            RepairStatus.ON_HOLD,
+            RepairStatus.FOR_VERIFICATION,
+            RepairStatus.OUTSOURCED,
+            RepairStatus.PENDING_APPROVAL,
+          ],
+        },
+      },
+      { vehicle: { isActive: false } },
+    ]);
+  });
+
+  it('adds no truck filter when truckRemoved is not asked for', async () => {
+    const { prisma, service } = listSetup();
+    await service.findAll({}, asAdmin);
+    expect(JSON.stringify(whereOf(prisma.repairTicket.findMany))).not.toContain(
+      '"isActive"',
+    );
+  });
+
+  it.each([
+    [
+      'an open ticket on an inactive truck',
+      RepairStatus.IN_PROGRESS,
+      false,
+      true,
+    ],
+    [
+      'an open ticket on an active truck',
+      RepairStatus.IN_PROGRESS,
+      true,
+      false,
+    ],
+    ['a closed ticket on an inactive truck', RepairStatus.CLOSED, false, false],
+    [
+      'a cancelled ticket on an inactive truck',
+      RepairStatus.CANCELLED,
+      false,
+      false,
+    ],
+  ])(
+    'flags truckRemoved on %s as %s truck active=%s',
+    async (_name, status, truckActive, flagged) => {
+      const { prisma, service } = listSetup();
+      prisma.repairTicket.findMany.mockResolvedValue([
+        {
+          ...openTicket({ partsCost: 0, laborCost: 0, totalCost: 0 }),
+          repairStatus: status,
+          vehicle: {
+            plateNumber: 'ABC 123',
+            model: 'Hilux',
+            status: 'AVAILABLE',
+            isActive: truckActive,
+          },
+        },
+      ]);
+      const { data } = await service.findAll({}, asAdmin);
+      expect(data[0].truckRemoved).toBe(flagged);
+    },
+  );
+
   it("keeps a mechanic's own scope even with a mechanicId filter", async () => {
     const { prisma, service } = listSetup();
     await service.findAll({ mechanicId: MECHANIC }, asMechanic);
@@ -1031,6 +1108,18 @@ describe('request limits', () => {
   ])('rejects a bad list query %j', async (query, property) => {
     const errors = await validate(plainToInstance(FindRepairsQueryDto, query));
     expect(errors.map((e) => e.property)).toEqual([property]);
+  });
+
+  // covers: AC-35 (spec 0029)
+  it('reads truckRemoved=true as a boolean and refuses other text', async () => {
+    expect(
+      plainToInstance(FindRepairsQueryDto, { truckRemoved: 'true' })
+        .truckRemoved,
+    ).toBe(true);
+    const errors = await validate(
+      plainToInstance(FindRepairsQueryDto, { truckRemoved: 'yes' }),
+    );
+    expect(errors.map((e) => e.property)).toEqual(['truckRemoved']);
   });
 
   it('reads overdue=true as a boolean', () => {
