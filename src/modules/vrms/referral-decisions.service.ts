@@ -175,6 +175,15 @@ export class ReferralDecisionsService {
         ticket.id,
         newSchedule ? 'LINKS_UPDATED' : 'STATUS_UPDATED',
       );
+      // Spec 0030, AC-5: the new issues can move an automatic due date. Before the BMS update
+      // below, which then carries the new date, so BMS hears once
+      await this.repairs.recomputeDueAt(tx, ticket.id, {
+        trigger: 'REFERRAL',
+        actor: user,
+        now,
+        at: stampedAt(now, dto.issues.length + 1),
+        skipBmsUpdate: true,
+      });
       // Child 0003, AC-17: the new issues can change the reason BMS shows (their categories)
       await queueBmsRepairUpdate(
         tx,

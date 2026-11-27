@@ -163,6 +163,12 @@ export class TicketAbilitiesView {
 
   @ApiProperty()
   editChecklist!: boolean;
+
+  @ApiProperty({
+    description:
+      'Spec 0030: may change or reset the due date (open tickets only).',
+  })
+  editDueDate!: boolean;
 }
 
 /** One ticket as a list row. */
@@ -241,6 +247,15 @@ export class TicketView {
     nullable: true,
   })
   dueAtSource!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'When the ticket turns Due soon (spec 0030, AC-11); null when it is closed, cancelled or has no due date.',
+  })
+  dueSoonAt!: string | null;
 
   @ApiProperty({ type: String, nullable: true })
   reportedByName!: string | null;
@@ -443,4 +458,40 @@ export class TicketCreatedResponse extends TicketDetailResponse {
       "True when VMMS couldn't be reached and the truck's facts came from VRMS's last copy",
   })
   fleetStale!: boolean;
+}
+
+/** Spec 0030, AC-9: one issue's hours in the automatic date. */
+export class DueDatePreviewIssue {
+  @ApiProperty()
+  id!: string;
+
+  @ApiProperty()
+  description!: string;
+
+  @ApiProperty()
+  hours!: number;
+
+  @ApiProperty({ enum: ['KNOWLEDGE', 'ESTIMATE', 'CATEGORY', 'NONE'] })
+  from!: string;
+}
+
+/** GET /vrms/repairs/:id/due-date/automatic: the date a reset would set now (spec 0030, AC-9). */
+export class DueDatePreviewResponse {
+  @ApiProperty({ type: String, format: 'date-time' })
+  dueAt!: string;
+
+  @ApiProperty({ enum: ['PRIORITY', 'ISSUE_TYPE'] })
+  source!: string;
+
+  @ApiProperty()
+  priorityHours!: number;
+
+  @ApiProperty()
+  issueHours!: number;
+
+  @ApiProperty()
+  escalated!: boolean;
+
+  @ApiProperty({ type: [DueDatePreviewIssue] })
+  issues!: DueDatePreviewIssue[];
 }

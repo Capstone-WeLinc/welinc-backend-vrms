@@ -20,6 +20,7 @@ export type TicketAction =
   | 'assign'
   | 'edit'
   | 'editChecklist'
+  | 'editDueDate'
   | 'addFiles'
   | 'addDocuments'
   | 'removeAny';
@@ -91,6 +92,10 @@ export function buildAbility(
       case 'ticket.edit':
         // Spec 0019, AC-1: a global right like assign; the service also checks read on the ticket
         can('edit', 'RepairTicket');
+        break;
+      case 'ticket.due_date.edit':
+        // Spec 0030, AC-8: a global right like edit; the service also checks read on the ticket
+        can('editDueDate', 'RepairTicket');
         break;
       case 'ticket.unlock':
         can('unlock', 'RepairTicket');

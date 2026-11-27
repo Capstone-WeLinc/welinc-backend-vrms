@@ -82,9 +82,11 @@ export function pickRepeatVehicles(
     .map((r) => ({ plate: r.plate, count: r.count, lastAt: r.last_at }));
 }
 
-/** One query for every entry id, grouped by entry. */
+/** One query for every entry id, grouped by entry. Takes the service or a transaction client. */
 export async function loadStats(
-  prisma: PrismaService,
+  prisma:
+    | Pick<PrismaService, '$queryRaw'>
+    | Pick<Prisma.TransactionClient, '$queryRaw'>,
   entryIds: string[],
   minSamples: number,
 ): Promise<Map<string, EntryStats>> {

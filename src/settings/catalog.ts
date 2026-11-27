@@ -232,6 +232,76 @@ export const SETTINGS_CATALOG = [
     default: true,
   },
   {
+    // Spec 0030, AC-2: calendar hours from creation, nights and Sundays included
+    key: 'tickets.due_hours_critical',
+    kind: 'value',
+    group: 'Due dates',
+    label: 'Critical repairs are due within',
+    description:
+      'Hours from creation for a Critical ticket, unless its issues usually take longer.',
+    type: 'int',
+    default: 8,
+    min: 1,
+    max: 720,
+    unit: 'hours',
+  },
+  {
+    // Spec 0030, AC-2
+    key: 'tickets.due_hours_high',
+    kind: 'value',
+    group: 'Due dates',
+    label: 'High repairs are due within',
+    description:
+      'Hours from creation for a High ticket, unless its issues usually take longer.',
+    type: 'int',
+    default: 24,
+    min: 1,
+    max: 720,
+    unit: 'hours',
+  },
+  {
+    // Spec 0030, AC-2
+    key: 'tickets.due_hours_medium',
+    kind: 'value',
+    group: 'Due dates',
+    label: 'Medium repairs are due within',
+    description:
+      'Hours from creation for a Medium ticket, unless its issues usually take longer.',
+    type: 'int',
+    default: 72,
+    min: 1,
+    max: 720,
+    unit: 'hours',
+  },
+  {
+    // Spec 0030, AC-2
+    key: 'tickets.due_hours_low',
+    kind: 'value',
+    group: 'Due dates',
+    label: 'Low repairs are due within',
+    description:
+      'Hours from creation for a Low ticket, unless its issues usually take longer.',
+    type: 'int',
+    default: 168,
+    min: 1,
+    max: 720,
+    unit: 'hours',
+  },
+  {
+    // Spec 0030, AC-11: the window is also never more than half the ticket's whole time
+    key: 'tickets.due_soon_hours',
+    kind: 'value',
+    group: 'Due dates',
+    label: 'Warn this long before a due date',
+    description:
+      'An open ticket shows Due soon once less than this is left, or less than half its time, whichever is shorter.',
+    type: 'int',
+    default: 24,
+    min: 1,
+    max: 168,
+    unit: 'hours',
+  },
+  {
     // Spec 0017, AC-5
     key: 'uploads.max_file_mb',
     kind: 'value',

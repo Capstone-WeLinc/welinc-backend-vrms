@@ -131,7 +131,11 @@ function setup(
     issueCategory: { findMany: jest.fn().mockResolvedValue([BRAKES]) },
     $transaction: jest.fn((run: (t: typeof tx) => unknown) => run(tx)),
   };
-  const repairs = { present: jest.fn((t: unknown) => Promise.resolve(t)) };
+  const repairs = {
+    // Spec 0030: the due date recompute (its own rules are tested in due-dates.spec.ts)
+    recomputeDueAt: jest.fn().mockResolvedValue(false),
+    present: jest.fn((t: unknown) => Promise.resolve(t)),
+  };
   const referrals = {
     detail: jest.fn().mockResolvedValue({ id: 'r1', status: 'REJECTED' }),
   };

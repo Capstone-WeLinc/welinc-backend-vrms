@@ -32,6 +32,7 @@
     "settings:prune": "ts-node -r tsconfig-paths/register prisma/settings-prune.ts",
     "ai:embed-all": "ts-node -r tsconfig-paths/register prisma/ai-embed-all.ts",
     "fleet:link": "ts-node -r tsconfig-paths/register prisma/fleet-link.ts",
+    "due:backfill": "ts-node -r tsconfig-paths/register prisma/due-backfill.ts",
     "studio": "prisma studio --port 5555 --browser none"
   },
   "dependencies": {

@@ -5426,6 +5426,229 @@
         ]
       }
     },
+    "/vrms/repairs/{id}/due-date": {
+      "put": {
+        "operationId": "RepairsController_changeDueDate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeDueDateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`DUE_DATE_OUT_OF_RANGE` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "DUE_DATE_OUT_OF_RANGE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`TICKET_NOT_OPEN` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "TICKET_NOT_OPEN"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
+    "/vrms/repairs/{id}/due-date/automatic": {
+      "get": {
+        "operationId": "RepairsController_automaticDueDate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DueDatePreviewResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`TICKET_NOT_OPEN`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "TICKET_NOT_OPEN"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      },
+      "post": {
+        "operationId": "RepairsController_resetDueDate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetDueDateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`TICKET_NOT_OPEN`, `NOT_MANUAL` or no `code`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "TICKET_NOT_OPEN",
+                            "NOT_MANUAL"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Repair Tickets"
+        ]
+      }
+    },
     "/vrms/repairs/{id}/issues": {
       "post": {
         "operationId": "RepairsController_addIssue",
@@ -7578,6 +7801,28 @@
           "lastUpdatedAt"
         ]
       },
+      "ChangeDueDateDto": {
+        "type": "object",
+        "properties": {
+          "dueAt": {
+            "type": "string",
+            "pattern": "(Z|[+-]\\d{2}:?\\d{2})$"
+          },
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "dueAt",
+          "lastUpdatedAt",
+          "reason"
+        ]
+      },
       "CheckIssueStepDto": {
         "type": "object",
         "properties": {
@@ -7654,6 +7899,12 @@
             "type": "string",
             "nullable": true,
             "maxLength": 200
+          },
+          "fixHours": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0.25,
+            "maximum": 720
           }
         },
         "required": [
@@ -7919,6 +8170,74 @@
         },
         "required": [
           "issueIds"
+        ]
+      },
+      "DueDatePreviewIssue": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "hours": {
+            "type": "number"
+          },
+          "from": {
+            "type": "string",
+            "enum": [
+              "KNOWLEDGE",
+              "ESTIMATE",
+              "CATEGORY",
+              "NONE"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "hours",
+          "from"
+        ]
+      },
+      "DueDatePreviewResponse": {
+        "type": "object",
+        "properties": {
+          "dueAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "PRIORITY",
+              "ISSUE_TYPE"
+            ]
+          },
+          "priorityHours": {
+            "type": "number"
+          },
+          "issueHours": {
+            "type": "number"
+          },
+          "escalated": {
+            "type": "boolean"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DueDatePreviewIssue"
+            }
+          }
+        },
+        "required": [
+          "dueAt",
+          "source",
+          "priorityHours",
+          "issueHours",
+          "escalated",
+          "issues"
         ]
       },
       "EditIssueDto": {
@@ -8638,6 +8957,23 @@
           "outsideShopName"
         ]
       },
+      "ResetDueDateDto": {
+        "type": "object",
+        "properties": {
+          "lastUpdatedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "lastUpdatedAt",
+          "reason"
+        ]
+      },
       "ResolveSuggestionDto": {
         "type": "object",
         "properties": {
@@ -8742,6 +9078,10 @@
           },
           "editChecklist": {
             "type": "boolean"
+          },
+          "editDueDate": {
+            "type": "boolean",
+            "description": "Spec 0030: may change or reset the due date (open tickets only)."
           }
         },
         "required": [
@@ -8752,7 +9092,8 @@
           "unlock",
           "assign",
           "edit",
-          "editChecklist"
+          "editChecklist",
+          "editDueDate"
         ]
       },
       "TicketCreatedResponse": {
@@ -8846,6 +9187,12 @@
               "ISSUE_TYPE",
               "MANUAL"
             ]
+          },
+          "dueSoonAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "When the ticket turns Due soon (spec 0030, AC-11); null when it is closed, cancelled or has no due date."
           },
           "reportedByName": {
             "type": "string",
@@ -9031,6 +9378,7 @@
           "priority",
           "dueAt",
           "dueAtSource",
+          "dueSoonAt",
           "reportedByName",
           "accountType",
           "corporation",
@@ -9153,6 +9501,12 @@
               "ISSUE_TYPE",
               "MANUAL"
             ]
+          },
+          "dueSoonAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "When the ticket turns Due soon (spec 0030, AC-11); null when it is closed, cancelled or has no due date."
           },
           "reportedByName": {
             "type": "string",
@@ -9334,6 +9688,7 @@
           "priority",
           "dueAt",
           "dueAtSource",
+          "dueSoonAt",
           "reportedByName",
           "accountType",
           "corporation",
@@ -9773,6 +10128,12 @@
               "MANUAL"
             ]
           },
+          "dueSoonAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "description": "When the ticket turns Due soon (spec 0030, AC-11); null when it is closed, cancelled or has no due date."
+          },
           "reportedByName": {
             "type": "string",
             "nullable": true
@@ -9924,6 +10285,7 @@
           "priority",
           "dueAt",
           "dueAtSource",
+          "dueSoonAt",
           "reportedByName",
           "accountType",
           "corporation",
@@ -10031,6 +10393,12 @@
             "type": "string",
             "nullable": true,
             "maxLength": 200
+          },
+          "fixHours": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0.25,
+            "maximum": 720
           },
           "isActive": {
             "type": "boolean"

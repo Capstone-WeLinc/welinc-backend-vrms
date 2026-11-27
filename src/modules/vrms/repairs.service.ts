@@ -17,6 +17,7 @@ import {
   type RepairTicket,
 } from '@prisma/client';
 import { applyStatusMove } from './apply-status-move';
+import { dueSoonAt, recomputeDueAt, type RecomputeOptions } from './due-dates';
 import {
   livePhotoCounts,
   PhotoCounts,
@@ -334,6 +335,25 @@ export class RepairsService {
     private readonly fleet: VmmsFleetClient,
   ) {}
 
+  /**
+   * Spec 0030, AC-5: the other services' way into the due date recompute, with this service's
+   * settings. Runs inside their transaction, after their own writes.
+   */
+  recomputeDueAt(
+    tx: Prisma.TransactionClient,
+    ticketId: string,
+    options: RecomputeOptions,
+  ) {
+    return recomputeDueAt(tx, ticketId, this.settings, options);
+  }
+
+  private async dueFields(tx: Prisma.TransactionClient, ticketId: string) {
+    return tx.repairTicket.findUniqueOrThrow({
+      where: { id: ticketId },
+      select: { dueAt: true, dueAtSource: true, lastActivityAt: true },
+    });
+  }
+
   // ── Create repair ticket ─────────────────────────────────────────────────
 
   async create(dto: CreateRepairDto, user: JwtUser, ability: AppAbility) {
@@ -582,6 +602,8 @@ export class RepairsService {
     const auditRows = events.map((event, i) =>
       auditData(user, event, stampedAt(now, i)),
     );
+    // Spec 0030, AC-1: the due date's own audit row sorts 1 ms after the create rows
+    const dueRowAt = stampedAt(now, events.length);
     const ticket = await tx.repairTicket.create({
       data: {
         repairNumber,
@@ -596,8 +618,8 @@ export class RepairsService {
         corporation,
         reportedByUserId: reporter.userId,
         reportedByName: reporter.name,
-        // The newest row's time (AC-3b)
-        lastActivityAt: auditRows[auditRows.length - 1].createdAt,
+        // The newest row's time (AC-3b): the due date row written right after (spec 0030)
+        lastActivityAt: dueRowAt,
         statusChangedAt: now,
         // Linked issues get a copy of the entry's steps (the CREATED row covers the link, no KNOWLEDGE_LINK)
         issues: {
@@ -660,10 +682,19 @@ export class RepairsService {
     if (ticket.repairStatus !== RepairStatus.OPEN) {
       await queueVmmsRepairEvent(tx, ticket.id, 'STATUS_UPDATED');
     }
+    // Spec 0030, AC-1: every new ticket gets its due date, anchored on the stored createdAt.
+    // Before create's own BMS update, which reads dueAt when it is queued, so BMS hears once.
+    await recomputeDueAt(tx, ticket.id, this.settings, {
+      trigger: 'CREATE',
+      actor: user,
+      now,
+      at: dueRowAt,
+      skipBmsUpdate: true,
+    });
     // Child 0003, AC-17: BMS gets one update with the ticket as created, Assigned or not
     await queueBmsRepairUpdate(tx, ticket.id, CHANGE_REASON.opened);
 
-    return ticket;
+    return { ...ticket, ...(await this.dueFields(tx, ticket.id)) };
   }
 
   /**
@@ -1307,6 +1338,13 @@ export class RepairsService {
           ),
         },
       });
+      // Spec 0030, AC-5: link, relink and unlink change the issue's hours
+      await recomputeDueAt(tx, id, this.settings, {
+        trigger: 'KNOWN_FIX',
+        actor: user,
+        now,
+        at: stampedAt(now, 1),
+      });
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -1813,6 +1851,12 @@ export class RepairsService {
       priority: ticket.priority,
       dueAt: ticket.dueAt?.toISOString() ?? null,
       dueAtSource: ticket.dueAtSource,
+      // Spec 0030, AC-11: the browser can't read settings, so it compares this with its fetch time
+      dueSoonAt:
+        dueSoonAt(
+          ticket,
+          this.settings.get('tickets.due_soon_hours'),
+        )?.toISOString() ?? null,
       reportedByName: ticket.reportedByName,
       // Spec 0016, AC-4: null on tickets made before they were stored
       accountType: ticket.accountType,
@@ -1862,6 +1906,8 @@ export class RepairsService {
         edit: ability.can('edit', target),
         // Spec 0023, AC-2: the Edit steps and Add steps controls
         editChecklist: ability.can('editChecklist', target),
+        // Spec 0030, AC-8 and AC-14: the Change control on the Due row, open tickets only
+        editDueDate: open && ability.can('editDueDate', target),
       },
     };
 

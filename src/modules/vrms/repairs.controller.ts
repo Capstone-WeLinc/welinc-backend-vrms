@@ -16,6 +16,7 @@ import { CurrentAbility } from '../../auth/permissions/current-ability.decorator
 import { RequirePermission } from '../../auth/permissions/permission.decorators';
 import { RepairsService } from './repairs.service';
 import {
+  DueDatePreviewResponse,
   TicketDetailResponse,
   TicketListResponse,
   TicketCreatedResponse,
@@ -32,6 +33,7 @@ import {
   TicketEditDto,
 } from './dto/edit-ticket.dto';
 import { AuditEventsQueryDto } from './dto/audit-events-query.dto';
+import { ChangeDueDateDto, ResetDueDateDto } from './dto/due-date.dto';
 import { CreateRepairDto } from './dto/create-repair.dto';
 import { FindRepairsQueryDto } from './dto/find-repairs-query.dto';
 import { HistoryQueryDto } from './dto/history-query.dto';
@@ -313,6 +315,47 @@ export class RepairsController {
     @CurrentAbility() ability: AppAbility,
   ) {
     return this.editsService.removeIssue(id, issueId, dto, req.user, ability);
+  }
+
+  // Set the due date by hand, with a reason (spec 0030, AC-8, AC-14, AC-15)
+  @RequirePermission('ticket.due_date.edit')
+  @Put(':id/due-date')
+  @ApiOkResponse({ type: TicketDetailResponse })
+  @ApiErrors(400, [null, 'DUE_DATE_OUT_OF_RANGE'])
+  @ApiErrors(409, [null, 'TICKET_NOT_OPEN'])
+  changeDueDate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChangeDueDateDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.changeDueDate(id, dto, req.user, ability);
+  }
+
+  // The date a reset would set now, for the dialog's preview (spec 0030, AC-9)
+  @RequirePermission('ticket.due_date.edit')
+  @Get(':id/due-date/automatic')
+  @ApiOkResponse({ type: DueDatePreviewResponse })
+  @ApiErrors(409, ['TICKET_NOT_OPEN'])
+  automaticDueDate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.automaticDueDate(id, ability);
+  }
+
+  // Put a hand set date back to automatic, with a reason (spec 0030, AC-9)
+  @RequirePermission('ticket.due_date.edit')
+  @Post(':id/due-date/automatic')
+  @ApiOkResponse({ type: TicketDetailResponse })
+  @ApiErrors(409, [null, 'TICKET_NOT_OPEN', 'NOT_MANUAL'])
+  resetDueDate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResetDueDateDto,
+    @Req() req: AuthRequest,
+    @CurrentAbility() ability: AppAbility,
+  ) {
+    return this.editsService.resetDueDate(id, dto, req.user, ability);
   }
 
   // Unlock a terminal (closed/cancelled) ticket for editing

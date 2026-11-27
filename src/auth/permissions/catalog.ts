@@ -38,6 +38,8 @@ export const PERMISSION_CATALOG = [
   { key: 'ticket.assign' },
   // Spec 0019, AC-1: details and issues after create; mechanics stay on ticket.assign
   { key: 'ticket.edit' },
+  // Spec 0030, AC-8: the hand change and reset; the service also checks read on the ticket
+  { key: 'ticket.due_date.edit' },
   { key: 'ticket.unlock' },
   // Spec 0023, AC-1: follows the caller's ticket visibility (assigned only without ticket.view_all)
   { key: 'ticket.checklist.edit' },

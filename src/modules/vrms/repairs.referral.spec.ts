@@ -7,6 +7,7 @@ import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { queueVmmsRepairEvent } from '../integrations/vmms-repair-events';
 import { RepairsService } from './repairs.service';
 import type { CreateRepairDto } from './dto/create-repair.dto';
+import { withDueDateMocks } from './due-dates.helper-spec';
 
 // Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
 jest.mock('../integrations/bms/bms-repair-updates', () => ({
@@ -110,6 +111,7 @@ function setup(
     },
     $transaction: jest.fn(),
   };
+  withDueDateMocks(prisma);
   prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) =>
     fn(prisma),
   );

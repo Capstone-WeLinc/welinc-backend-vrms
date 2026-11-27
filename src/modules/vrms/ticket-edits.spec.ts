@@ -119,7 +119,11 @@ function setup(
     },
     $transaction: jest.fn((run: (c: typeof tx) => unknown) => run(tx)),
   };
-  const repairs = { present: jest.fn((t: unknown) => Promise.resolve(t)) };
+  const repairs = {
+    // Spec 0030: the due date recompute (its own rules are tested in due-dates.spec.ts)
+    recomputeDueAt: jest.fn().mockResolvedValue(false),
+    present: jest.fn((t: unknown) => Promise.resolve(t)),
+  };
   const embeddings = new FakeEmbeddings();
   const fleet = new FakeFleet();
   const service = new TicketEditsService(
@@ -205,7 +209,7 @@ describe('editNote (AC-2, AC-3)', () => {
 
 describe('TicketEditsService.editDetails (priority)', () => {
   it('saves the priority with the stamp and one TICKET_EDITED row', async () => {
-    const { service, tx } = setup();
+    const { service, tx, repairs } = setup();
     await service.editDetails(
       't1',
       { lastUpdatedAt: AT, priority: 'HIGH' },
@@ -233,6 +237,23 @@ describe('TicketEditsService.editDetails (priority)', () => {
       { field: 'priority', before: 'MEDIUM', after: 'HIGH' },
     ]);
     expect(audit.data.note).toBeNull();
+    // Spec 0030, AC-5: a new priority works the due date out again, after the edit row
+    expect(repairs.recomputeDueAt).toHaveBeenCalledWith(
+      tx,
+      't1',
+      expect.objectContaining({ trigger: 'PRIORITY' }),
+    );
+  });
+
+  it('leaves the due date alone when the priority stays (spec 0030, AC-5)', async () => {
+    const { service, repairs } = setup();
+    await service.editDetails(
+      't1',
+      { lastUpdatedAt: AT, odometerReading: 1200 },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(repairs.recomputeDueAt).not.toHaveBeenCalled();
   });
 
   it('answers with the ticket and writes nothing when nothing changed (AC-8b)', async () => {
@@ -854,6 +875,85 @@ describe('TicketEditsService issues (AC-14 to AC-17)', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  describe('due date recompute (spec 0030, AC-5)', () => {
+    const triggerOf = (repairs: { recomputeDueAt: jest.Mock }) =>
+      (
+        repairs.recomputeDueAt.mock.calls as [
+          unknown,
+          string,
+          { trigger: unknown; at: Date; now: Date },
+        ][]
+      ).map(([, id, options]) => ({
+        id,
+        trigger: options.trigger,
+        after: options.at.getTime() - options.now.getTime(),
+      }));
+
+    it('works the date out again when an issue is added, 1 ms after its row', async () => {
+      const { service, repairs } = issuesSetup([issue()]);
+      await service.addIssue(
+        't1',
+        {
+          lastUpdatedAt: AT,
+          categoryId: ENGINE.id,
+          rootCause: 'Wear',
+          description: 'Knocking',
+        },
+        admin,
+        defaultAbility(admin),
+      );
+      expect(triggerOf(repairs)).toEqual([
+        { id: 't1', trigger: 'ISSUE_ADDED', after: 1 },
+      ]);
+    });
+
+    it('works it out on another system, but not for new words alone', async () => {
+      const moved = issuesSetup([issue(), issue({ id: 'i2' })]);
+      await moved.service.editIssue(
+        't1',
+        'i1',
+        {
+          lastUpdatedAt: AT,
+          categoryId: ENGINE.id,
+          text: 'Overheating: Fan stuck',
+        },
+        admin,
+        defaultAbility(admin),
+      );
+      expect(triggerOf(moved.repairs)).toEqual([
+        { id: 't1', trigger: 'ISSUE_CHANGED', after: 1 },
+      ]);
+
+      const reworded = issuesSetup([issue()]);
+      await reworded.service.editIssue(
+        't1',
+        'i1',
+        {
+          lastUpdatedAt: AT,
+          categoryId: BRAKES.id,
+          text: 'Wear and tear: Pads squeal',
+        },
+        admin,
+        defaultAbility(admin),
+      );
+      expect(reworded.repairs.recomputeDueAt).not.toHaveBeenCalled();
+    });
+
+    it('works it out when an issue is removed', async () => {
+      const { service, repairs } = issuesSetup([issue(), issue({ id: 'i2' })]);
+      await service.removeIssue(
+        't1',
+        'i2',
+        { lastUpdatedAt: AT },
+        admin,
+        defaultAbility(admin),
+      );
+      expect(triggerOf(repairs)).toEqual([
+        { id: 't1', trigger: 'ISSUE_REMOVED', after: 1 },
+      ]);
+    });
+  });
+
   it('removes an issue with its record kept in ISSUE_REMOVED (AC-16)', async () => {
     const worked = issue({ resolutionNote: 'Bled the lines' });
     const { service, tx } = issuesSetup([worked, issue({ id: 'i2' })]);
@@ -985,5 +1085,182 @@ describe('TicketEditsService.pickOutsideShop (spec 0029, AC-36)', () => {
     await expect(
       down.service.pickOutsideShop('t1', body, admin, ability),
     ).rejects.toMatchObject({ response: { code: 'VMMS_UNAVAILABLE' } });
+  });
+});
+
+describe('TicketEditsService due date (spec 0030, AC-8, AC-9, AC-14, AC-15)', () => {
+  const HOUR = 3_600_000;
+  const inHours = (h: number) => new Date(Date.now() + h * HOUR).toISOString();
+  const reason = 'Parts arrive Friday';
+  const auto = {
+    dueAt: new Date(Date.now() + 10 * HOUR),
+    dueAtSource: 'PRIORITY',
+  };
+
+  it('sets a hand date as MANUAL with the stamp first and one audit row (AC-8)', async () => {
+    const { service, tx } = setup(ticketRow(auto));
+    const dueAt = inHours(72);
+    await service.changeDueDate(
+      't1',
+      { lastUpdatedAt: AT, dueAt, reason },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(tx.repairTicket.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.repairTicket.update.mock.invocationCallOrder[0],
+    );
+    expect(tx.repairTicket.update).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: { dueAt: new Date(dueAt), dueAtSource: 'MANUAL' },
+    });
+    const [audit] = tx.auditLog.create.mock.calls[0] as AuditCall;
+    expect(audit.data.note).toBe(reason);
+  });
+
+  it('refuses a past date or one over 90 days out (AC-8)', async () => {
+    const { service } = setup(ticketRow(auto));
+    for (const dueAt of [inHours(-1), inHours(24 * 91)]) {
+      await expect(
+        service.changeDueDate(
+          't1',
+          { lastUpdatedAt: AT, dueAt, reason },
+          admin,
+          defaultAbility(admin),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'DUE_DATE_OUT_OF_RANGE' } });
+    }
+  });
+
+  it('writes nothing for the same date', async () => {
+    const { service, prisma } = setup(ticketRow(auto));
+    await service.changeDueDate(
+      't1',
+      { lastUpdatedAt: AT, dueAt: auto.dueAt.toISOString(), reason },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 TICKET_NOT_OPEN on a closed ticket, unlocked or not (AC-14)', async () => {
+    for (const isUnlocked of [false, true]) {
+      const { service } = setup(
+        ticketRow({ ...auto, repairStatus: RepairStatus.CLOSED, isUnlocked }),
+      );
+      await expect(
+        service.changeDueDate(
+          't1',
+          { lastUpdatedAt: AT, dueAt: inHours(5), reason },
+          admin,
+          defaultAbility(admin),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'TICKET_NOT_OPEN' } });
+      await expect(
+        service.automaticDueDate('t1', defaultAbility(admin)),
+      ).rejects.toBeInstanceOf(ConflictException);
+    }
+  });
+
+  it('answers 409 when the ticket moved on, and writes nothing (AC-15)', async () => {
+    const { service, prisma } = setup(ticketRow(auto));
+    await expect(
+      service.changeDueDate(
+        't1',
+        {
+          lastUpdatedAt: '2026-11-03T00:00:00.000Z',
+          dueAt: inHours(5),
+          reason,
+        },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 when a second save loses the guarded stamp (AC-15)', async () => {
+    const { service, tx } = setup(ticketRow(auto));
+    tx.repairTicket.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      service.changeDueDate(
+        't1',
+        { lastUpdatedAt: AT, dueAt: inHours(5), reason },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.repairTicket.update).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 and 403 before anything else', async () => {
+    const missing = setup();
+    missing.prisma.repairTicket.findUnique.mockResolvedValue(null);
+    await expect(
+      missing.service.automaticDueDate('t1', defaultAbility(admin)),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    // Without ticket.view_all a mechanic sees only assigned tickets
+    const hidden = setup(ticketRow(auto));
+    await expect(
+      hidden.service.changeDueDate(
+        't1',
+        { lastUpdatedAt: AT, dueAt: inHours(5), reason },
+        mechanic,
+        defaultAbility(mechanic),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('resets a MANUAL date through the recompute, MANUAL included (AC-9)', async () => {
+    const { service, repairs } = setup(
+      ticketRow({ ...auto, dueAtSource: 'MANUAL' }),
+    );
+    await service.resetDueDate(
+      't1',
+      { lastUpdatedAt: AT, reason },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(repairs.recomputeDueAt).toHaveBeenCalledWith(
+      expect.anything(),
+      't1',
+      expect.objectContaining({
+        trigger: { reset: reason },
+        includeManual: true,
+      }),
+    );
+  });
+
+  it('answers 409 NOT_MANUAL for a date that is already automatic (AC-9)', async () => {
+    const { service } = setup(ticketRow(auto));
+    await expect(
+      service.resetDueDate(
+        't1',
+        { lastUpdatedAt: AT, reason },
+        admin,
+        defaultAbility(admin),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'NOT_MANUAL' } });
+  });
+
+  it('previews the automatic date without writing (AC-9)', async () => {
+    const { service, tx } = setup(
+      ticketRow({ ...auto, dueAtSource: 'MANUAL' }),
+    );
+    Object.assign(tx, { $queryRaw: jest.fn().mockResolvedValue([]) });
+    tx.repairTicket.findUniqueOrThrow.mockResolvedValue({
+      ...ticketRow({ ...auto, dueAtSource: 'MANUAL', createdAt: new Date() }),
+      priority: 'HIGH',
+      issues: [],
+    });
+    const preview = await service.automaticDueDate('t1', defaultAbility(admin));
+    expect(preview).toMatchObject({
+      source: 'PRIORITY',
+      priorityHours: 24,
+      issueHours: 0,
+      escalated: false,
+      issues: [],
+    });
+    expect(tx.repairTicket.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 });

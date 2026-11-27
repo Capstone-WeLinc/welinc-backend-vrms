@@ -55,6 +55,10 @@ import {
 import { EmbeddingService } from '../ai/embedding.service';
 import { correctedOdometerProblem, ticketOdometerBounds } from './odometer';
 import { SettingsService } from '../../settings/settings.service';
+import { setDueAt } from '../integrations/bms/set-due-at';
+import { MAX_MANUAL_DAYS, previewDueAt } from './due-dates';
+import { isFinished } from './ticket-statuses';
+import type { ChangeDueDateDto, ResetDueDateDto } from './dto/due-date.dto';
 
 // Spec 0019: fix a ticket after create, one section at a time. Each save is one transaction whose
 // first write is the guarded stamp (AC-19), and answers with the ticket as GET /:id returns it.
@@ -260,6 +264,15 @@ export class TicketEditsService {
       await tx.auditLog.create({
         data: { repairTicketId: id, ...auditData(user, event, now) },
       });
+      // Spec 0030, AC-5: a new priority works an automatic due date out again
+      if (after.priority !== before.priority) {
+        await this.repairs.recomputeDueAt(tx, id, {
+          trigger: 'PRIORITY',
+          actor: user,
+          now,
+          at: stampedAt(now, 1),
+        });
+      }
       const updated = await tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -530,6 +543,13 @@ export class TicketEditsService {
           ...auditData(user, issueAddedEvent(issue.id, description, note), now),
         },
       });
+      // Spec 0030, AC-5
+      await this.repairs.recomputeDueAt(tx, id, {
+        trigger: 'ISSUE_ADDED',
+        actor: user,
+        now,
+        at: stampedAt(now, 1),
+      });
       const updated = await tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -620,6 +640,15 @@ export class TicketEditsService {
           ...auditData(user, issueEditedEvent(issueId, changes, note), now),
         },
       });
+      // Spec 0030, AC-5: only another category or a cleared fix changes the issue's hours
+      if (category.id !== issue.categoryId || clearsFix) {
+        await this.repairs.recomputeDueAt(tx, id, {
+          trigger: 'ISSUE_CHANGED',
+          actor: user,
+          now,
+          at: stampedAt(now, 1),
+        });
+      }
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -678,6 +707,13 @@ export class TicketEditsService {
           ),
         },
       });
+      // Spec 0030, AC-5
+      await this.repairs.recomputeDueAt(tx, id, {
+        trigger: 'ISSUE_REMOVED',
+        actor: user,
+        now,
+        at: stampedAt(now, 1),
+      });
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -686,6 +722,137 @@ export class TicketEditsService {
 
     this.logger.log(
       `Ticket ${ticket.repairNumber}: issue ${issueId} removed by ${user.email}`,
+    );
+    return this.repairs.present(updated, ability);
+  }
+
+  // ── Due date (spec 0030, AC-8, AC-9, AC-14, AC-15) ──────────────────────
+
+  /** 404, then read (403), then open (409 TICKET_NOT_OPEN), then, for a write, the stale check. */
+  private async loadForDueDate(
+    id: string,
+    ability: AppAbility,
+    lastUpdatedAt?: string,
+  ): Promise<TicketRow> {
+    const ticket = await this.prisma.repairTicket.findUnique({
+      where: { id },
+      include: ticketInclude,
+    });
+    if (!ticket) throw new NotFoundException('Repair ticket not found');
+    if (!ability.can('read', subject('RepairTicket', ticket))) {
+      throw new ForbiddenException(
+        'You are not assigned to this repair ticket',
+      );
+    }
+    // AC-14: a closed or cancelled ticket keeps its last date, unlocked or not
+    if (isFinished(ticket.repairStatus)) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'TICKET_NOT_OPEN',
+        message: 'A closed or cancelled ticket keeps its due date.',
+      });
+    }
+    if (lastUpdatedAt !== undefined) assertFresh(ticket, lastUpdatedAt);
+    return ticket;
+  }
+
+  // ticket.due_date.edit is checked by the route's guard
+  async changeDueDate(
+    id: string,
+    dto: ChangeDueDateDto,
+    user: Actor,
+    ability: AppAbility,
+  ) {
+    const ticket = await this.loadForDueDate(id, ability, dto.lastUpdatedAt);
+    const now = new Date();
+    const dueAt = new Date(dto.dueAt);
+    // AC-8: later than now, at most 90 days out
+    const latest = now.getTime() + MAX_MANUAL_DAYS * 24 * 3_600_000;
+    if (dueAt.getTime() <= now.getTime() || dueAt.getTime() > latest) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: 'DUE_DATE_OUT_OF_RANGE',
+        message: `Pick a time after now and at most ${MAX_MANUAL_DAYS} days away.`,
+      });
+    }
+    // The same date answers 200 and writes nothing
+    if (ticket.dueAt?.getTime() === dueAt.getTime()) {
+      return this.repairs.present(ticket, ability);
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // AC-15: the guarded stamp first, so the second of two saves answers 409 and writes nothing
+      await stampEdit(tx, ticket, user, now);
+      await setDueAt(
+        tx,
+        ticket,
+        { dueAt, source: 'MANUAL', reason: dto.reason },
+        user,
+        now,
+      );
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+    });
+    this.logger.log(
+      `Ticket ${ticket.repairNumber}: due date set by hand by ${user.email}`,
+    );
+    return this.repairs.present(updated, ability);
+  }
+
+  /** AC-9: the date a reset would set right now, for the dialog's preview. Writes nothing. */
+  async automaticDueDate(id: string, ability: AppAbility) {
+    await this.loadForDueDate(id, ability);
+    const { result } = await this.prisma.$transaction((tx) =>
+      previewDueAt(tx, id, this.settings, new Date()),
+    );
+    return {
+      dueAt: result.dueAt.toISOString(),
+      source: result.source,
+      priorityHours: result.priorityHours,
+      issueHours: result.issueHours,
+      escalated: result.escalated,
+      issues: result.issues.map((issue) => ({
+        id: issue.id,
+        description: issue.description,
+        hours: issue.hours,
+        from: issue.from,
+      })),
+    };
+  }
+
+  // ticket.due_date.edit is checked by the route's guard
+  async resetDueDate(
+    id: string,
+    dto: ResetDueDateDto,
+    user: Actor,
+    ability: AppAbility,
+  ) {
+    const ticket = await this.loadForDueDate(id, ability, dto.lastUpdatedAt);
+    if (ticket.dueAtSource !== 'MANUAL') {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'NOT_MANUAL',
+        message: 'This due date is already automatic.',
+      });
+    }
+    const now = new Date();
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await stampEdit(tx, ticket, user, now);
+      // Worked out again on save (AC-6 included): this value wins over the preview
+      await this.repairs.recomputeDueAt(tx, id, {
+        trigger: { reset: dto.reason },
+        actor: user,
+        now,
+        includeManual: true,
+      });
+      return tx.repairTicket.findUniqueOrThrow({
+        where: { id },
+        include: ticketInclude,
+      });
+    });
+    this.logger.log(
+      `Ticket ${ticket.repairNumber}: due date back to automatic by ${user.email}`,
     );
     return this.repairs.present(updated, ability);
   }
