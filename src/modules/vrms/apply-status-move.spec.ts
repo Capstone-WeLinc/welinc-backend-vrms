@@ -185,6 +185,45 @@ describe('applyStatusMove', () => {
     }
   });
 
+  // Spec 0027: the send back column behind "Sent back to me"
+  it('sets sentBackAt on Return to mechanic and clears it on a send for verification, close or cancel', async () => {
+    const dataOf = async (from: RepairStatus, to: RepairStatus) => {
+      const { tx, raw } = makeTx();
+      await applyStatusMove(
+        tx,
+        ticket(from),
+        move(from, to),
+        actor,
+        'note',
+        NOW,
+      );
+      return (
+        raw.repairTicket.updateMany.mock.calls[0] as unknown as [
+          { data: Record<string, unknown> },
+        ]
+      )[0].data;
+    };
+
+    expect(
+      await dataOf(RepairStatus.FOR_VERIFICATION, RepairStatus.IN_PROGRESS),
+    ).toMatchObject({ sentBackAt: NOW });
+    expect(
+      await dataOf(RepairStatus.IN_PROGRESS, RepairStatus.FOR_VERIFICATION),
+    ).toMatchObject({ sentBackAt: null });
+    expect(
+      await dataOf(RepairStatus.FOR_VERIFICATION, RepairStatus.CLOSED),
+    ).toMatchObject({ sentBackAt: null });
+    expect(
+      await dataOf(RepairStatus.IN_PROGRESS, RepairStatus.CANCELLED),
+    ).toMatchObject({ sentBackAt: null });
+    expect(
+      await dataOf(RepairStatus.IN_PROGRESS, RepairStatus.ON_HOLD),
+    ).not.toHaveProperty('sentBackAt');
+    expect(
+      await dataOf(RepairStatus.ASSIGNED, RepairStatus.IN_PROGRESS),
+    ).not.toHaveProperty('sentBackAt');
+  });
+
   it('leaves work started alone on every other move (spec 0018)', async () => {
     const { tx, raw } = makeTx();
     await applyStatusMove(

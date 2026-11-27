@@ -86,13 +86,16 @@ export class RepairsController {
 
   // Open tickets, scoped to what the caller may read
   @ApiOkResponse({ type: TicketListResponse })
+  // Spec 0027, AC-4: an unknown view, and a view the caller can't use
+  @ApiErrors(400, [null, 'VALIDATION_FAILED'])
   @RequirePermission('ticket.view', 'ticket.view_all')
   @Get()
   findAll(
     @Query() query: FindRepairsQueryDto,
+    @Req() req: AuthRequest,
     @CurrentAbility() ability: AppAbility,
   ) {
-    return this.repairsService.findAll(query, ability);
+    return this.repairsService.findAll(query, ability, req.user.sub);
   }
 
   // Repair history (closed + cancelled), scoped the same way

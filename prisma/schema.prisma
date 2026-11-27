@@ -255,6 +255,7 @@ model RepairTicket {
   corporation        String?            @db.VarChar(100) // snapshot of the corporation name, spec 0016
   priorVehicleStatus VehicleStatus?     @map("prior_vehicle_status") // the truck's status just before create, restored on release
   workStartedAt      DateTime?          @map("work_started_at") @db.Timestamptz(6) // first move into IN_PROGRESS or OUTSOURCED, never cleared (spec 0018)
+  sentBackAt         DateTime?          @map("sent_back_at") @db.Timestamptz(6) // set by Return to mechanic (M6), cleared by a send for verification, close or cancel (spec 0027)
   editedAt           DateTime?          @map("edited_at") @db.Timestamptz(6) // last details, mechanics or issue edit (spec 0019); the audit rows are the record
   editedByUserId     String?            @map("edited_by_user_id") @db.Uuid // welinc-auth User.id, no FK
   editedByName       String?            @map("edited_by_name") @db.VarChar(100)

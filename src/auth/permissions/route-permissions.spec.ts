@@ -156,7 +156,7 @@ describe('Route decorators (AC-7)', () => {
     expect(misplaced.map(label)).toEqual([]);
   });
 
-  it('opens only the health check and the cookie session routes (spec 0003, AC-16) to everyone, and only /permissions/me, the attachment routes (spec 0017, AC-12; spec 0018, AC-9) and the session status to any signed in user', () => {
+  it('opens only the health check and the cookie session routes (spec 0003, AC-16) to everyone, and only /permissions/me, the nav counts (spec 0027, AC-5), the attachment routes (spec 0017, AC-12; spec 0018, AC-9) and the session status to any signed in user', () => {
     expect(routes.filter((r) => r.isPublic).map(label)).toEqual([
       'GET /',
       'GET /vrms/health',
@@ -168,6 +168,7 @@ describe('Route decorators (AC-7)', () => {
     ]);
     expect(routes.filter((r) => r.authenticated).map(label)).toEqual([
       'GET /vrms/permissions/me',
+      'GET /vrms/nav/counts',
       'GET /vrms/repairs/:id/attachments',
       'DELETE /vrms/repairs/:id/attachments/:attachmentId',
       'PATCH /vrms/repairs/:id/attachments/:attachmentId',

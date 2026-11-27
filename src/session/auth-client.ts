@@ -21,6 +21,14 @@ export type UserGrant = {
     roles: { role: string; system: string }[];
     /** Every system the user holds, launcher order (spec 0007, AC-8); empty from an older welinc-auth. */
     systems: string[];
+    /**
+     * VRMS spec 0027 step 6a: the role codes held per system in `systems`, for the switcher's
+     * tags. Display only: no guard, permission check or query reads it, and it is never stored.
+     * Empty from an older welinc-auth.
+     */
+    systemRoles: { system: string; roles: string[] }[];
+    /** VRMS spec 0027 step 6a: a suite admin (the switcher's Suite management card). Display only. */
+    suiteAdmin: boolean;
   };
 };
 
@@ -226,6 +234,26 @@ export function toGrant(
       systems: Array.isArray(user['systems'])
         ? user['systems'].filter((s): s is string => typeof s === 'string')
         : [],
+      systemRoles: toSystemRoles(user['systemRoles']),
+      suiteAdmin: user['suiteAdmin'] === true,
     },
   };
+}
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((v) => typeof v === 'string');
+
+/**
+ * `user.systemRoles`, keeping an entry only when `system` is a string and `roles` an array of
+ * strings; anything else (missing, or not an array) is `[]` (VRMS spec 0027 step 6a).
+ */
+function toSystemRoles(value: unknown): UserGrant['user']['systemRoles'] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const { system, roles } = entry as Record<string, unknown>;
+    return typeof system === 'string' && isStringArray(roles)
+      ? [{ system, roles: [...roles] }]
+      : [];
+  });
 }
