@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import type { PrismaService } from '../../shared/prisma.service';
 import { setDueAt } from '../integrations/bms/set-due-at';
 import { ExpediteDecisionsService } from './expedite-decisions.service';

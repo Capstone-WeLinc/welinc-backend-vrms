@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/nestjs';
 import type { AuthUser } from '../auth/account-check';
-import { SystemType, UserRole } from '../auth/roles';
+import { SystemType } from '../auth/roles';
+import { UserRole } from '../auth/built-in-roles.testing';
 import { setSentryUser } from './user-context';
 
 // covers: VRMS spec 0025 AC-1, AC-6

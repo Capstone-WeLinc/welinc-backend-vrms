@@ -1,11 +1,11 @@
 import type { AppAbility } from '../../auth/permissions/ability.factory';
-import { UserRole } from '../../auth/roles';
+import { RoleCode } from '../../auth/roles';
 
 export type JwtUser = {
   sub: string;
   email: string;
   name: string;
-  roles: { role: UserRole; system: string }[];
+  roles: { role: RoleCode; system: string }[];
   system: string;
 };
 

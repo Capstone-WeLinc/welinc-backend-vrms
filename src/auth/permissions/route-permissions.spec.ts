@@ -23,8 +23,9 @@ import {
 } from '../../session/session.config';
 import { SERVICE_ROUTE_KEY, TOKEN_VERIFIER } from '../verify';
 import type { AuthUser } from '../account-check';
-import { SystemType, UserRole } from '../roles';
-import { MATRIX_ROLES, PermissionKey } from './catalog';
+import { SystemType } from '../roles';
+import { UserRole } from '../built-in-roles.testing';
+import { PermissionKey } from './catalog';
 import {
   AUTHENTICATED_KEY,
   PERMISSION_KEY,
@@ -190,7 +191,7 @@ class TestUserGuard implements CanActivate {
         email: 'caller@welinc.com',
         name: 'Caller',
         system: SystemType.VRMS,
-        roles: [{ role: role as UserRole, system: SystemType.VRMS }],
+        roles: [{ role: role, system: SystemType.VRMS }],
       };
     }
     return true;
@@ -259,9 +260,12 @@ describe('Every route against every matrix role, under the default matrix (AC-15
   afterAll(() => app.close());
 
   const cases = routes.flatMap((route) =>
-    [...MATRIX_ROLES, UserRole.CUSTOMER_SUPPORT].map(
-      (role) => [`${label(route)} as ${role}`, route, role] as const,
-    ),
+    [
+      UserRole.ADMIN,
+      UserRole.CHIEF_MECHANIC,
+      UserRole.MECHANIC,
+      UserRole.CUSTOMER_SUPPORT,
+    ].map((role) => [`${label(route)} as ${role}`, route, role] as const),
   );
 
   it.each(cases)('%s', async (_, route, role) => {

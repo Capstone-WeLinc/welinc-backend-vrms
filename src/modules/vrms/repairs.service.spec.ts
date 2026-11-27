@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Prisma, RepairStatus } from '@prisma/client';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { buildAbility } from '../../auth/permissions/ability.factory';
 import {
   defaultAbility,
@@ -964,7 +964,7 @@ describe('RepairsService.create mechanics (spec 0009 AC-27, spec 0010 AC-12)', (
       .catch(() => {});
 
     expect(prisma.mechanic.findMany).toHaveBeenCalledWith({
-      where: { id: { in: [MECH_ID] }, isActive: true },
+      where: { id: { in: [MECH_ID] }, isActive: true, assignable: true },
       select: { id: true, name: true },
     });
   });

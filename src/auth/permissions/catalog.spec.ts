@@ -15,6 +15,7 @@ const KEYS = [
   'ticket.costs.view',
   'ticket.costs.edit',
   'ticket.assign',
+  'ticket.assignable',
   'ticket.edit',
   'ticket.due_date.edit',
   'ticket.unlock',
@@ -82,6 +83,7 @@ describe('the test matrix (a copy of welinc-auth defaults)', () => {
       'ticket.verify',
       'ticket.costs.view',
       'ticket.assign',
+      'ticket.assignable',
       'ticket.due_date.edit',
       'ticket.checklist.edit',
       'ticket.files.add',
@@ -98,6 +100,7 @@ describe('the test matrix (a copy of welinc-auth defaults)', () => {
     expect([...defaultKeys(['MECHANIC'])]).toEqual([
       'ticket.view',
       'ticket.work',
+      'ticket.assignable',
       'ticket.checklist.edit',
       'ticket.files.add',
       'ai.use',

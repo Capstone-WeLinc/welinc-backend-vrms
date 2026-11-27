@@ -8,14 +8,9 @@ import { PrismaService } from '../../shared/prisma.service';
 import { SettingsService } from '../../settings/settings.service';
 import type { AuthUser } from '../account-check';
 import { AppAbility, buildAbility } from './ability.factory';
-import {
-  catalogEntry,
-  isMatrixRole,
-  MATRIX_ROLES,
-  MatrixRole,
-  PERMISSION_CATALOG,
-  PermissionKey,
-} from './catalog';
+import { catalogEntry, PERMISSION_CATALOG, PermissionKey } from './catalog';
+import { PermissionSync } from './sync/permission-sync.service';
+import { setRoleWeights } from './widest-role';
 
 // Spec 0011, read side. Since suite spec 0013 (AC-29, AC-30) role_permissions is written only by
 // the matrix sync from welinc-auth (sync/permission-sync.service.ts), which also enforces locks;
@@ -24,7 +19,19 @@ import {
 export const MATRIX_UNAVAILABLE =
   'Permissions are not loaded yet. Try again in a moment.';
 
-type Grants = Map<MatrixRole, ReadonlySet<PermissionKey>>;
+/** Suite spec 0018 child 0002, AC-32: every role code the synced rows name, custom ones included. */
+type Grants = Map<string, ReadonlySet<PermissionKey>>;
+
+/** At most one sync for an unknown role code per this many ms, across the process (AC-32). */
+export const UNKNOWN_ROLE_SYNC_MS = 10_000;
+
+/** What a reload hands its listeners: the new grants, and the keys that have rows at all. */
+export type LoadedGrants = {
+  version: number;
+  grants: ReadonlyMap<string, ReadonlySet<PermissionKey>>;
+  /** Keys welinc-auth sent (they have rows); a key outside it was never synced. */
+  syncedKeys: ReadonlySet<string>;
+};
 
 @Injectable()
 export class PermissionsService implements OnApplicationBootstrap {
@@ -34,11 +41,61 @@ export class PermissionsService implements OnApplicationBootstrap {
   // Granted keys per sorted role set; emptied on every matrix or settings reload (AC-9, spec 0012)
   private readonly keyCache = new Map<string, ReadonlySet<PermissionKey>>();
   private loading: Promise<void> | null = null;
+  private syncedKeys: ReadonlySet<string> = new Set();
+  private readonly listeners: ((loaded: LoadedGrants) => void)[] = [];
+  private lastUnknownSync = 0;
+  private unknownSync: Promise<void> | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly settings: SettingsService,
-  ) {}
+    private readonly sync: PermissionSync,
+  ) {
+    this.sync.whenApplied(() => {
+      this.load().catch((err: unknown) =>
+        this.logger.warn(`Reload after a matrix sync failed: ${reason(err)}`),
+      );
+    });
+  }
+
+  /**
+   * Called after every reload of the grants in this process (the first one included). The mechanic
+   * roster listens, so it recomputes only from loaded grants (child 0002, AC-33).
+   */
+  whenLoaded(listener: (loaded: LoadedGrants) => void): void {
+    this.listeners.push(listener);
+  }
+
+  /** True when welinc-auth's matrix carried `key` in the last load (it has rows). */
+  hasSynced(key: string): boolean {
+    return this.syncedKeys.has(key);
+  }
+
+  /**
+   * Child 0002, AC-32: a role code the last load doesn't know (a custom role made a moment ago)
+   * runs one sync at once, at most once per 10 s across the process, then reloads. A code still
+   * unknown afterwards gets no keys. Never throws: the last copy stays.
+   */
+  async ensureKnown(roles: readonly string[]): Promise<void> {
+    if (!this.grants) return;
+    if (roles.every((role) => this.grants?.has(role))) return;
+    if (this.unknownSync) return this.unknownSync;
+    if (Date.now() - this.lastUnknownSync < UNKNOWN_ROLE_SYNC_MS) return;
+    this.lastUnknownSync = Date.now();
+    this.unknownSync = (async () => {
+      try {
+        await this.sync.tick();
+        await this.load();
+      } catch (err) {
+        this.logger.warn(
+          `Sync for an unknown role code failed, keeping matrix ${this.version}: ${reason(err)}`,
+        );
+      } finally {
+        this.unknownSync = null;
+      }
+    })();
+    return this.unknownSync;
+  }
 
   async onApplicationBootstrap() {
     try {
@@ -89,11 +146,12 @@ export class PermissionsService implements OnApplicationBootstrap {
   }
 
   /**
-   * The union of the grants of every matrix role held; any other role grants nothing (AC-5).
-   * A key whose module is off is left out, whatever the matrix says (spec 0012, AC-10).
+   * The union of the grants of every synced role held; a role the matrix doesn't name grants
+   * nothing (AC-5, child 0002 AC-32). A key whose module is off is left out, whatever the matrix
+   * says (spec 0012, AC-10).
    */
   keysFor(roles: readonly string[]): ReadonlySet<PermissionKey> {
-    const held = [...new Set(roles.filter(isMatrixRole))].sort();
+    const held = [...new Set(roles.filter((r) => this.grants?.has(r)))].sort();
     const cacheKey = held.join(',');
     const cached = this.keyCache.get(cacheKey);
     if (cached) return cached;
@@ -170,8 +228,10 @@ export class PermissionsService implements OnApplicationBootstrap {
       rows.map((r) => [`${r.role}|${r.permission}`, r.allowed]),
     );
 
+    // Child 0002, AC-32: the roles are whatever the synced rows name
+    const roles = [...new Set(rows.map((r) => r.role))].sort();
     const grants: Grants = new Map();
-    for (const role of MATRIX_ROLES) {
+    for (const role of roles) {
       const keys = new Set<PermissionKey>();
       for (const entry of PERMISSION_CATALOG) {
         // A missing row denies (AC-6); locks are kept by welinc-auth, so the row is the value
@@ -179,10 +239,22 @@ export class PermissionsService implements OnApplicationBootstrap {
       }
       grants.set(role, keys);
     }
+    const syncedKeys = new Set(rows.map((r) => r.permission));
 
     this.grants = grants;
     this.version = version;
+    this.syncedKeys = syncedKeys;
     this.keyCache.clear();
+    setRoleWeights(
+      new Map([...grants].map(([role, keys]) => [role, keys.size])),
+    );
+    for (const listener of this.listeners) {
+      try {
+        listener({ version, grants, syncedKeys });
+      } catch (err) {
+        this.logger.warn(`A grants listener failed: ${reason(err)}`);
+      }
+    }
   }
 }
 

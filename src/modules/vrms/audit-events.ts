@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { UserRole } from '../../auth/roles';
+import { widestRole } from '../../auth/permissions/widest-role';
 import { DOCUMENT_KINDS } from '../attachments/attachment-kinds';
 
 // Spec 0003 and spec 0010. One audit row per event: who did it, the action, its field changes as a
@@ -183,13 +183,6 @@ export type ActorFields = {
   actorRole: string | null;
 };
 
-// When a caller holds several VRMS roles, the widest one is recorded.
-const ROLE_ORDER: string[] = [
-  UserRole.ADMIN,
-  UserRole.CHIEF_MECHANIC,
-  UserRole.MECHANIC,
-];
-
 /** A "who" name: the account name, else the email, cut to 100 characters (spec 0010, Value sourcing). */
 export function whoName(user: Pick<Actor, 'name' | 'email'>) {
   return (user.name?.trim() || user.email).slice(0, 100);
@@ -212,7 +205,8 @@ export function actorFields(user: RowActor): ActorFields {
     actorUserId: user.sub,
     actorName: whoName(user),
     actorEmail: user.email,
-    actorRole: ROLE_ORDER.find((r) => held.includes(r)) ?? held[0] ?? null,
+    // Suite spec 0018 child 0002, AC-34: the role with the most allowed keys
+    actorRole: widestRole(held),
   };
 }
 
@@ -737,13 +731,13 @@ export function hiddenAuditEvents(
   };
 }
 
-export const AUDIT_ROLES = [
-  'ADMIN',
-  'CHIEF_MECHANIC',
-  'MECHANIC',
-  'SYSTEM',
-] as const;
-export type AuditRoleFilter = (typeof AUDIT_ROLES)[number];
+/**
+ * Suite spec 0018 child 0002, AC-34: the role filter takes any VRMS role code (built in or custom;
+ * the page lists the live roles from welinc-auth's catalog) or SYSTEM, the "no actor" rule.
+ */
+export const SYSTEM_ACTOR_ROLE = 'SYSTEM';
+export const AUDIT_ROLE_RE = /^[A-Z][A-Z0-9_]{1,29}$/;
+export type AuditRoleFilter = string;
 
 /**
  * Spec 0021, AC-9: the category, type and role filters. A row matches when its type is in `types`
@@ -766,7 +760,8 @@ export function auditRoleFilter(
   role: AuditRoleFilter | undefined,
 ): Prisma.AuditLogWhereInput | null {
   if (!role) return null;
-  if (role === 'SYSTEM') return { actorUserId: null, actorEmail: null };
+  if (role === SYSTEM_ACTOR_ROLE)
+    return { actorUserId: null, actorEmail: null };
   return { actorRole: role };
 }
 

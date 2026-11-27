@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../shared/prisma.service';
-import { MATRIX_ROLES, PERMISSION_CATALOG } from './catalog';
+import { PERMISSION_CATALOG } from './catalog';
 
 const cell = (role: string, permission: string) => `${role}|${permission}`;
 
@@ -29,17 +29,19 @@ export class PermissionMatrixService {
     const stored = new Map(
       rows.map((r) => [cell(r.role, r.permission), r.allowed]),
     );
+    // Suite spec 0018 child 0002, AC-32: every synced role, custom ones included
+    const roles = [...new Set(rows.map((r) => r.role))].sort();
     return {
       version: matrix.version,
       /** The welinc-auth version this copy came from, and when it was applied. */
       source: { etag: sync?.etag ?? null, syncedAt: sync?.syncedAt ?? null },
-      roles: [...MATRIX_ROLES],
+      roles,
       keys: PERMISSION_CATALOG.map((entry) => ({
         key: entry.key,
         module: 'module' in entry ? entry.module : null,
         // A missing row denies (AC-6)
         grants: Object.fromEntries(
-          MATRIX_ROLES.map((role) => [
+          roles.map((role) => [
             role,
             stored.get(cell(role, entry.key)) === true,
           ]),

@@ -6554,13 +6554,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string",
-              "enum": [
-                "ADMIN",
-                "CHIEF_MECHANIC",
-                "MECHANIC",
-                "SYSTEM"
-              ]
+              "type": "string"
             }
           },
           {

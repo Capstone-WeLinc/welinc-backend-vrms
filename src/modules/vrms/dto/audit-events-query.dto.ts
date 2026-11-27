@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -14,7 +15,7 @@ import {
 import {
   AUDIT_ACTIONS,
   AUDIT_CATEGORIES,
-  AUDIT_ROLES,
+  AUDIT_ROLE_RE,
   type AuditAction,
   type AuditCategory,
   type AuditRoleFilter,
@@ -75,8 +76,9 @@ export class AuditEventsQueryDto {
   types?: AuditAction[];
 
   @IsOptional()
-  @IsIn(AUDIT_ROLES, {
-    message: `actorRole must be one of: ${AUDIT_ROLES.join(', ')}`,
+  // Suite spec 0018 child 0002, AC-34: any VRMS role code, custom ones included, or SYSTEM
+  @Matches(AUDIT_ROLE_RE, {
+    message: 'actorRole must be a VRMS role code or SYSTEM',
   })
   actorRole?: AuditRoleFilter;
 

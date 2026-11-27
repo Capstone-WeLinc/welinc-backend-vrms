@@ -8,7 +8,8 @@ import { Reflector } from '@nestjs/core';
 import type { AccountCheck, AuthUser } from '../account-check';
 import { FakeAccountCheck } from '../account-check.fake';
 import { PUBLIC_KEY } from '../permissions/permission.decorators';
-import { SystemType, UserRole } from '../roles';
+import { SystemType } from '../roles';
+import { UserRole } from '../built-in-roles.testing';
 import { ResilientKeySet, SERVICE_ROUTE_KEY, TokenVerifier } from '../verify';
 import {
   fakeJwksFetch,

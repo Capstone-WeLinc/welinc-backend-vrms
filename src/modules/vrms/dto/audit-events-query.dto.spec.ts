@@ -42,7 +42,7 @@ describe('AuditEventsQueryDto (spec 0021, AC-10)', () => {
     [{ categories: 'checklist' }, 'categories must be one of'],
     [{ types: 'NOPE' }, 'types must be one of the event types'],
     [{ type: 'NOPE' }, 'type must be one of the event types'],
-    [{ actorRole: 'admin' }, 'actorRole must be one of'],
+    [{ actorRole: 'admin' }, 'actorRole must be a VRMS role code or SYSTEM'],
   ])('answers 400 for an unknown or wrongly cased value %j', async (q, msg) => {
     const { messages } = await parse(q);
     expect(messages.join(' ')).toContain(msg);

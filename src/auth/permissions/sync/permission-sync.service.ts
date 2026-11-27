@@ -34,11 +34,21 @@ export class PermissionSync {
   private readonly logger = new Logger(PermissionSync.name);
   /** Drift is warned once per key per process (AC-29). */
   private readonly warnedDrift = new Set<string>();
+  private readonly applied: (() => void)[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly client: AuthPermissionsClient,
   ) {}
+
+  /**
+   * Called after this process applied a new matrix. PermissionsService reloads at once, so the
+   * mechanic roster recomputes within one sync, even with no request coming in (suite spec 0018
+   * child 0002, AC-33). Other replicas reload on their next checked request, as before.
+   */
+  whenApplied(listener: () => void): void {
+    this.applied.push(listener);
+  }
 
   async tick(): Promise<PermissionTick> {
     const lease = await this.claim();
@@ -90,6 +100,7 @@ export class PermissionSync {
       this.logger.log(
         `Applied permission matrix ${answer.etag} (${plan.rows.length} cells)`,
       );
+      for (const listener of this.applied) listener();
       return { kind: 'applied', etag: answer.etag, rows: plan.rows.length };
     } finally {
       await this.release(lease.owner);

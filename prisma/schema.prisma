@@ -172,8 +172,12 @@ model Mechanic {
   email      String?  @db.VarChar(255) // lowercased copy from welinc-auth
   name       String   @db.VarChar(100)
   isActive   Boolean  @default(true) @map("is_active")
-  // Spec 0022: MECHANIC or CHIEF_MECHANIC (a CHECK in the migration), written only by MechanicRoster
-  role       String?  @db.VarChar(20)
+  // The person's VRMS role code (custom ones too, suite spec 0018), written only by MechanicRoster
+  role       String?  @db.VarChar(30)
+  // Suite spec 0018 child 0002, AC-33: holds ticket.assignable; false keeps them off assign pickers
+  assignable Boolean  @default(true)
+  // Child 0002, AC-34: holds ticket.verify, the lead mark on the Team section
+  isLead     Boolean  @default(false) @map("is_lead")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

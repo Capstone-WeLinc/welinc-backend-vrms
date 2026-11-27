@@ -69,6 +69,8 @@ export class PermissionsGuard implements CanActivate {
     }
 
     await this.permissions.ensureFresh();
+    // Suite spec 0018 child 0002, AC-32: a role made seconds ago gets its keys on this request
+    await this.permissions.ensureKnown(request.user.roles.map((r) => r.role));
     const ability = this.permissions.abilityFor(request.user);
     request.ability = ability;
 

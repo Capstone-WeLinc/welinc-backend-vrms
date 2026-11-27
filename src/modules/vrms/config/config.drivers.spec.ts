@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { defaultAbility } from '../../../auth/permissions/permissions.fake';
-import { UserRole } from '../../../auth/roles';
+import { UserRole } from '../../../auth/built-in-roles.testing';
 import { PrismaService } from '../../../shared/prisma.service';
 import { LookupsService } from '../lookups/lookups.service';
 import { ConfigService } from './config.service';

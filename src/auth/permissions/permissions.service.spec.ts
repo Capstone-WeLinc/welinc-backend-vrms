@@ -1,16 +1,20 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import type { PrismaService } from '../../shared/prisma.service';
-import { MATRIX_ROLES, PERMISSION_CATALOG } from './catalog';
+import { PERMISSION_CATALOG } from './catalog';
 import { defaultKeys } from './permissions.fake';
-import type { UserRole } from '../roles';
+import type { UserRole } from '../built-in-roles.testing';
 import { PermissionsService } from './permissions.service';
+import type { PermissionSync } from './sync/permission-sync.service';
 import { FakeSettings } from '../../settings/settings.fake';
 
 type Row = { role: string; permission: string; allowed: boolean };
 
+/** The roles a fresh suite starts with. */
+const BUILT_IN = ['ADMIN', 'CHIEF_MECHANIC', 'MECHANIC'] as const;
+
 /** Every role and key at welinc-auth's defaults, as the matrix sync writes them (suite spec 0013). */
 function defaultRows(): Row[] {
-  return MATRIX_ROLES.flatMap((role) => {
+  return BUILT_IN.flatMap((role) => {
     const held = defaultKeys([role]);
     return PERMISSION_CATALOG.map((entry) => ({
       role,
@@ -57,11 +61,16 @@ function setup(
     ),
     $transaction: jest.fn((run: (t: typeof tx) => Promise<unknown>) => run(tx)),
   };
+  const sync = {
+    tick: jest.fn(() => Promise.resolve({ kind: 'unchanged' })),
+    whenApplied: jest.fn(),
+  };
   const service = new PermissionsService(
     prisma as unknown as PrismaService,
     settings,
+    sync as unknown as PermissionSync,
   );
-  return { service, prisma, tx, state, settings };
+  return { service, prisma, tx, state, settings, sync };
 }
 
 const vrms = (...roles: UserRole[]) =>
@@ -80,7 +89,7 @@ describe('PermissionsService', () => {
 
   // Spec 0014, AC-5: what /vrms/permissions/me sends each role equals the catalog defaults with
   // every module on, so a new key such as ticket.verify reaches the right roles
-  it.each(MATRIX_ROLES)(
+  it.each(BUILT_IN)(
     'grants %s exactly its catalog defaults under the default matrix',
     async (role) => {
       const { service } = setup();
@@ -245,6 +254,99 @@ describe('PermissionsService', () => {
       await service.ensureFresh();
 
       expect(service.keysFor(['MECHANIC']).has('ai.use')).toBe(true);
+    });
+  });
+
+  // covers: suite spec 0018 child 0002 AC-32
+  describe('custom roles (suite spec 0018 child 0002)', () => {
+    const custom = (role: string, keys: string[]): Row[] =>
+      PERMISSION_CATALOG.map((entry) => ({
+        role,
+        permission: entry.key,
+        allowed: keys.includes(entry.key),
+      }));
+
+    it('grants a custom role exactly its synced cells', async () => {
+      const { service } = setup([
+        ...defaultRows(),
+        ...custom('C_TIRE_SPECIALIST', ['ticket.view', 'ticket.work']),
+      ]);
+      await service.onApplicationBootstrap();
+
+      expect([...service.keysFor(['C_TIRE_SPECIALIST'])].sort()).toEqual([
+        'ticket.view',
+        'ticket.work',
+      ]);
+    });
+
+    it('runs one sync for an unknown code, then grants it', async () => {
+      const { service, state, sync } = setup();
+      await service.onApplicationBootstrap();
+      sync.tick.mockImplementation(() => {
+        state.rows = [...state.rows, ...custom('C_NEW', ['ticket.view'])];
+        state.version += 1;
+        return Promise.resolve({ kind: 'unchanged' });
+      });
+
+      expect(service.keysFor(['C_NEW']).size).toBe(0);
+      await service.ensureKnown(['C_NEW']);
+
+      expect(sync.tick).toHaveBeenCalledTimes(1);
+      expect([...service.keysFor(['C_NEW'])]).toEqual(['ticket.view']);
+    });
+
+    it('syncs for unknown codes at most once per 10 seconds, and never for known ones', async () => {
+      const { service, sync } = setup();
+      await service.onApplicationBootstrap();
+
+      await service.ensureKnown(['MECHANIC']);
+      expect(sync.tick).not.toHaveBeenCalled();
+
+      await service.ensureKnown(['C_GHOST']);
+      await service.ensureKnown(['C_GHOST']);
+      await service.ensureKnown(['C_OTHER']);
+      expect(sync.tick).toHaveBeenCalledTimes(1);
+      expect(service.keysFor(['C_GHOST']).size).toBe(0);
+    });
+
+    it('never throws when that sync fails', async () => {
+      const { service, sync } = setup();
+      await service.onApplicationBootstrap();
+      sync.tick.mockRejectedValue(new Error('auth down'));
+
+      await expect(service.ensureKnown(['C_X'])).resolves.toBeUndefined();
+    });
+
+    it('reloads at once when this process applies a new matrix', async () => {
+      const { service, state, sync } = setup();
+      await service.onApplicationBootstrap();
+      const seen: number[] = [];
+      service.whenLoaded((loaded) => seen.push(loaded.version));
+      state.version += 1;
+
+      const [onApplied] = sync.whenApplied.mock.calls[0] as unknown as [
+        () => void,
+      ];
+      onApplied();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(seen).toEqual([state.version]);
+    });
+
+    it('tells listeners the grants and which keys were synced, on every load', async () => {
+      const rows = defaultRows().filter(
+        (r) => r.permission !== 'ticket.assignable',
+      );
+      const { service } = setup(rows);
+      const seen: boolean[] = [];
+      service.whenLoaded((loaded) =>
+        seen.push(loaded.syncedKeys.has('ticket.assignable')),
+      );
+      await service.onApplicationBootstrap();
+
+      expect(seen).toEqual([false]);
+      expect(service.hasSynced('ticket.assignable')).toBe(false);
+      expect(service.hasSynced('ticket.view')).toBe(true);
     });
   });
 });

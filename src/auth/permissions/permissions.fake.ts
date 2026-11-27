@@ -1,6 +1,6 @@
 import type { AuthUser } from '../account-check';
 import { AppAbility, buildAbility } from './ability.factory';
-import { isMatrixRole, type MatrixRole, type PermissionKey } from './catalog';
+import type { PermissionKey } from './catalog';
 import type { PermissionsService } from './permissions.service';
 
 type Caller = Pick<AuthUser, 'sub' | 'roles'>;
@@ -19,6 +19,7 @@ const DEFAULTS: Record<PermissionKey, [boolean, boolean, boolean]> = {
   'ticket.costs.view': [true, true, false],
   'ticket.costs.edit': [true, false, false],
   'ticket.assign': [true, true, false],
+  'ticket.assignable': [false, true, true],
   'ticket.edit': [true, false, false],
   'ticket.due_date.edit': [true, true, false],
   'ticket.unlock': [true, false, false],
@@ -41,7 +42,8 @@ const DEFAULTS: Record<PermissionKey, [boolean, boolean, boolean]> = {
   'lookups.manage': [true, true, false],
 };
 
-const COLUMN: Record<MatrixRole, 0 | 1 | 2> = {
+/** The built in roles of a fresh suite; any other code grants nothing here. */
+const COLUMN: Record<string, 0 | 1 | 2> = {
   ADMIN: 0,
   CHIEF_MECHANIC: 1,
   MECHANIC: 2,
@@ -49,7 +51,7 @@ const COLUMN: Record<MatrixRole, 0 | 1 | 2> = {
 
 /** The keys the default matrix grants these roles, as a fresh suite would hold them. */
 export function defaultKeys(roles: readonly string[]): Set<PermissionKey> {
-  const held = roles.filter(isMatrixRole);
+  const held = roles.filter((role) => role in COLUMN);
   return new Set(
     (Object.keys(DEFAULTS) as PermissionKey[]).filter((key) =>
       held.some((role) => DEFAULTS[key][COLUMN[role]]),
@@ -65,7 +67,14 @@ export function defaultAbility(user: Caller): AppAbility {
 /** Stands in for PermissionsService with the default matrix loaded. */
 export class FakePermissions implements Pick<
   PermissionsService,
-  'ensureFresh' | 'keysFor' | 'abilityFor' | 'isReady' | 'currentVersion'
+  | 'ensureFresh'
+  | 'ensureKnown'
+  | 'keysFor'
+  | 'abilityFor'
+  | 'isReady'
+  | 'currentVersion'
+  | 'hasSynced'
+  | 'whenLoaded'
 > {
   readonly isReady = true;
   readonly currentVersion = 1;
@@ -73,6 +82,16 @@ export class FakePermissions implements Pick<
   ensureFresh() {
     return Promise.resolve();
   }
+
+  ensureKnown() {
+    return Promise.resolve();
+  }
+
+  hasSynced(key: string) {
+    return key in DEFAULTS;
+  }
+
+  whenLoaded() {}
 
   keysFor(roles: readonly string[]) {
     return defaultKeys(roles);

@@ -2,7 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
 import type { AuthUser } from '../../auth/account-check';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { FakeSettings } from '../../settings/settings.fake';
 import type { PrismaService } from '../../shared/prisma.service';
 import { AiProviderError } from './ai-provider';

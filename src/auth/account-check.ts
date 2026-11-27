@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env';
-import { SystemType, UserRole } from './roles';
+import { SystemType, RoleCode } from './roles';
 import {
   AUTH_UNAVAILABLE_MESSAGE,
   sessionEnded,
@@ -30,7 +30,7 @@ export type AuthUser = {
   email: string;
   name: string;
   system: typeof SystemType.VRMS;
-  roles: { role: UserRole; system: string }[];
+  roles: { role: RoleCode; system: string }[];
 };
 
 /** A confirmed caller; `fresh` is true when welinc-auth was asked on this request. */
@@ -186,7 +186,7 @@ export class AccountCheck {
     if (answer.userId !== token.sub) throw sessionEnded();
     const roles = token.roles
       .filter((r) => r.system === SystemType.VRMS)
-      .map((r) => ({ role: r.role as UserRole, system: r.system }));
+      .map((r) => ({ role: r.role, system: r.system }));
     if (roles.length === 0) throw new UnauthorizedException(NO_ACCESS);
     return {
       sub: token.sub,
