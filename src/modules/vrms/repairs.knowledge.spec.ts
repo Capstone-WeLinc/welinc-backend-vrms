@@ -8,6 +8,7 @@ import { FakeSettings } from '../../settings/settings.fake';
 import { FakeEmbeddings } from '../ai/embedding.fake';
 import { FakeFleet } from '../integrations/fleet/vmms-fleet.fake';
 import { photoRows } from './photo-rules.fake';
+import { withDueDateMocks } from './due-dates.helper-spec';
 
 // Spec 0029 (child 0003): the BMS writers and the banner read, tested in their own specs
 jest.mock('../integrations/bms/bms-repair-updates', () => ({
@@ -378,6 +379,7 @@ describe('RepairsService.create with a common issue', () => {
       attachment: { groupBy: jest.fn().mockResolvedValue(photoRows()) },
       $transaction: jest.fn(),
     };
+    withDueDateMocks(prisma);
     prisma.$transaction.mockImplementation((fn: (tx: unknown) => unknown) =>
       fn(prisma),
     );
@@ -461,8 +463,8 @@ describe('RepairsService.create with a common issue', () => {
         assignedByName: 'Victor Ramos',
       },
     ]);
-    // Spec 0021, AC-5b and AC-3b: CREATED at now, MECHANIC_ASSIGNED 1 ms later, which is the
-    // newest row and so the ticket's lastActivityAt
+    // Spec 0021, AC-5b and AC-3b: CREATED at now, MECHANIC_ASSIGNED 1 ms later; spec 0030 adds
+    // the due date row 1 ms after that, the newest row and so the ticket's lastActivityAt
     expect(data.auditLogs.create).toEqual([
       expect.objectContaining({
         action: 'CREATED',
@@ -476,7 +478,7 @@ describe('RepairsService.create with a common issue', () => {
         createdAt: new Date(now.getTime() + 1),
       }),
     ]);
-    expect(data.lastActivityAt).toEqual(new Date(now.getTime() + 1));
+    expect(data.lastActivityAt).toEqual(new Date(now.getTime() + 2));
   });
 
   it('starts the ticket Open when no mechanic is given (spec 0016, AC-1)', async () => {
@@ -495,11 +497,14 @@ describe('RepairsService.create with a common issue', () => {
     // Spec 0029, AC-4: no longer written; VMMS owns the truck's status
     expect(args.data).not.toHaveProperty('priorVehicleStatus');
     expect(args.data.assignments).toEqual({ create: [] });
-    // Spec 0021, AC-5b: a ticket created Open writes only CREATED, and lastActivityAt is its time
+    // Spec 0021, AC-5b: a ticket created Open writes only CREATED; spec 0030's due date row is
+    // 1 ms later and is the ticket's lastActivityAt
     const logs = (args.data.auditLogs as { create: { action: string }[] })
       .create;
     expect(logs.map((r) => r.action)).toEqual(['CREATED']);
-    expect(args.data.lastActivityAt).toEqual(args.data.statusChangedAt);
+    expect(args.data.lastActivityAt).toEqual(
+      new Date((args.data.statusChangedAt as Date).getTime() + 1),
+    );
   });
 
   it('never writes the truck or its status history (spec 0029, AC-4)', async () => {

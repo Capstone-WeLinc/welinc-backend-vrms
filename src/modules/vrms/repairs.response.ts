@@ -242,6 +242,15 @@ export class TicketView {
   })
   dueAtSource!: string | null;
 
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description:
+      'When the ticket turns Due soon (spec 0030, AC-11); null when it is closed, cancelled or has no due date.',
+  })
+  dueSoonAt!: string | null;
+
   @ApiProperty({ type: String, nullable: true })
   reportedByName!: string | null;
 

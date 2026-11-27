@@ -434,6 +434,8 @@ model IssueCategory {
   description String?  @db.VarChar(200)
   isActive    Boolean  @default(true) @map("is_active")
   sortOrder   Int      @default(0) @map("sort_order")
+  // Spec 0030, AC-4: "Fix time (hours)", 0.25 to 720; null adds nothing to a ticket's due date
+  fixHours    Decimal? @map("fix_hours") @db.Decimal(5, 2)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

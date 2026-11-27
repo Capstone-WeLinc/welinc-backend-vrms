@@ -7,8 +7,9 @@ import {
 import { queueBmsRepairUpdate } from './bms-repair-updates';
 
 // Spec 0029 (child 0003): the one writer of RepairTicket.dueAt and dueAtSource. Every change
-// writes its audit row and reaches BMS as a repair update with the reason. Slice 1 calls it only
-// from expedite acceptance; feature 42 must route every due date write through it.
+// writes its audit row and reaches BMS as a repair update with the reason. Spec 0030 (feature 42)
+// routes every due date write through it: create, the recomputes in due-dates.ts, the hand change
+// and reset, the expedite and the backfill.
 
 export type DueAtChange = {
   dueAt: Date | null;
@@ -24,14 +25,30 @@ export type DueAtChange = {
  */
 export async function setDueAt(
   tx: Prisma.TransactionClient,
-  ticket: { id: string; dueAt: Date | null },
+  ticket: { id: string; dueAt: Date | null; dueAtSource?: DueAtSource | null },
   change: DueAtChange,
   actor: RowActor,
   at: Date,
+  /** Spec 0030: only for a path that queues its own BMS update right after (create, referral). */
+  options: { skipBmsUpdate?: boolean } = {},
 ): Promise<boolean> {
   const before = ticket.dueAt?.getTime() ?? null;
   const after = change.dueAt?.getTime() ?? null;
-  if (before === after) return false;
+  if (before === after) {
+    // Same date, other rule (a reset that lands on the hand date): keep the source honest.
+    // BMS never sees the source and the date did not move, so no audit row and no update.
+    if (
+      change.dueAt &&
+      'dueAtSource' in ticket &&
+      ticket.dueAtSource !== change.source
+    ) {
+      await tx.repairTicket.update({
+        where: { id: ticket.id },
+        data: { dueAtSource: change.source },
+      });
+    }
+    return false;
+  }
   await tx.repairTicket.update({
     where: { id: ticket.id },
     data: {
@@ -49,6 +66,8 @@ export async function setDueAt(
       ),
     },
   });
-  await queueBmsRepairUpdate(tx, ticket.id, change.reason);
+  if (!options.skipBmsUpdate) {
+    await queueBmsRepairUpdate(tx, ticket.id, change.reason);
+  }
   return true;
 }
