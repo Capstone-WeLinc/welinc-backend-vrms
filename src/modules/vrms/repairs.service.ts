@@ -70,6 +70,7 @@ import {
   OPEN_STATUSES,
 } from './ticket-statuses';
 import { readableTickets } from './ticket-access';
+import { isInRoster, readView, viewWhere } from './repair-views';
 import { odometerProblem, vehicleOdometerFloor } from './odometer';
 import {
   activeDriver,
@@ -794,14 +795,25 @@ export class RepairsService {
 
   // ── List repair tickets ──────────────────────────────────────────────────
 
-  async findAll(query: FindRepairsQueryDto, ability: AppAbility) {
+  async findAll(query: FindRepairsQueryDto, ability: AppAbility, sub = '') {
     const { search, status, garageId, overdue, truckRemoved, mechanicId } =
       query;
+    // Spec 0027, AC-4: a preset narrows the list; checked before the scope so a bad one always answers
+    const view =
+      query.view === undefined
+        ? undefined
+        : readView(query.view, {
+            sub,
+            ability,
+            inRoster:
+              query.view === 'mine' && (await isInRoster(this.prisma, sub)),
+          });
     const scope = readableTickets(ability);
     if (!scope) return { data: [], total: 0 };
 
+    // A preset brings its own statuses (Done is Closed); a status asked for applies on top of it
     const where: Prisma.RepairTicketWhereInput = {
-      repairStatus: status ?? { in: OPEN_STATUSES },
+      repairStatus: status ?? (view ? undefined : { in: OPEN_STATUSES }),
     };
 
     if (search) {
@@ -820,6 +832,7 @@ export class RepairsService {
     // The scope goes first; overdue only ever matches open tickets, whatever status was asked for
     where.AND = [
       scope,
+      ...(view ? [viewWhere(view, sub)] : []),
       ...(overdue
         ? [
             { repairStatus: { in: OPEN_STATUSES } },
@@ -847,7 +860,7 @@ export class RepairsService {
         include: ticketInclude,
         // Most urgent first; id last so pages never repeat or skip a row
         orderBy:
-          status === RepairStatus.FOR_VERIFICATION
+          status === RepairStatus.FOR_VERIFICATION || view === 'signoff'
             ? // Spec 0015, AC-9: oldest waiting first
               [{ statusChangedAt: 'asc' }, { id: 'asc' }]
             : [

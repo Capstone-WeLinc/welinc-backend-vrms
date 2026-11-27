@@ -71,6 +71,15 @@ export type MoveOptions = {
   photoRules?: PhotoSwitches;
 };
 
+/** Spec 0027: the moves that end a send back (to For verification, Closed or Cancelled). */
+export function clearsSentBack(move: Pick<TicketMove, 'to'>): boolean {
+  return (
+    move.to === RepairStatus.FOR_VERIFICATION ||
+    move.to === RepairStatus.CLOSED ||
+    move.to === RepairStatus.CANCELLED
+  );
+}
+
 export async function applyStatusMove(
   tx: Prisma.TransactionClient,
   ticket: MovingTicket,
@@ -104,6 +113,10 @@ export async function applyStatusMove(
       statusChangedAt: now, // spec 0015, AC-7: written with every status move
       isUnlocked: false,
       ...(isFinished(move.to) && { closedAt: now }),
+      // Spec 0027: Return to mechanic (M6) records the send back; the next send for
+      // verification, a close or a cancel clears it. Other moves leave it as it is.
+      ...(move.id === 'M6' && { sentBackAt: now }),
+      ...(clearsSentBack(move) && { sentBackAt: null }),
       // Whoever closes the ticket verified it; cancelling records no verifier (AC-7, AC-10)
       ...(closes &&
         !isSystemActor(actor) && {

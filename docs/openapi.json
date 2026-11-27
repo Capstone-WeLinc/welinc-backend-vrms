@@ -4113,6 +4113,62 @@
         ]
       }
     },
+    "/vrms/nav/counts": {
+      "get": {
+        "operationId": "NavCountsController_counts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NavCountsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The input failed validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed for this caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodedError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "userToken": []
+          }
+        ],
+        "tags": [
+          "Navigation"
+        ]
+      }
+    },
     "/vrms/people": {
       "get": {
         "operationId": "ConfigController_people",
@@ -4654,6 +4710,15 @@
             }
           },
           {
+            "name": "view",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 20,
+              "type": "string"
+            }
+          },
+          {
             "name": "page",
             "required": false,
             "in": "query",
@@ -4684,31 +4749,25 @@
             }
           },
           "400": {
-            "description": "The input failed validation",
+            "description": "`VALIDATION_FAILED` or no `code`",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No valid credentials",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Not allowed for this caller",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CodedError"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CodedError"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "VALIDATION_FAILED"
+                          ]
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             }
@@ -7586,6 +7645,9 @@
       "name": "Lookups"
     },
     {
+      "name": "Navigation"
+    },
+    {
       "name": "Operations"
     },
     {
@@ -8562,6 +8624,35 @@
         "required": [
           "kind"
         ]
+      },
+      "NavCountsResponse": {
+        "type": "object",
+        "properties": {
+          "open": {
+            "type": "number",
+            "description": "All open (ticket.view_all)"
+          },
+          "signoff": {
+            "type": "number",
+            "description": "Waiting for sign off: For verification, minus tickets the caller is assigned to (ticket.view_all)"
+          },
+          "mine": {
+            "type": "number",
+            "description": "Assigned to me: open tickets assigned to the caller (ticket.view_all and the roster)"
+          },
+          "active": {
+            "type": "number",
+            "description": "In progress: the caller's Assigned, In progress or On hold tickets (ticket.view)"
+          },
+          "sentBack": {
+            "type": "number",
+            "description": "Sent back to me: the caller's In progress tickets with a send back in force (ticket.view)"
+          },
+          "suggestions": {
+            "type": "number",
+            "description": "Fix library suggestions waiting for review (knowledge.edit)"
+          }
+        }
       },
       "NewDriverDto": {
         "type": "object",

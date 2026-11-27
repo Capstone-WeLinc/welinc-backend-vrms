@@ -3,6 +3,8 @@ import SharedModule from '../../shared/shared.module';
 import { AiModule } from '../ai/ai.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { RepairsController } from './repairs.controller';
+import { NavCountsController } from './nav-counts.controller';
+import { NavCountsService } from './nav-counts.service';
 import { RepairsService } from './repairs.service';
 import { TicketEditsService } from './ticket-edits.service';
 import { ChecklistEditsService } from './checklist-edits.service';
@@ -27,6 +29,7 @@ import { ReferralDecisionsService } from './referral-decisions.service';
   // IntegrationsModule: the VMMS fleet client for ticket create's fresh read (spec 0029, AC-5)
   imports: [SharedModule, AiModule, IntegrationsModule],
   controllers: [
+    NavCountsController,
     RepairsController,
     ConfigController,
     LookupsController,
@@ -35,6 +38,7 @@ import { ReferralDecisionsService } from './referral-decisions.service';
     ExpediteDecisionsController,
   ],
   providers: [
+    NavCountsService,
     RepairsService,
     TicketEditsService,
     ChecklistEditsService,

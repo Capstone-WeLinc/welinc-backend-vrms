@@ -47,6 +47,13 @@ export class FindRepairsQueryDto {
   @IsBoolean()
   truckRemoved?: boolean;
 
+  // VRMS spec 0027, AC-4: a sidebar preset (open, signoff, mine, active, sentBack, done). Checked
+  // in the service, so an unknown one answers 400 VALIDATION_FAILED and a forbidden one 403.
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  view?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
