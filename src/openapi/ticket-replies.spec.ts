@@ -72,6 +72,8 @@ const ROW = {
   priority: 'HIGH',
   dueAt: ISO,
   dueAtSource: 'PRIORITY',
+  // Spec 0030, AC-11
+  dueSoonAt: ISO,
   reportedByName: 'VRMS Admin',
   accountType: 'ONLINE',
   corporation: null,
@@ -104,6 +106,7 @@ const ROW = {
     assign: false,
     edit: false,
     editChecklist: true,
+    editDueDate: true,
   },
 };
 
