@@ -1906,6 +1906,8 @@ export class RepairsService {
         edit: ability.can('edit', target),
         // Spec 0023, AC-2: the Edit steps and Add steps controls
         editChecklist: ability.can('editChecklist', target),
+        // Spec 0030, AC-8 and AC-14: the Change control on the Due row, open tickets only
+        editDueDate: open && ability.can('editDueDate', target),
       },
     };
 

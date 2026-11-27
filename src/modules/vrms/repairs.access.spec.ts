@@ -165,20 +165,24 @@ describe('ticket can flags (AC-12a)', () => {
       assign: false,
       edit: false,
       editChecklist: false,
+      editDueDate: false,
     };
     // Spec 0014, AC-6: verify on any readable ticket except their own. Spec 0023, AC-1: the
     // chief holds ticket.view_all, so checklist editing reaches every ticket
+    // Spec 0030, AC-8: the chief changes due dates by default, on any open ticket they can see
     expect(own.can).toEqual({
       ...none,
       work: true,
       assign: true,
       editChecklist: true,
+      editDueDate: true,
     });
     expect(other.can).toEqual({
       ...none,
       verify: true,
       assign: true,
       editChecklist: true,
+      editDueDate: true,
     });
   });
 
@@ -197,6 +201,7 @@ describe('ticket can flags (AC-12a)', () => {
       // Spec 0019, AC-1: ticket.edit is Admin only by default
       edit: true,
       editChecklist: true,
+      editDueDate: true,
     });
   });
 

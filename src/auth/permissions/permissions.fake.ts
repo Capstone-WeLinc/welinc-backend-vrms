@@ -20,6 +20,7 @@ const DEFAULTS: Record<PermissionKey, [boolean, boolean, boolean]> = {
   'ticket.costs.edit': [true, false, false],
   'ticket.assign': [true, true, false],
   'ticket.edit': [true, false, false],
+  'ticket.due_date.edit': [true, true, false],
   'ticket.unlock': [true, false, false],
   'ticket.checklist.edit': [true, true, true],
   'ticket.files.add': [true, true, true],

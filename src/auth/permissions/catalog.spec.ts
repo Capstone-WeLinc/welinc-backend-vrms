@@ -16,6 +16,7 @@ const KEYS = [
   'ticket.costs.edit',
   'ticket.assign',
   'ticket.edit',
+  'ticket.due_date.edit',
   'ticket.unlock',
   'ticket.checklist.edit',
   'ticket.files.add',
@@ -81,6 +82,7 @@ describe('the test matrix (a copy of welinc-auth defaults)', () => {
       'ticket.verify',
       'ticket.costs.view',
       'ticket.assign',
+      'ticket.due_date.edit',
       'ticket.checklist.edit',
       'ticket.files.add',
       'ticket.documents.add',
@@ -103,7 +105,7 @@ describe('the test matrix (a copy of welinc-auth defaults)', () => {
       'knowledge.view',
       'knowledge.suggest',
     ]);
-    expect(defaultKeys(['ADMIN']).size).toBe(27);
+    expect(defaultKeys(['ADMIN']).size).toBe(28);
     expect(defaultKeys(['ADMIN']).has('ticket.work')).toBe(false);
   });
 
