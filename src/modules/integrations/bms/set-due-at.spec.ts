@@ -77,6 +77,60 @@ describe('setDueAt', () => {
     expect(queueBmsRepairUpdate).not.toHaveBeenCalled();
   });
 
+  // covers: spec 0030 AC-5 (a tie between priority and issues moves only the source label)
+  it('keeps the same date but fixes a changed source, with no audit row and no BMS update', async () => {
+    const fake = tx();
+    const due = new Date('2026-12-01T09:00:00.000Z');
+    await expect(
+      setDueAt(
+        fake as unknown as Prisma.TransactionClient,
+        { id: 't1', dueAt: new Date(due), dueAtSource: 'ISSUE_TYPE' },
+        { dueAt: due, source: 'PRIORITY', reason: 'x' },
+        admin,
+        AT,
+      ),
+    ).resolves.toBe(false);
+    expect(fake.repairTicket.update).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: { dueAtSource: 'PRIORITY' },
+    });
+    expect(fake.auditLog.create).not.toHaveBeenCalled();
+    expect(queueBmsRepairUpdate).not.toHaveBeenCalled();
+  });
+
+  it('leaves the source alone when the date and the source both match', async () => {
+    const fake = tx();
+    const due = new Date('2026-12-01T09:00:00.000Z');
+    await setDueAt(
+      fake as unknown as Prisma.TransactionClient,
+      { id: 't1', dueAt: new Date(due), dueAtSource: 'PRIORITY' },
+      { dueAt: due, source: 'PRIORITY', reason: 'x' },
+      admin,
+      AT,
+    );
+    expect(fake.repairTicket.update).not.toHaveBeenCalled();
+  });
+
+  // covers: spec 0030 AC-10 (create and referral queue their own update, so none twice)
+  it('writes the date and the audit row but skips the BMS update when asked', async () => {
+    const fake = tx();
+    const changed = await setDueAt(
+      fake as unknown as Prisma.TransactionClient,
+      { id: 't1', dueAt: null },
+      {
+        dueAt: new Date('2026-12-01T09:00:00.000Z'),
+        source: 'PRIORITY',
+        reason: 'Due date from Low priority (168 h)',
+      },
+      admin,
+      AT,
+      { skipBmsUpdate: true },
+    );
+    expect(changed).toBe(true);
+    expect(fake.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(queueBmsRepairUpdate).not.toHaveBeenCalled();
+  });
+
   it('clears the source with the date', async () => {
     const fake = tx();
     await setDueAt(
