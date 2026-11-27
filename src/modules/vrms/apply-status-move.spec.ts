@@ -198,7 +198,7 @@ describe('applyStatusMove', () => {
         NOW,
       );
       return (
-        raw.repairTicket.updateMany.mock.calls[0] as [
+        raw.repairTicket.updateMany.mock.calls[0] as unknown as [
           { data: Record<string, unknown> },
         ]
       )[0].data;
