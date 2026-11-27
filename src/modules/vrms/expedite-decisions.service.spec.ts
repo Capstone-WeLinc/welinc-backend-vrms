@@ -106,12 +106,16 @@ function setup(
     repairTicket: { findUniqueOrThrow: jest.fn().mockResolvedValue(ticket) },
     $transaction: jest.fn((run: (t: typeof tx) => unknown) => run(tx)),
   };
-  const repairs = { present: jest.fn(() => Promise.resolve({ id: 't1' })) };
+  const repairs = {
+    // Spec 0030: the due date recompute (its own rules are tested in due-dates.spec.ts)
+    recomputeDueAt: jest.fn().mockResolvedValue(false),
+    present: jest.fn(() => Promise.resolve({ id: 't1' })),
+  };
   const service = new ExpediteDecisionsService(
     prisma as unknown as PrismaService,
     repairs as unknown as RepairsService,
   );
-  return { service, tx, calls, deliveries, ticket };
+  return { service, tx, calls, deliveries, ticket, repairs };
 }
 
 describe('ExpediteDecisionsService.accept (AC-19)', () => {
@@ -183,6 +187,37 @@ describe('ExpediteDecisionsService.accept (AC-19)', () => {
     );
     expect(calls).not.toContain('TICKET_EDITED');
     expect(setDueAt).not.toHaveBeenCalled();
+  });
+
+  it('works an automatic date out again for a new priority with no date given (spec 0030, AC-5)', async () => {
+    const { service, tx, repairs } = setup();
+    Object.assign(tx.repairTicket, {
+      findUniqueOrThrow: jest.fn().mockResolvedValue({ dueAt: new Date(DUE) }),
+    });
+    await service.accept(
+      'x1',
+      { priority: 'HIGH', updatedAt: LOADED.toISOString() },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(repairs.recomputeDueAt).toHaveBeenCalledWith(
+      tx,
+      't1',
+      expect.objectContaining({ trigger: { expedite: 'JO-2026-0142' } }),
+    );
+    expect(setDueAt).not.toHaveBeenCalled();
+  });
+
+  it('writes only the given date as MANUAL, with no recompute (spec 0030)', async () => {
+    const { service, repairs } = setup();
+    await service.accept(
+      'x1',
+      { priority: 'HIGH', dueAt: DUE, updatedAt: LOADED.toISOString() },
+      admin,
+      defaultAbility(admin),
+    );
+    expect(setDueAt).toHaveBeenCalledTimes(1);
+    expect(repairs.recomputeDueAt).not.toHaveBeenCalled();
   });
 
   it('refuses a stale ticket and an answered request', async () => {

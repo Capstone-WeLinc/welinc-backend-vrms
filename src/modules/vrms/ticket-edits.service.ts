@@ -260,6 +260,15 @@ export class TicketEditsService {
       await tx.auditLog.create({
         data: { repairTicketId: id, ...auditData(user, event, now) },
       });
+      // Spec 0030, AC-5: a new priority works an automatic due date out again
+      if (after.priority !== before.priority) {
+        await this.repairs.recomputeDueAt(tx, id, {
+          trigger: 'PRIORITY',
+          actor: user,
+          now,
+          at: stampedAt(now, 1),
+        });
+      }
       const updated = await tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -530,6 +539,13 @@ export class TicketEditsService {
           ...auditData(user, issueAddedEvent(issue.id, description, note), now),
         },
       });
+      // Spec 0030, AC-5
+      await this.repairs.recomputeDueAt(tx, id, {
+        trigger: 'ISSUE_ADDED',
+        actor: user,
+        now,
+        at: stampedAt(now, 1),
+      });
       const updated = await tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -620,6 +636,15 @@ export class TicketEditsService {
           ...auditData(user, issueEditedEvent(issueId, changes, note), now),
         },
       });
+      // Spec 0030, AC-5: only another category or a cleared fix changes the issue's hours
+      if (category.id !== issue.categoryId || clearsFix) {
+        await this.repairs.recomputeDueAt(tx, id, {
+          trigger: 'ISSUE_CHANGED',
+          actor: user,
+          now,
+          at: stampedAt(now, 1),
+        });
+      }
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,
@@ -677,6 +702,13 @@ export class TicketEditsService {
             now,
           ),
         },
+      });
+      // Spec 0030, AC-5
+      await this.repairs.recomputeDueAt(tx, id, {
+        trigger: 'ISSUE_REMOVED',
+        actor: user,
+        now,
+        at: stampedAt(now, 1),
       });
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },

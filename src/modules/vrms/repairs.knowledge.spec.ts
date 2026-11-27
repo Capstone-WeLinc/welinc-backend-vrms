@@ -130,10 +130,14 @@ function setupLink(
         .fn()
         .mockResolvedValue({ count: overrides.updated ?? 1 }),
       findUniqueOrThrow: jest.fn().mockResolvedValue(fullTicket()),
+      // Spec 0030: the due date write
+      update: jest.fn().mockResolvedValue({}),
     },
     repairIssueStep: { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) },
     repairIssue: { update: jest.fn().mockResolvedValue({}) },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
+    // Spec 0030: the due date recompute reads the known fix stats inside the transaction
+    $queryRaw: jest.fn().mockResolvedValue([]),
   };
   const prisma = {
     repairTicket: {

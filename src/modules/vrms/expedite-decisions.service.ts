@@ -83,7 +83,7 @@ export class ExpediteDecisionsService {
       throw new ConflictException(STALE);
     }
     const note = `Expedite ${request.jobOrderNumber}`;
-    const dueAt = dto.dueAt ? new Date(dto.dueAt) : ticket.dueAt;
+    let dueAt = dto.dueAt ? new Date(dto.dueAt) : ticket.dueAt;
     const now = new Date();
     // EXPEDITE_ACCEPTED, then the priority row, then the due date row, 1 ms apart
     const lastAt = stampedAt(now, 2);
@@ -144,6 +144,20 @@ export class ExpediteDecisionsService {
           user,
           stampedAt(now, 2),
         );
+      } else if (ticket.priority !== dto.priority) {
+        // Spec 0030, AC-5: one due date write only. With no date given, a new priority works
+        // an automatic date out again from the ticket as read inside this transaction
+        await this.repairs.recomputeDueAt(tx, ticket.id, {
+          trigger: { expedite: request.jobOrderNumber },
+          actor: user,
+          now,
+          at: stampedAt(now, 2),
+        });
+        const fresh = await tx.repairTicket.findUniqueOrThrow({
+          where: { id: ticket.id },
+          select: { dueAt: true },
+        });
+        dueAt = fresh.dueAt;
       }
       await tx.expediteRequest.update({
         where: { id },

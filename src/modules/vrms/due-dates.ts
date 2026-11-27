@@ -355,7 +355,8 @@ export async function recomputeDueAt(
     return false;
   }
   const result = computeDueAt(ticket, issues, config, stats, options.now);
-  return setDueAt(
+  const at = options.at ?? options.now;
+  const changed = await setDueAt(
     tx,
     ticket,
     {
@@ -364,7 +365,16 @@ export async function recomputeDueAt(
       reason: dueReason(result, options.trigger),
     },
     options.actor,
-    options.at ?? options.now,
+    at,
     { skipBmsUpdate: options.skipBmsUpdate },
   );
+
+  // The due date row is the newest one, so the ticket's last activity is its time
+  if (changed && at.getTime() !== options.now.getTime()) {
+    await tx.repairTicket.update({
+      where: { id: ticketId },
+      data: { lastActivityAt: at },
+    });
+  }
+  return changed;
 }

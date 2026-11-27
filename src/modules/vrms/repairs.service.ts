@@ -1338,6 +1338,13 @@ export class RepairsService {
           ),
         },
       });
+      // Spec 0030, AC-5: link, relink and unlink change the issue's hours
+      await recomputeDueAt(tx, id, this.settings, {
+        trigger: 'KNOWN_FIX',
+        actor: user,
+        now,
+        at: stampedAt(now, 1),
+      });
       return tx.repairTicket.findUniqueOrThrow({
         where: { id },
         include: ticketInclude,

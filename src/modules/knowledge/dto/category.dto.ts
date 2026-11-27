@@ -3,11 +3,14 @@ import {
   IsBoolean,
   IsInt,
   IsISO8601,
+  IsNumber,
   IsOptional,
   IsString,
   Length,
+  Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }) =>
@@ -31,6 +34,17 @@ export class CreateCategoryDto {
   @IsString()
   @MaxLength(200, { message: 'Description can be up to 200 characters.' })
   description?: string | null;
+
+  // Spec 0030, AC-4: "Fix time (hours)", 0.25 to 720; null clears it
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Fix time must be a number of hours.' },
+  )
+  @Min(0.25, { message: 'Fix time must be 0.25 to 720 hours.' })
+  @Max(720, { message: 'Fix time must be 0.25 to 720 hours.' })
+  fixHours?: number | null;
 }
 
 export class UpdateCategoryDto {
@@ -45,6 +59,17 @@ export class UpdateCategoryDto {
   @IsString()
   @MaxLength(200, { message: 'Description can be up to 200 characters.' })
   description?: string | null;
+
+  // Spec 0030, AC-4: "Fix time (hours)", 0.25 to 720; null clears it
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'Fix time must be a number of hours.' },
+  )
+  @Min(0.25, { message: 'Fix time must be 0.25 to 720 hours.' })
+  @Max(720, { message: 'Fix time must be 0.25 to 720 hours.' })
+  fixHours?: number | null;
 
   @IsOptional()
   @IsBoolean()

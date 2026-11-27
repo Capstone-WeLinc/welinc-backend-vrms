@@ -19,6 +19,12 @@ import {
   VEHICLES,
 } from './catalog';
 import { SeededEntry } from './knowledge.seed';
+import {
+  computeDueAt,
+  decimalHours,
+  type DueSettings,
+} from '../../src/modules/vrms/due-dates';
+import { SETTINGS_CATALOG } from '../../src/settings/catalog';
 import { seedActor, VRMS_ADMIN } from './shared-ids';
 import {
   AuditEventData,
@@ -88,13 +94,25 @@ type Crew = {
 };
 
 const MAX_OPEN = 4;
-// Hours from logging to due, by priority (a fleet garage's usual promise)
-const DUE_HOURS: Record<RepairPriority, number> = {
-  CRITICAL: 24,
-  HIGH: 48,
-  MEDIUM: 96,
-  LOW: 168,
+
+/** Spec 0030: the catalog defaults, so seeded dates follow the same rules as real ones. */
+const DUE_SETTINGS: DueSettings = {
+  priorityHours: {
+    CRITICAL: settingDefault('tickets.due_hours_critical'),
+    HIGH: settingDefault('tickets.due_hours_high'),
+    MEDIUM: settingDefault('tickets.due_hours_medium'),
+    LOW: settingDefault('tickets.due_hours_low'),
+  },
+  knowledgeOn: true,
 };
+
+function settingDefault(key: string): number {
+  const entry = SETTINGS_CATALOG.find((e) => e.key === key);
+  if (!entry || typeof entry.default !== 'number') {
+    throw new Error(`No int setting ${key}`);
+  }
+  return entry.default;
+}
 
 type Rows = {
   tickets: Prisma.RepairTicketCreateManyInput[];
@@ -131,6 +149,53 @@ export async function seedRepairs(
   const garages = new Map(
     (await prisma.garage.findMany()).map((g) => [g.name, g]),
   );
+  // Spec 0030: the hours each due date is worked out from (the migration's starting hours)
+  const categoryHours = new Map(
+    (await prisma.issueCategory.findMany()).map((c) => [
+      c.id,
+      { name: c.name, hours: decimalHours(c.fixHours) },
+    ]),
+  );
+  const entryHours = new Map(
+    (
+      await prisma.knowledgeEntry.findMany({
+        select: { id: true, estimatedHours: true },
+      })
+    ).map((e) => [e.id, decimalHours(e.estimatedHours)]),
+  );
+  // As on create: the date when the ticket was logged, from its issues pushed just before it.
+  // No knowledge history at that moment, so a linked issue counts its fix's estimate.
+  const seedDue = (
+    ticketId: string,
+    priority: RepairPriority,
+    createdAt: number,
+  ) => {
+    const issues = rows.issues
+      .filter((issue) => issue.repairTicketId === ticketId)
+      .map((issue) => {
+        const category = issue.categoryId
+          ? categoryHours.get(issue.categoryId)
+          : undefined;
+        return {
+          id: issue.id!,
+          description: issue.description,
+          categoryName: category?.name ?? null,
+          categoryFixHours: category?.hours ?? null,
+          knowledgeEntryId: issue.knowledgeEntryId ?? null,
+          estimatedHours: issue.knowledgeEntryId
+            ? (entryHours.get(issue.knowledgeEntryId) ?? null)
+            : null,
+        };
+      });
+    const result = computeDueAt(
+      { priority, createdAt: new Date(createdAt) },
+      issues,
+      DUE_SETTINGS,
+      new Map(),
+      new Date(createdAt),
+    );
+    return { dueAt: result.dueAt, dueAtSource: result.source };
+  };
 
   // ── Crews ────────────────────────────────────────────────────────────────
   const inHouse = await prisma.mechanic.findMany({
@@ -152,7 +217,11 @@ export async function seedRepairs(
       openCount: 0,
       inProgress: false,
       // A few regulars carry most of the floor; the demo logins always have live work
-      activity: home ? 3 : weighted([0.15, 1, 2.5], (w) => (w === 0.15 ? 45 : w === 1 ? 40 : 15)),
+      activity: home
+        ? 3
+        : weighted([0.15, 1, 2.5], (w) =>
+            w === 0.15 ? 45 : w === 1 ? 40 : 15,
+          ),
     };
   });
 
@@ -736,8 +805,7 @@ export async function seedRepairs(
       driverId: driver.id,
       garageId: garage.id,
       odometer: km,
-      dueAt: new Date(createdAt + DUE_HOURS[priority] * HOUR),
-      dueAtSource: 'PRIORITY',
+      ...seedDue(ticketId, priority, createdAt),
       reportedByUserId: VRMS_ADMIN.id,
       reportedByName: VRMS_ADMIN.name,
       // Whoever closes a ticket verified it (Admin today)

@@ -24,11 +24,20 @@ function view(c: IssueCategory & { _count: { entries: number } }) {
     id: c.id,
     name: c.name,
     description: c.description,
+    // Spec 0030, AC-4
+    fixHours: c.fixHours == null ? null : Number(c.fixHours),
     isActive: c.isActive,
     sortOrder: c.sortOrder,
     entryCount: c._count.entries,
     updatedAt: c.updatedAt,
   };
+}
+
+/** "6", "0.25" or null, so a Decimal and a number compare equal in the change log. */
+function hoursText(
+  value: { toString(): string } | number | null,
+): string | null {
+  return value == null ? null : String(Number(value));
 }
 
 const withCount = { _count: { select: { entries: true } } } as const;
@@ -62,6 +71,7 @@ export class KnowledgeCategoriesService {
             name: dto.name,
             nameKey: nameKey(dto.name),
             description: dto.description ?? null,
+            fixHours: dto.fixHours ?? null,
             sortOrder: (last._max.sortOrder ?? 0) + 1,
           },
           include: withCount,
@@ -71,7 +81,18 @@ export class KnowledgeCategoriesService {
             user,
             'CATEGORY_CREATED',
             { categoryId: category.id },
-            [{ field: 'name', before: null, after: dto.name }],
+            [
+              { field: 'name', before: null, after: dto.name },
+              ...(dto.fixHours != null
+                ? [
+                    {
+                      field: 'fixHours',
+                      before: null,
+                      after: String(dto.fixHours),
+                    },
+                  ]
+                : []),
+            ],
           ),
         });
         return category;
@@ -115,6 +136,7 @@ export class KnowledgeCategoriesService {
         name: existing.name,
         description: existing.description,
         sortOrder: String(existing.sortOrder),
+        fixHours: hoursText(existing.fixHours),
       },
       {
         name: dto.name ?? existing.name,
@@ -123,6 +145,10 @@ export class KnowledgeCategoriesService {
             ? existing.description
             : dto.description,
         sortOrder: String(dto.sortOrder ?? existing.sortOrder),
+        fixHours:
+          dto.fixHours === undefined
+            ? hoursText(existing.fixHours)
+            : hoursText(dto.fixHours),
       },
     );
     const status =
@@ -151,6 +177,8 @@ export class KnowledgeCategoriesService {
             ...(dto.sortOrder !== undefined
               ? { sortOrder: dto.sortOrder }
               : {}),
+            // Spec 0030, AC-7: a new fix time moves no existing ticket's date
+            ...(dto.fixHours !== undefined ? { fixHours: dto.fixHours } : {}),
           },
         });
         if (count === 0) throw staleConflict(STALE_CATEGORY);
