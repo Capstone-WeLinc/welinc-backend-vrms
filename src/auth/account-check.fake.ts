@@ -1,5 +1,6 @@
 import type { AuthUser, Confirmed } from './account-check';
-import { SystemType, UserRole } from './roles';
+import { SystemType } from './roles';
+import { UserRole } from './built-in-roles.testing';
 
 /** Stands in for AccountCheck in tests: confirms every token as `user`, or throws `error`. */
 export class FakeAccountCheck {

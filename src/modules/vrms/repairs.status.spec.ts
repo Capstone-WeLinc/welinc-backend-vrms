@@ -4,7 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { PrismaService } from '../../shared/prisma.service';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { RepairsService } from './repairs.service';

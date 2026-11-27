@@ -1,5 +1,4 @@
 import type { ModuleName } from '../../settings/catalog';
-import { UserRole } from '../roles';
 
 // Spec 0011, AC-1: the one list of permission keys VRMS code checks. Since suite spec 0013
 // (AC-25, AC-30) each key's label, group, description, defaults and locks live in welinc-auth
@@ -11,12 +10,8 @@ import { UserRole } from '../roles';
 // and the other roles off unless its spec says otherwise), plus its CASL rule and its
 // @RequirePermission. Until welinc-auth's matrix has it, the key counts as off.
 
-export const MATRIX_ROLES = [
-  UserRole.ADMIN,
-  UserRole.CHIEF_MECHANIC,
-  UserRole.MECHANIC,
-] as const;
-export type MatrixRole = (typeof MATRIX_ROLES)[number];
+// Suite spec 0018 child 0002, AC-32: every role welinc-auth's matrix answer names gets its cells,
+// custom roles included, so no list of role codes lives here.
 
 export type PermissionEntry = {
   key: string;
@@ -36,6 +31,8 @@ export const PERMISSION_CATALOG = [
   { key: 'ticket.costs.edit' },
   // Spec 0019, AC-9: any open status, adding, removing or swapping
   { key: 'ticket.assign' },
+  // Suite spec 0018 child 0002, AC-33: the mechanic roster is everyone whose roles grant it
+  { key: 'ticket.assignable' },
   // Spec 0019, AC-1: details and issues after create; mechanics stay on ticket.assign
   { key: 'ticket.edit' },
   // Spec 0030, AC-8: the hand change and reset; the service also checks read on the ticket
@@ -76,8 +73,4 @@ const BY_KEY = new Map<string, PermissionEntry>(
 
 export function catalogEntry(key: string): PermissionEntry | undefined {
   return BY_KEY.get(key);
-}
-
-export function isMatrixRole(role: string): role is MatrixRole {
-  return (MATRIX_ROLES as readonly string[]).includes(role);
 }

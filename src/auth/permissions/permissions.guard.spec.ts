@@ -6,7 +6,8 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { AuthUser } from '../account-check';
 import { SERVICE_ROUTE_KEY } from '../verify/guards';
-import { SystemType, UserRole } from '../roles';
+import { SystemType } from '../roles';
+import { UserRole } from '../built-in-roles.testing';
 import {
   Authenticated,
   Public,

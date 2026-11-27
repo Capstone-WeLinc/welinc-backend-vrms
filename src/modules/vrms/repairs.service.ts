@@ -30,7 +30,7 @@ import {
   statusMovesFrom,
   type TicketMove,
 } from './ticket-transitions';
-import { UserRole } from '../../auth/roles';
+import { RoleCode } from '../../auth/roles';
 import {
   type AppAbility,
   canViewCosts,
@@ -120,7 +120,7 @@ type JwtUser = {
   sub: string;
   email: string;
   name: string;
-  roles: { role: UserRole; system: string }[];
+  roles: { role: RoleCode; system: string }[];
   system: string;
 };
 
@@ -414,7 +414,8 @@ export class RepairsService {
     let mechanicNames: string[] = [];
     if (mechanicIds.length > 0) {
       const active = await this.prisma.mechanic.findMany({
-        where: { id: { in: mechanicIds }, isActive: true },
+        // Suite spec 0018 child 0002, AC-33: only people who hold ticket.assignable
+        where: { id: { in: mechanicIds }, isActive: true, assignable: true },
         select: { id: true, name: true },
       });
       if (active.length !== mechanicIds.length) {

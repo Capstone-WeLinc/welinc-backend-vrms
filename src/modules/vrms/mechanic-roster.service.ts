@@ -2,7 +2,13 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { AccountCheck, type AuthUser } from '../../auth/account-check';
-import { SystemType, UserRole } from '../../auth/roles';
+import { SystemType } from '../../auth/roles';
+import type { PermissionKey } from '../../auth/permissions/catalog';
+import {
+  PermissionsService,
+  type LoadedGrants,
+} from '../../auth/permissions/permissions.service';
+import { widestRole } from '../../auth/permissions/widest-role';
 import {
   AuthDirectoryClient,
   DirectoryUnavailableError,
@@ -17,21 +23,35 @@ type Db = Prisma.TransactionClient;
 /** What applying one directory person did to their row (spec 0005, AC-13). */
 export type ApplyOutcome = 'created' | 'updated' | 'deactivated' | 'unchanged';
 
-// Spec 0009, AC-13 and AC-14: in house Mechanic rows follow the welinc-auth users who hold a VRMS
-// mechanic or chief mechanic role. Rows are never deleted. Every Mechanic row is in house (spec
-// 0010). Spec 0005: what welinc-auth says arrives through its directory (DirectorySync's poll and
-// full read, refreshOne's lookup); VRMS never lists every user.
+// Spec 0009, AC-13 and AC-14: in house Mechanic rows follow the welinc-auth users VRMS can assign
+// tickets to. Rows are never deleted. Every Mechanic row is in house (spec 0010). Spec 0005: what
+// welinc-auth says arrives through its directory (DirectorySync's poll and full read, refreshOne's
+// lookup); VRMS never lists every user.
+//
+// Suite spec 0018 child 0002, AC-33 and AC-34: who is on the roster is decided by permissions, never
+// by a role code. A person whose VRMS roles grant `ticket.assignable` (in the synced grants) gets
+// an assignable row; `ticket.verify` makes them a lead. Losing the key sets `assignable` false and
+// keeps the row active (still a VRMS person, still on their open tickets). Nothing is decided until
+// this process has loaded grants that carry `ticket.assignable`, so a cold start or the gap before
+// welinc-auth sends the key never empties the roster.
 
-const MECHANIC_ROLES: string[] = [UserRole.MECHANIC, UserRole.CHIEF_MECHANIC];
+/** The key that puts a person on the roster (child 0002, AC-33). */
+export const ASSIGNABLE_KEY: PermissionKey = 'ticket.assignable';
+/** The key that makes a roster person a lead (child 0002, AC-34). */
+export const LEAD_KEY: PermissionKey = 'ticket.verify';
 
-/** The VRMS role a roster row stores (spec 0022, AC-4). */
-export type MechanicRole = 'MECHANIC' | 'CHIEF_MECHANIC';
+/** What a person's VRMS roles make them on the roster. */
+export type Standing = {
+  /** Their widest VRMS role, stored in `mechanics.role`. */
+  role: string;
+  assignable: boolean;
+  isLead: boolean;
+};
 
-type Wanted = {
+type Wanted = Standing & {
   name: string;
   email: string;
   isActive: boolean;
-  role: MechanicRole;
 };
 
 export type SyncResult = {
@@ -40,21 +60,42 @@ export type SyncResult = {
   deactivated: number;
 };
 
-function isMechanicRole(r: { role: string; system: string }) {
-  return r.system === SystemType.VRMS && MECHANIC_ROLES.includes(r.role);
-}
+/** A person as the roster needs them: permanent VRMS roles only (suite spec 0013, AC-11). */
+type Person = Pick<
+  DirectoryUser,
+  'id' | 'name' | 'email' | 'isActive' | 'deleted'
+> & {
+  roles: readonly string[];
+};
 
 /**
- * Spec 0022, AC-4: the person's VRMS mechanic role, or null when they hold none. Other systems'
- * roles are ignored, and Chief Mechanic wins if both somehow appear.
+ * Child 0002, AC-33 and AC-34: a person's standing from their VRMS role codes and the keys those
+ * roles grant, or null when they hold no VRMS role.
  */
-export function roleOf(
-  roles: readonly { role: string; system: string }[],
-): MechanicRole | null {
-  const mine = roles.filter(isMechanicRole).map((r) => r.role);
-  if (mine.includes(UserRole.CHIEF_MECHANIC)) return UserRole.CHIEF_MECHANIC;
-  if (mine.includes(UserRole.MECHANIC)) return UserRole.MECHANIC;
-  return null;
+export function standingOf(
+  roles: readonly string[],
+  keysFor: (roles: readonly string[]) => ReadonlySet<string>,
+): Standing | null {
+  const role = widestRole(roles);
+  if (role === null) return null;
+  const keys = keysFor(roles);
+  return {
+    role,
+    assignable: keys.has(ASSIGNABLE_KEY),
+    isLead: keys.has(LEAD_KEY),
+  };
+}
+
+/** Which roles grant the two roster keys: a reload that leaves it alone needs no recompute. */
+export function rosterSignature(loaded: LoadedGrants): string | null {
+  if (!loaded.syncedKeys.has(ASSIGNABLE_KEY)) return null;
+  return [...loaded.grants]
+    .map(
+      ([role, keys]) =>
+        `${role}:${keys.has(ASSIGNABLE_KEY) ? 1 : 0}${keys.has(LEAD_KEY) ? 1 : 0}`,
+    )
+    .sort()
+    .join(',');
 }
 
 function isUniqueViolation(err: unknown) {
@@ -67,30 +108,105 @@ function isUniqueViolation(err: unknown) {
 export class MechanicRoster implements OnModuleInit {
   private readonly logger = new Logger(MechanicRoster.name);
 
+  private signature: string | null = null;
+  private recomputing: Promise<void> = Promise.resolve();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly accountCheck: AccountCheck,
     private readonly people: AuthDirectoryClient,
+    private readonly permissions: PermissionsService,
   ) {}
 
   onModuleInit() {
     this.accountCheck.whenConfirmed((user) => this.ensure(user));
+    // Child 0002, AC-33: the first load that carries the key, and every change to who holds the two
+    // roster keys, recompute the whole roster
+    this.permissions.whenLoaded((loaded) => {
+      const next = rosterSignature(loaded);
+      if (next === null || next === this.signature) return;
+      this.recomputing = this.recomputing.then(async () => {
+        // Recorded only once a recompute ran, so a skipped one is tried again on the next load
+        if ((await this.recompute()) !== null) this.signature = next;
+      });
+    });
   }
 
   /**
-   * Just in time (AC-13): a mechanic confirmed by welinc-auth gets an active row with their current
-   * name and email before the request runs. Writes only when something differs; a failure is
-   * logged and never fails the request.
+   * True once this process has loaded grants that carry `ticket.assignable` (child 0002, AC-33).
+   * Only the grants count: the settings load after them on a cold start, and the roster reads none.
+   */
+  private get ready(): boolean {
+    return this.permissions.hasSynced(ASSIGNABLE_KEY);
+  }
+
+  private standing(roles: readonly string[]): Standing | null {
+    return standingOf(roles, (r) => this.permissions.keysFor(r));
+  }
+
+  /**
+   * Child 0002, AC-33: every VRMS person (welinc-auth's directory, copied into `vrms_people`) applied
+   * again from the current grants. Never throws; a failure waits for the next change.
+   */
+  async recompute(): Promise<SyncResult | null> {
+    if (!this.ready) return null;
+    try {
+      const people = await this.prisma.vrmsPerson.findMany({
+        select: {
+          authUserId: true,
+          name: true,
+          email: true,
+          roles: true,
+          temporaryRoles: true,
+          isActive: true,
+          deleted: true,
+        },
+      });
+      const result: SyncResult = { created: 0, updated: 0, deactivated: 0 };
+      for (const p of people) {
+        const outcome = await this.applyPerson(
+          {
+            id: p.authUserId,
+            name: p.name,
+            email: p.email,
+            isActive: p.isActive,
+            deleted: p.deleted,
+            roles: permanentRoles(p),
+          },
+          this.prisma,
+        );
+        if (outcome !== 'unchanged') result[outcome] += 1;
+      }
+      this.logger.log(
+        `Roster recomputed from the grants: ${result.created} created, ${result.updated} updated, ${result.deactivated} deactivated`,
+      );
+      return result;
+    } catch (err) {
+      this.logger.error(
+        `Could not recompute the roster: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Just in time (AC-13): a person whose VRMS roles grant `ticket.assignable` gets an active,
+   * assignable row with their current name and email before the request runs. Never takes a row
+   * away (the directory does that). Writes only when something differs; a failure is logged and
+   * never fails the request.
    */
   async ensure(user: AuthUser): Promise<void> {
-    const role = roleOf(user.roles);
-    if (!role) return;
+    if (!this.ready) return;
+    const standing = this.standing(
+      user.roles.filter((r) => r.system === SystemType.VRMS).map((r) => r.role),
+    );
+    if (!standing?.assignable) return;
     // welinc-auth only answers 200 for an active, unlocked user
     const wanted: Wanted = {
+      ...standing,
       name: user.name,
       email: user.email.toLowerCase(),
       isActive: true,
-      role,
     };
     try {
       const row = await this.prisma.mechanic.findUnique({
@@ -144,7 +260,8 @@ export class MechanicRoster implements OnModuleInit {
 
   /**
    * Spec 0005, AC-13: brings one person's row in step with what welinc-auth's directory says.
-   * A VRMS mechanic role and not deleted: the row is created or updated. No mechanic role, or
+   * A VRMS role and not deleted: the row is created or updated with what the grants make them
+   * (assignable, lead), but a person who was never assignable gets no row. No VRMS role, or
    * deleted: an existing row goes inactive and keeps its last role; no row means nothing to do.
    * Applying the same person twice changes nothing. Runs inside the caller's transaction when
    * given one, so a change and the cursor that passes it commit together.
@@ -153,21 +270,27 @@ export class MechanicRoster implements OnModuleInit {
     user: DirectoryUser,
     db: Db = this.prisma,
   ): Promise<ApplyOutcome> {
-    const role = user.deleted
-      ? null
-      : roleOf(
-          // Suite spec 0013, AC-11: a temporary role never makes a roster mechanic
-          permanentRoles(user).map((code) => ({
-            role: code,
-            system: SystemType.VRMS,
-          })),
-        );
+    // Suite spec 0013, AC-11: a temporary role never makes a roster mechanic
+    return this.applyPerson({ ...user, roles: permanentRoles(user) }, db);
+  }
+
+  private async applyPerson(user: Person, db: Db): Promise<ApplyOutcome> {
+    // Child 0002, AC-33: before the grants carry the key, the row stays as stored
+    if (!this.ready) return 'unchanged';
+    const standing = user.deleted ? null : this.standing(user.roles);
     const row = await db.mechanic.findUnique({
       where: { authUserId: user.id },
-      select: { name: true, email: true, isActive: true, role: true },
+      select: {
+        name: true,
+        email: true,
+        isActive: true,
+        role: true,
+        assignable: true,
+        isLead: true,
+      },
     });
 
-    if (!role) {
+    if (!standing) {
       if (!row?.isActive) return 'unchanged';
       await db.mechanic.update({
         where: { authUserId: user.id },
@@ -175,12 +298,14 @@ export class MechanicRoster implements OnModuleInit {
       });
       return 'deactivated';
     }
+    // Someone who was never assignable gets no row
+    if (!row && !standing.assignable) return 'unchanged';
 
     const want: Wanted = {
+      ...standing,
       name: user.name,
       email: user.email.toLowerCase(),
       isActive: user.isActive,
-      role,
     };
     if (row && !this.differs(row, want)) return 'unchanged';
     const wasActive = row?.isActive ?? false;
@@ -200,6 +325,8 @@ export class MechanicRoster implements OnModuleInit {
       email: string | null;
       isActive: boolean;
       role: string | null;
+      assignable: boolean;
+      isLead: boolean;
     },
     want: Wanted,
   ) {
@@ -207,7 +334,9 @@ export class MechanicRoster implements OnModuleInit {
       row.name !== want.name ||
       row.email !== want.email ||
       row.isActive !== want.isActive ||
-      row.role !== want.role
+      row.role !== want.role ||
+      row.assignable !== want.assignable ||
+      row.isLead !== want.isLead
     );
   }
 

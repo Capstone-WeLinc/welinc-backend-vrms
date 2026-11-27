@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { PrismaService } from '../../shared/prisma.service';
 import { FakeSettings } from '../../settings/settings.fake';
@@ -519,13 +519,26 @@ describe('TicketEditsService.editDetails (driver, odometer, account)', () => {
 });
 
 describe('TicketEditsService mechanics (AC-9 to AC-12)', () => {
-  const ANA = { id: 'm1', name: 'Ana', authUserId: 'u-ana', isActive: true };
-  const BEN = { id: 'm2', name: 'Ben', authUserId: 'u-ben', isActive: true };
+  const ANA = {
+    id: 'm1',
+    name: 'Ana',
+    authUserId: 'u-ana',
+    isActive: true,
+    assignable: true,
+  };
+  const BEN = {
+    id: 'm2',
+    name: 'Ben',
+    authUserId: 'u-ben',
+    isActive: true,
+    assignable: true,
+  };
   const CHIEF = {
     id: 'm3',
     name: 'Ramon',
     authUserId: 'u-chief',
     isActive: true,
+    assignable: true,
   };
 
   function mechanicsSetup(
@@ -705,6 +718,24 @@ describe('TicketEditsService mechanics (AC-9 to AC-12)', () => {
       'Wrong mechanic recorded',
     ]);
     expect(ok.tx.repairTicket.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  // covers: suite spec 0018 child 0002 AC-33
+  it('keeps someone who lost ticket.assignable on the ticket, but refuses adding them', async () => {
+    const formerAna = { ...ANA, assignable: false };
+    const kept = mechanicsSetup(RepairStatus.ASSIGNED, [formerAna]);
+    (
+      kept.prisma as unknown as { mechanic: { findMany: jest.Mock } }
+    ).mechanic.findMany.mockResolvedValue([formerAna, BEN]);
+    await expect(put(kept.service, ['m1', 'm2'])).resolves.toBeDefined();
+
+    const added = mechanicsSetup(RepairStatus.ASSIGNED, [BEN]);
+    (
+      added.prisma as unknown as { mechanic: { findMany: jest.Mock } }
+    ).mechanic.findMany.mockResolvedValue([formerAna, BEN]);
+    await expect(put(added.service, ['m1', 'm2'])).rejects.toThrow(
+      'In house mechanic not found',
+    );
   });
 
   it('keeps the old POST working: it adds to the current list (alias)', async () => {

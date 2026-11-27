@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { KnowledgeEntryStatus } from '@prisma/client';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import { PrismaService } from '../../shared/prisma.service';
 import { KnowledgeEntriesService } from './knowledge-entries.service';

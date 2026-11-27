@@ -1,5 +1,5 @@
 import type { PrismaService } from '../../shared/prisma.service';
-import { MATRIX_ROLES, PERMISSION_CATALOG } from './catalog';
+import { PERMISSION_CATALOG } from './catalog';
 import { PermissionMatrixService } from './permission-matrix.service';
 
 // Spec 0011, AC-17, read only since suite spec 0013 (AC-30): the synced copy as keys and values.
@@ -21,28 +21,40 @@ function setup(rows: { role: string; permission: string; allowed: boolean }[]) {
 }
 
 describe('PermissionMatrixService.view (AC-17, suite spec 0013 AC-30)', () => {
-  it('lists every catalog key with each role, the version and where the copy came from', async () => {
+  // covers: suite spec 0018 child 0002 AC-32 (every synced role, custom ones included)
+  it('lists every catalog key with each synced role, the version and where the copy came from', async () => {
     const view = await setup([
       { role: 'ADMIN', permission: 'ticket.view', allowed: true },
+      { role: 'MECHANIC', permission: 'ticket.view', allowed: false },
+      { role: 'CHIEF_MECHANIC', permission: 'ticket.view', allowed: false },
+      { role: 'C_TIRES', permission: 'ticket.view', allowed: true },
     ]).view();
 
     expect(view.version).toBe(12);
     expect(view.source.etag).toBe('"v3"');
-    expect(view.roles).toEqual([...MATRIX_ROLES]);
+    expect(view.roles).toEqual([
+      'ADMIN',
+      'CHIEF_MECHANIC',
+      'C_TIRES',
+      'MECHANIC',
+    ]);
     expect(view.keys.map((k) => k.key)).toEqual(
       PERMISSION_CATALOG.map((e) => e.key),
     );
     expect(view.keys[0].grants).toEqual({
       ADMIN: true,
       CHIEF_MECHANIC: false,
+      C_TIRES: true,
       MECHANIC: false,
     });
   });
 
   it('shows a missing row as not allowed and tags module keys', async () => {
-    const view = await setup([]).view();
+    const view = await setup([
+      { role: 'ADMIN', permission: 'ticket.view', allowed: true },
+    ]).view();
     const ai = view.keys.find((k) => k.key === 'ai.use');
     expect(ai?.module).toBe('ai');
-    expect(Object.values(ai?.grants ?? {})).toEqual([false, false, false]);
+    expect(ai?.grants).toEqual({ ADMIN: false });
   });
 });

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { RepairStatus } from '@prisma/client';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { buildAbility } from '../../auth/permissions/ability.factory';
 import {
   defaultAbility,

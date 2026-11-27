@@ -20,13 +20,11 @@ import {
   permanentRoles,
   type DirectoryUser,
 } from './directory/auth-directory.client';
-import { UserRole } from '../../auth/roles';
 import { MechanicRoster } from './mechanic-roster.service';
 import { OPEN_STATUSES } from './ticket-statuses';
 import { applyStatusMove } from './apply-status-move';
 import { findMove } from './ticket-transitions';
 import { openStatusRank, workloadOf, type Workload } from './mechanic-workload';
-import type { MechanicRole } from './mechanic-roster.service';
 
 /** M2: the last mechanic removed sends an Assigned ticket back to Open (spec 0014). */
 const UNASSIGN_RELEASE = findMove(RepairStatus.ASSIGNED, RepairStatus.OPEN)!;
@@ -47,11 +45,6 @@ export type OpenTicket = {
   mechanics: { id: string; name: string }[];
 };
 
-/** The stored role as the API's type; the CHECK constraint allows only these two or null. */
-function asMechanicRole(role: string | null): MechanicRole | null {
-  return role === 'MECHANIC' || role === 'CHIEF_MECHANIC' ? role : null;
-}
-
 /** One person on the Chief dashboard's Team section (spec 0022, AC-2). */
 export type RosterRow = {
   authUserId: string;
@@ -59,7 +52,12 @@ export type RosterRow = {
   mechanicId: string;
   name: string;
   email: string | null;
-  role: MechanicRole | null;
+  /** Their VRMS role code (built in or custom); the label comes from welinc-auth's catalog. */
+  role: string | null;
+  /** Suite spec 0018 child 0002, AC-34: holds ticket.verify (was role = CHIEF_MECHANIC). */
+  isLead: boolean;
+  /** Child 0002, AC-33: holds ticket.assignable, so the assign pickers offer them. */
+  assignable: boolean;
   isActive: boolean;
 } & Workload;
 
@@ -130,6 +128,8 @@ export class MechanicWorkService {
         email: true,
         isActive: true,
         role: true,
+        isLead: true,
+        assignable: true,
         assignments: {
           where: { repairTicket: { repairStatus: { in: OPEN_STATUSES } } },
           select: { repairTicket: { select: { repairStatus: true } } },
@@ -148,12 +148,16 @@ export class MechanicWorkService {
    */
   async workload() {
     const rows = await this.rosterWithOpenStatuses();
-    return rows.map(({ authUserId, total, byStatus, occupied }) => ({
-      authUserId,
-      total,
-      byStatus,
-      occupied,
-    }));
+    return rows.map(
+      ({ authUserId, total, byStatus, occupied, assignable }) => ({
+        authUserId,
+        total,
+        byStatus,
+        occupied,
+        // Suite spec 0018 child 0002, AC-33: false for someone who lost ticket.assignable
+        assignable,
+      }),
+    );
   }
 
   /**
@@ -169,7 +173,9 @@ export class MechanicWorkService {
         mechanicId: r.id,
         name: r.name,
         email: r.email,
-        role: asMechanicRole(r.role),
+        role: r.role,
+        isLead: r.isLead,
+        assignable: r.assignable,
         isActive: r.isActive,
         occupied: r.occupied,
         total: r.total,
@@ -298,15 +304,14 @@ export class MechanicWorkService {
 export function leaveReason(user: DirectoryUser): ReleaseReason | null {
   if (user.deleted) return 'DELETED';
   if (!user.isActive) return 'DEACTIVATED';
-  const works = permanentRoles(user).some(
-    (role) => role === UserRole.MECHANIC || role === UserRole.CHIEF_MECHANIC,
-  );
-  return works ? null : 'ROLE_REMOVED';
+  // Suite spec 0018 child 0002, AC-33: losing ticket.assignable keeps their open tickets; only
+  // leaving VRMS altogether (no permanent VRMS role) releases them
+  return permanentRoles(user).length > 0 ? null : 'ROLE_REMOVED';
 }
 
 /**
  * Suite spec 0012, AC-24: after the roster takes a directory change, a person who is deleted,
- * inactive or without a mechanic role in VRMS leaves every ticket in a releasable status, inside
+ * inactive or without any VRMS role leaves every ticket in a releasable status, inside
  * the same transaction as the cursor. Keys on the snapshot's state, never the change type, so a
  * replay changes nothing more. No mechanics row: nothing to release.
  */

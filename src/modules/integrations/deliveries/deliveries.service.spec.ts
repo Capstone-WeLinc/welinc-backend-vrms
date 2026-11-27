@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { UserRole } from '../../../auth/roles';
+import { UserRole } from '../../../auth/built-in-roles.testing';
 import type { PrismaService } from '../../../shared/prisma.service';
 import { queueBmsRepairUpdate } from '../bms/bms-repair-updates';
 import { DeliveriesService } from './deliveries.service';

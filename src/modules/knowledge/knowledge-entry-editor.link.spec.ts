@@ -1,5 +1,5 @@
 import { Prisma, RepairStatus } from '@prisma/client';
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { PrismaService } from '../../shared/prisma.service';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { KnowledgeEntriesService } from './knowledge-entries.service';

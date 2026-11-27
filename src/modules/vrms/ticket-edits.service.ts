@@ -343,13 +343,18 @@ export class TicketEditsService {
     }
     const mechanics = await this.prisma.mechanic.findMany({
       where: { id: { in: mechanicIds }, isActive: true },
-      select: { id: true, name: true, authUserId: true },
+      select: { id: true, name: true, authUserId: true, assignable: true },
     });
-    if (mechanics.length !== mechanicIds.length) {
+    const current = ticket.assignments.map((a) => a.mechanic);
+    // Suite spec 0018 child 0002, AC-33: someone who lost ticket.assignable may stay on the
+    // ticket, but only people who hold it can be added
+    const usable = mechanics.filter(
+      (m) => m.assignable || current.some((c) => c.id === m.id),
+    );
+    if (usable.length !== mechanicIds.length) {
       throw new BadRequestException('In house mechanic not found');
     }
 
-    const current = ticket.assignments.map((a) => a.mechanic);
     const removed = current.filter((m) => !mechanicIds.includes(m.id));
     const added = mechanicIds
       .filter((mid) => !current.some((m) => m.id === mid))

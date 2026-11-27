@@ -1,4 +1,4 @@
-import { UserRole } from '../../auth/roles';
+import { UserRole } from '../../auth/built-in-roles.testing';
 import { defaultAbility } from '../../auth/permissions/permissions.fake';
 import type { PrismaService } from '../../shared/prisma.service';
 import {

@@ -109,7 +109,8 @@ export class ConfigService {
   async listAvailableMechanics() {
     // Every Mechanic row is an in house mechanic linked to a welinc-auth user (spec 0010)
     const all = await this.prisma.mechanic.findMany({
-      where: { isActive: true },
+      // Suite spec 0018 child 0002, AC-33: only people who hold ticket.assignable are offered
+      where: { isActive: true, assignable: true },
       select: {
         id: true,
         name: true,

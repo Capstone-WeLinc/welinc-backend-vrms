@@ -2,7 +2,13 @@ import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../shared/prisma.service';
 import { AccountCheck, AuthUser } from '../../auth/account-check';
-import { MechanicRoster, roleOf } from './mechanic-roster.service';
+import {
+  MechanicRoster,
+  rosterSignature,
+  standingOf,
+} from './mechanic-roster.service';
+import { FakePermissions } from '../../auth/permissions/permissions.fake';
+import type { PermissionsService } from '../../auth/permissions/permissions.service';
 import type {
   AuthDirectoryClient,
   DirectoryUser,
@@ -17,6 +23,8 @@ type Row = {
   email: string | null;
   isActive: boolean;
   role?: string | null;
+  assignable?: boolean;
+  isLead?: boolean;
 };
 
 function fakePrisma(rows: Row[]) {
@@ -108,8 +116,31 @@ const asDirectoryUser = (u: ListedUser): DirectoryUser => ({
   updatedAt: '2026-11-09T00:00:00.000Z',
 });
 
-function setup(rows: Row[], users: ListedUser[]) {
-  const prisma = fakePrisma(rows);
+/** The default matrix, as a fresh suite holds it (Mechanic and Chief assignable, Chief and Admin lead). */
+class Permissions extends FakePermissions {
+  synced = true;
+  extra = new Map<string, string[]>();
+  hasSynced(key: string) {
+    return this.synced && super.hasSynced(key);
+  }
+  keysFor(roles: readonly string[]) {
+    const keys = new Set<string>(super.keysFor(roles));
+    for (const role of roles)
+      for (const k of this.extra.get(role) ?? []) keys.add(k);
+    return keys as ReturnType<FakePermissions['keysFor']>;
+  }
+}
+
+function setup(
+  rows: Row[],
+  users: ListedUser[],
+  permissions = new Permissions(),
+  people: unknown[] = [],
+) {
+  const prisma = {
+    ...fakePrisma(rows),
+    vrmsPerson: { findMany: jest.fn(() => Promise.resolve(people)) },
+  };
   const roster = new MechanicRoster(
     prisma as unknown as PrismaService,
     { whenConfirmed: jest.fn() } as unknown as AccountCheck,
@@ -122,8 +153,9 @@ function setup(rows: Row[], users: ListedUser[]) {
         }),
       ),
     } as unknown as AuthDirectoryClient,
+    permissions as unknown as PermissionsService,
   );
-  return { roster, prisma, rows };
+  return { roster, prisma, rows, permissions };
 }
 
 describe('MechanicRoster.ensure', () => {
@@ -132,9 +164,7 @@ describe('MechanicRoster.ensure', () => {
     email: 'A@welinc.com',
     name: 'Name a',
     system: 'VRMS',
-    roles: [
-      { role: role as AuthUser['roles'][number]['role'], system: 'VRMS' },
-    ],
+    roles: [{ role: role, system: 'VRMS' }],
   });
 
   it('creates a missing row for a mechanic, then reads without writing', async () => {
@@ -194,6 +224,8 @@ describe('MechanicRoster duplicate row race', () => {
     email: `${authUserId}@welinc.com`,
     isActive: true,
     role: 'MECHANIC',
+    assignable: true,
+    isLead: false,
     ...over,
   });
 
@@ -242,6 +274,8 @@ describe('MechanicRoster duplicate row race', () => {
           email: 'a@welinc.com',
           isActive: true,
           role: 'MECHANIC',
+          assignable: true,
+          isLead: false,
         },
       });
     });
@@ -289,16 +323,24 @@ describe('MechanicRoster role', () => {
     ...over,
   });
 
-  it('reads only VRMS mechanic roles, with Chief Mechanic winning', () => {
-    expect(roleOf([{ role: 'MECHANIC', system: 'VRMS' }])).toBe('MECHANIC');
-    expect(
-      roleOf([
-        { role: 'MECHANIC', system: 'VRMS' },
-        { role: 'CHIEF_MECHANIC', system: 'VRMS' },
-      ]),
-    ).toBe('CHIEF_MECHANIC');
-    expect(roleOf([{ role: 'CHIEF_MECHANIC', system: 'VMMS' }])).toBeNull();
-    expect(roleOf([{ role: 'ADMIN', system: 'VRMS' }])).toBeNull();
+  // covers: suite spec 0018 child 0002 AC-33, AC-34
+  it('reads the standing from the keys the roles grant, never a role code', () => {
+    const permissions = new Permissions();
+    const keysFor = (r: readonly string[]) => permissions.keysFor(r);
+    expect(standingOf(['MECHANIC'], keysFor)).toEqual({
+      role: 'MECHANIC',
+      assignable: true,
+      isLead: false,
+    });
+    expect(standingOf(['CHIEF_MECHANIC'], keysFor)).toEqual({
+      role: 'CHIEF_MECHANIC',
+      assignable: true,
+      isLead: true,
+    });
+    expect(standingOf(['ADMIN'], keysFor)).toMatchObject({
+      assignable: false,
+    });
+    expect(standingOf([], keysFor)).toBeNull();
   });
 
   it('fills an empty role on the next sign in', async () => {
@@ -342,17 +384,149 @@ describe('MechanicRoster role', () => {
     expect(rows.filter((r) => r.isActive)).toHaveLength(0);
   });
 
-  it('keeps the last known role when the person loses VRMS access', async () => {
+  it('keeps the last known role when the person loses every VRMS role', async () => {
     const rows = [row({ role: 'CHIEF_MECHANIC' })];
-    const { roster, prisma } = setup(rows, [user('a', 'ADMIN')]);
-    expect(await roster.apply(asDirectoryUser(user('a', 'ADMIN')))).toBe(
-      'deactivated',
-    );
+    const { roster, prisma } = setup(rows, []);
+    expect(
+      await roster.apply({ ...asDirectoryUser(user('a', 'ADMIN')), roles: [] }),
+    ).toBe('deactivated');
     expect(rows[0]).toMatchObject({ isActive: false, role: 'CHIEF_MECHANIC' });
     expect(await roster.refreshOne('a')).toMatchObject({
       stillActive: false,
     });
     expect(prisma.mechanic.upsert).not.toHaveBeenCalled();
+  });
+
+  // covers: suite spec 0018 child 0002 AC-33 (losing the key keeps the row active, off pickers)
+  it('keeps someone moved to a role without ticket.assignable active, but not assignable', async () => {
+    const rows = [row({ role: 'MECHANIC', assignable: true })];
+    const { roster } = setup(rows, []);
+    expect(await roster.apply(asDirectoryUser(user('a', 'ADMIN')))).toBe(
+      'updated',
+    );
+    expect(rows[0]).toMatchObject({
+      isActive: true,
+      assignable: false,
+      role: 'ADMIN',
+    });
+  });
+});
+
+// Suite spec 0018 child 0002, AC-33: the roster by ticket.assignable
+describe('MechanicRoster by permission', () => {
+  const vrmsPerson = (id: string, roles: string[], over = {}) => ({
+    authUserId: id,
+    name: `Name ${id}`,
+    email: `${id}@welinc.com`,
+    roles,
+    temporaryRoles: [],
+    isActive: true,
+    deleted: false,
+    ...over,
+  });
+
+  // covers: suite spec 0018 child 0002 AC-33 (parity: same people as the old role code rule)
+  it('holds exactly the people the old role code rule did, with the built in roles only', async () => {
+    const people = [
+      vrmsPerson('admin', ['ADMIN']),
+      vrmsPerson('chief', ['CHIEF_MECHANIC']),
+      vrmsPerson('mech', ['MECHANIC']),
+      vrmsPerson('temp', ['MECHANIC'], { temporaryRoles: ['MECHANIC'] }),
+      vrmsPerson('off', ['MECHANIC'], { isActive: false }),
+    ];
+    const rows: Row[] = [];
+    const { roster } = setup(rows, [], new Permissions(), people);
+    await roster.recompute();
+
+    const byCode = people
+      .filter((p) =>
+        p.roles
+          .filter((r) => !p.temporaryRoles.includes(r as never))
+          .some((r) => r === 'MECHANIC' || r === 'CHIEF_MECHANIC'),
+      )
+      .map((p) => p.authUserId)
+      .sort();
+    expect(rows.map((r) => r.authUserId).sort()).toEqual(byCode);
+    expect(rows.find((r) => r.authUserId === 'chief')?.isLead).toBe(true);
+    expect(rows.find((r) => r.authUserId === 'mech')?.isLead).toBe(false);
+  });
+
+  it('puts a custom role holding ticket.assignable on the roster', async () => {
+    const permissions = new Permissions();
+    permissions.extra.set('C_TIRE_SPECIALIST', [
+      'ticket.assignable',
+      'ticket.view',
+    ]);
+    const rows: Row[] = [];
+    const { roster } = setup(rows, [], permissions, [
+      vrmsPerson('t', ['C_TIRE_SPECIALIST']),
+    ]);
+    await roster.recompute();
+    expect(rows).toEqual([
+      expect.objectContaining({
+        authUserId: 't',
+        role: 'C_TIRE_SPECIALIST',
+        assignable: true,
+        isLead: false,
+      }),
+    ]);
+  });
+
+  // covers: suite spec 0018 child 0002 AC-33 (cold start guard)
+  it('changes nothing before the grants carry ticket.assignable', async () => {
+    const permissions = new Permissions();
+    permissions.synced = false;
+    const rows = [
+      {
+        id: 'm1',
+        authUserId: 'a',
+        name: 'Name a',
+        email: 'a@welinc.com',
+        isActive: true,
+        role: 'MECHANIC',
+        assignable: true,
+      },
+    ];
+    const { roster, prisma } = setup(rows, [], permissions, [
+      vrmsPerson('a', []),
+    ]);
+    expect(await roster.recompute()).toBeNull();
+    expect(
+      await roster.apply({
+        ...asDirectoryUser(user('a', 'MECHANIC')),
+        roles: [],
+      }),
+    ).toBe('unchanged');
+    await roster.ensure({
+      sub: 'b',
+      email: 'b@welinc.com',
+      name: 'b',
+      system: 'VRMS',
+      roles: [{ role: 'MECHANIC', system: 'VRMS' }],
+    });
+    expect(rows[0].isActive).toBe(true);
+    expect(prisma.mechanic.upsert).not.toHaveBeenCalled();
+    expect(prisma.mechanic.update).not.toHaveBeenCalled();
+  });
+
+  it('recomputes only when who holds the two roster keys changes', () => {
+    const loaded = (assignable: string[], synced = true) => ({
+      version: 1,
+      grants: new Map(
+        ['ADMIN', 'MECHANIC'].map((r) => [
+          r,
+          new Set(assignable.includes(r) ? ['ticket.assignable'] : []),
+        ]),
+      ),
+      syncedKeys: new Set(synced ? ['ticket.assignable'] : []),
+    });
+    expect(rosterSignature(loaded(['MECHANIC'], false) as never)).toBeNull();
+    expect(rosterSignature(loaded(['MECHANIC']) as never)).toBe(
+      rosterSignature(loaded(['MECHANIC']) as never),
+    );
+    expect(rosterSignature(loaded(['MECHANIC']) as never)).not.toBe(
+      rosterSignature(loaded(['MECHANIC', 'ADMIN']) as never),
+    );
   });
 });
 

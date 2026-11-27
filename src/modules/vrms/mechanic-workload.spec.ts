@@ -262,6 +262,9 @@ describe('MechanicWorkService.listRoster', () => {
     name: `Name ${authUserId}`,
     email: `${authUserId}@welinc.com`,
     isActive,
+    role: null as string | null,
+    isLead: false,
+    assignable: true,
     assignments: statuses.map((repairStatus) => ({
       repairTicket: { repairStatus },
     })),
@@ -289,6 +292,8 @@ describe('MechanicWorkService.listRoster', () => {
       name: 'Name u1',
       email: 'u1@welinc.com',
       role: null,
+      isLead: false,
+      assignable: true,
       isActive: true,
       occupied: true,
       total: 2,
@@ -301,11 +306,17 @@ describe('MechanicWorkService.listRoster', () => {
     });
   });
 
-  it('passes the stored role through for the Chief badge (spec 0022, AC-4)', async () => {
+  // covers: suite spec 0018 child 0002 AC-34 (the lead mark comes from ticket.verify, not the code)
+  it('passes the stored role and the lead flag through, custom roles included', async () => {
     const rows = await service([
-      { ...person('chief', true, []), role: 'CHIEF_MECHANIC' },
+      { ...person('chief', true, []), role: 'CHIEF_MECHANIC', isLead: true },
+      { ...person('lead', true, []), role: 'C_NIGHT_LEAD', isLead: true },
       { ...person('new', true, []), role: null },
     ]).listRoster();
-    expect(rows.map((r) => r.role)).toEqual(['CHIEF_MECHANIC', null]);
+    expect(rows.map((r) => [r.role, r.isLead])).toEqual([
+      ['CHIEF_MECHANIC', true],
+      ['C_NIGHT_LEAD', true],
+      [null, false],
+    ]);
   });
 });
